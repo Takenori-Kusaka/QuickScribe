@@ -1,0 +1,19 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Build / deps
+node_modules/
+dist/
+build/
+target/
+__pycache__/
+*.pyc
+
+# Secrets / local
+.env
+.env.local
+*.local
