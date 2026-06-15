@@ -10,3 +10,4 @@
 | [0004](0004-product-positioning-voice-journal.md) | ポジショニング=思考整理ボイスジャーナル | Accepted |
 | 0005 | アプリケーション技術スタック（Tauri 2） | Proposed（PR #1で改訂中） |
 | [0006](0006-scope-completeness-policy.md) | スコープ完全性ポリシー（独断縮小を禁ず） | Accepted |
+| [0007](0007-research-question-framing-method.md) | deep researchの問い設計メソッド標準化 | Accepted |
