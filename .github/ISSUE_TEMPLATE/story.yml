@@ -1,0 +1,30 @@
+name: "📖 Story (親Issue)"
+description: "アジャイル階層の親。複数Taskを束ねる顧客価値の単位"
+title: "[Story] "
+labels: ["story"]
+body:
+  - type: textarea
+    id: value
+    attributes:
+      label: ユーザーストーリー
+      description: "誰が / 何を / なぜ"
+      placeholder: "（ペルソナ）として、（したいこと）をしたい。なぜなら（価値）だから。"
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 受入基準（Story完了の定義）
+      placeholder: "- [ ] ...\n- [ ] ..."
+    validations:
+      required: true
+  - type: textarea
+    id: children
+    attributes:
+      label: 子Task（チェックリスト）
+      placeholder: "- [ ] #__\n- [ ] #__"
+  - type: input
+    id: core
+    attributes:
+      label: コア価値との関係
+      description: "vision.md のどの軸に貢献するか"

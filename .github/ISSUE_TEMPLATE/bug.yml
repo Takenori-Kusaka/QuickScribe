@@ -1,0 +1,17 @@
+name: "🐞 Bug"
+description: "不具合報告"
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 現象 / 再現手順
+      placeholder: "1. ...\n2. ...\n期待: ...\n実際: ..."
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 環境
+      placeholder: "OS / バージョン / STTエンジン"

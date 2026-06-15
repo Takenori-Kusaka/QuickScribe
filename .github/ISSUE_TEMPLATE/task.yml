@@ -1,0 +1,25 @@
+name: "✅ Task (子Issue)"
+description: "Story配下の実装可能な作業単位"
+title: "[Task] "
+labels: ["task"]
+body:
+  - type: input
+    id: parent
+    attributes:
+      label: 親Story
+      placeholder: "#__"
+    validations:
+      required: true
+  - type: textarea
+    id: detail
+    attributes:
+      label: 作業内容
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: 完了の定義 (DoD)
+      placeholder: "- [ ] テスト作成（TDD）\n- [ ] 実装\n- [ ] ドキュメント/ADR更新"
+    validations:
+      required: true
