@@ -1,0 +1,14 @@
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #f8fafc;
+}
+
+#app {
+  width: 100%;
+}

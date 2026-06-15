@@ -1,0 +1,28 @@
+{
+  "name": "quickscribe",
+  "version": "0.0.1",
+  "description": "思考整理・自己理解のためのローカル完結ボイスジャーナル",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "icons": "node scripts/gen-icon.cjs && tauri icon src-tauri/icon-src.png",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/plugin-global-shortcut": "^2.2.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "@tauri-apps/cli": "^2.1.0",
+    "pngjs": "^7.0.0",
+    "svelte": "^5.2.0",
+    "svelte-check": "^4.0.0",
+    "tslib": "^2.8.0",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0"
+  }
+}
