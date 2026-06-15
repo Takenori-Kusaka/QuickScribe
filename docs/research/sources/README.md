@@ -13,3 +13,4 @@
 - [kiro-specs.md](kiro-specs.md) — AWS Kiro 仕様駆動ワークフロー（公式Docs/Blog）
 - [zenn-spec-driven-optimisuke.md](zenn-spec-driven-optimisuke.md) — 仕様駆動の本来の定義となぜ今か（Zenn, optimisuke）
 - [iso-29148.md](iso-29148.md) — 要求工学標準 ISO/IEC/IEEE 29148 / JIS X 0166（"what not how" の規範）
+- [spec-driven-limits.md](spec-driven-limits.md) — 重い仕様先行の限界（Isoform / Kiro Quick Plan / Fowler / GOOS / Living Doc）
