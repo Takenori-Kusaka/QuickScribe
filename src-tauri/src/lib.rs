@@ -47,7 +47,7 @@ fn model_path() -> PathBuf {
 /// 音声ファイルから文字起こしし、結果を保存して返す（S1.6 ファイル入力）。
 #[tauri::command]
 fn transcribe_file(path: String) -> Result<String, String> {
-    let audio = stt::read_wav_16k_mono(std::path::Path::new(&path))?;
+    let audio = stt::decode_to_16k_mono(std::path::Path::new(&path))?;
     let model = model_path();
     if !model.exists() {
         return Err(format!(
