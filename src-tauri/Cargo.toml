@@ -15,10 +15,26 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = "0.4"
 dirs = "5"
+# whisperモデルの初回自動取得(HTTPダウンロード)。軽量・同期・rustls。
+ureq = "2"
+# 文字起こし(ローカル whisper.cpp / ADR-0002)。whisper-rs が whisper.cpp をビルドする。
+whisper-rs = "0.14"
+# 音声デコード(純Rust)。mp3等の圧縮音声/WAVを読む(S1.6)。外部ffmpeg不要・配布が軽い。
+symphonia = { version = "0.5", default-features = false, features = [
+    "mp3",
+    "aac",
+    "isomp4",
+    "flac",
+    "vorbis",
+    "ogg",
+    "wav",
+    "pcm",
+] }
 
 [profile.release]
 panic = "abort"
