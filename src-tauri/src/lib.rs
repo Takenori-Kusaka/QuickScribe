@@ -7,8 +7,8 @@
 
 use tauri::{
     menu::{Menu, MenuItem},
-    tray::TrayIconBuilder,
-    Emitter, Manager,
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Emitter, Manager, WindowEvent,
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
@@ -48,6 +48,15 @@ mod tests {
     }
 }
 
+/// メインウィンドウを表示して前面に出す（トレイ操作・常駐からの復帰で使う）。
+fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 既定の開始/停止ホットキー: Ctrl/Cmd + Shift + R
@@ -65,28 +74,52 @@ pub fn run() {
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![save_note])
+        // ウィンドウを閉じてもアプリは終了せず、トレイに常駐する（タスクバー常駐の挙動）。
+        // ただし E2E(QUICKSCRIBE_E2E=1)時はドライバが正常終了できるよう既定の閉じる挙動にする。
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                if std::env::var("QUICKSCRIBE_E2E").is_err() {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .setup(move |app| {
             // グローバルホットキー登録
             app.global_shortcut().register(toggle_shortcut.clone())?;
 
-            // システムトレイ(右クリックメニュー)
+            // システムトレイ(右クリックメニュー)。タスクバー常駐の操作起点。
+            let record_i =
+                MenuItem::with_id(app, "record", "録音開始/停止", true, None::<&str>)?;
             let show_i = MenuItem::with_id(app, "show", "ウィンドウを表示", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "終了", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+            let menu = Menu::with_items(app, &[&record_i, &show_i, &quit_i])?;
 
             TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("QuickScribe")
                 .menu(&menu)
+                // 右クリックメニューのみで開閉しないよう、左クリックの既定メニュー表示は無効化
+                .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "quit" => app.exit(0),
-                    "show" => {
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.set_focus();
-                        }
+                    // タスクバー(トレイ)から録音の開始/停止を操作する
+                    "record" => {
+                        let _ = app.emit("toggle-record", ());
                     }
+                    "quit" => app.exit(0),
+                    "show" => show_main_window(app),
                     _ => {}
+                })
+                // トレイアイコン左クリックでウィンドウを表示
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        show_main_window(tray.app_handle());
+                    }
                 })
                 .build(app)?;
 
