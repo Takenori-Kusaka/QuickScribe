@@ -15,16 +15,37 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 /// メモ内容を保存フォルダ(既定: ドキュメント/QuickScribe)へ書き出す。
 ///
 /// 保存先はのちに設定で上書き可能にする(現状は既定のみ)。
+/// タイムスタンプ文字列からメモのファイル名を組み立てる（純粋関数・テスト対象 S7.1）。
+fn note_filename(ts: &str) -> String {
+    format!("note-{ts}.txt")
+}
+
 #[tauri::command]
 fn save_note(content: String) -> Result<String, String> {
     let base = dirs::document_dir()
         .ok_or_else(|| "ドキュメントフォルダが見つかりません".to_string())?
         .join("QuickScribe");
     std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
-    let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
-    let path = base.join(format!("note-{ts}.txt"));
+    let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let path = base.join(note_filename(&ts));
     std::fs::write(&path, content).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn note_filename_has_prefix_and_extension() {
+        assert_eq!(note_filename("20260616-120000"), "note-20260616-120000.txt");
+    }
+
+    #[test]
+    fn note_filename_uses_given_timestamp() {
+        assert!(note_filename("abc").starts_with("note-"));
+        assert!(note_filename("abc").ends_with(".txt"));
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

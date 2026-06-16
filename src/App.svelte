@@ -2,6 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
+  import { elapsedSeconds, buildNoteContent } from "./lib/note";
 
   // Phase 1 (Walking Skeleton): 録音トグル + 指定フォルダ保存。
   // 文字起こし(whisper)・整形(LLM)・システム音声取り込みは後続の縦切りで追加する。
@@ -17,12 +18,12 @@
       startedAt = Date.now();
     } else {
       recording = false;
-      const seconds = startedAt ? Math.round((Date.now() - startedAt) / 1000) : 0;
+      const seconds = startedAt ? elapsedSeconds(startedAt, Date.now()) : 0;
       startedAt = null;
       try {
         // Phase 1 はメモのプレースホルダを保存し、保存導線(フォルダ/権限)を確立する。
         const path = await invoke<string>("save_note", {
-          content: `QuickScribe メモ (録音 ${seconds}s) — Phase1 プレースホルダ`,
+          content: buildNoteContent(seconds),
         });
         lastSaved = path;
       } catch (e) {
