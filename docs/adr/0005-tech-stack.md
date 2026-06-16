@@ -34,7 +34,7 @@ QuickScribe は次を**全て**満たす（[ADR-0006](0006-scope-completeness-po
 |---|---|---|
 | `TranscriptionEngine` | 音声→テキスト | whisper.cpp / kotoba-whisper / Groq / Deepgram / Azure |
 | `FormattingEngine` | テキスト→整形・要約（整形の知性＝本体価値） | BYO-Cloud(Gemini/Claude) / ローカルLLM(Ollama等) |
-| `AudioCapture` | 音声取得 | マイク / システム音声ループバック / デバイス選択 |
+| `AudioCapture` | 音声取得 | マイク / システム音声ループバック / デバイス選択 / **ファイル(既存音声の読込)** |
 | `TriggerInput` | 起動・停止トリガー | グローバルホットキー / マウスボタン / Stream Deck |
 
 `FormattingEngine` を Strategy 化することで、プライバシー方針（ローカル完結 vs クラウド）の将来変更にアーキを縛られず追従できる（[vision](../vision.md) オープン課題への布石）。
@@ -48,6 +48,8 @@ QuickScribe は次を**全て**満たす（[ADR-0006](0006-scope-completeness-po
   - Windows: WASAPI ループバック。`cpal` の対応が限定的なため、不足は `windows-rs` で WASAPI を直接叩く実装でカバー（[ADR-0003](0003-reject-google-docs-automation.md) 参照、仮想オーディオデバイス不要）。
   - Linux: PipeWire/PulseAudio の `.monitor` ソース。`pipewire-rs` ないし PulseAudio API で取得。
 - **入力デバイス切替**: 利用可能なデバイスを列挙し UI から選択・実行時切替。
+- **ファイルソース（既存音声の読込）**: メニューから音声ファイルを選択し `TranscriptionEngine` に流す（Story S1.6）。`AudioCapture` の一実装として、マイク/ループバックと同じ抽象境界に乗せる。**固定ファイルで決定論的なE2Eテスト**を可能にし、デバッグ効率と顧客価値（既存録音の変換）を両立する。
+- **中間ファイル保存（オプション）**: 録音音声をWAV等の中間ファイルとして任意保存（Story S1.7）。デバッグ/テスト/再変換に寄与。
 - これらは独立した技術検証スパイクの対象（下記ゲート）。**スコープからは外さない**（[ADR-0006](0006-scope-completeness-policy.md)）。
 
 ### Stream Deck / 物理トリガー（フルスコープ）
