@@ -44,6 +44,7 @@ pub fn decode_to_16k_mono(path: &Path) -> Result<Vec<f32>, String> {
 
     let mut mono: Vec<f32> = Vec::new();
     let mut sample_buf: Option<SampleBuffer<f32>> = None;
+    let mut channels = 1usize;
 
     while let Ok(packet) = format.next_packet() {
         if packet.track_id() != track_id {
@@ -53,12 +54,12 @@ pub fn decode_to_16k_mono(path: &Path) -> Result<Vec<f32>, String> {
             Ok(decoded) => {
                 if sample_buf.is_none() {
                     let spec = *decoded.spec();
+                    channels = spec.channels.count().max(1);
                     let dur = decoded.capacity() as u64;
                     sample_buf = Some(SampleBuffer::<f32>::new(dur, spec));
                 }
                 if let Some(buf) = sample_buf.as_mut() {
                     buf.copy_interleaved_ref(decoded);
-                    let channels = buf.spec().channels.count().max(1);
                     for frame in buf.samples().chunks(channels) {
                         let sum: f32 = frame.iter().copied().sum();
                         mono.push(sum / channels as f32);
