@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "icons": "node scripts/gen-icon.cjs && tauri icon src-tauri/icon-src.png",
+    "icons": "tauri icon assets/brand/icon-source.png",
     "tauri": "tauri"
   },
   "dependencies": {
