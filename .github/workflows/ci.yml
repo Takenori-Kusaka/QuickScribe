@@ -61,3 +61,49 @@ jobs:
 
       - name: Build (compile, no bundle)
         run: npx tauri build --no-bundle
+
+  e2e:
+    name: e2e (実起動 / Linux)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Linux dependencies (+ WebKitWebDriver / xvfb)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libxdo-dev \
+            build-essential \
+            file \
+            webkit2gtk-driver \
+            xvfb
+
+      - name: Install tauri-driver
+        run: cargo install tauri-driver --locked
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Generate icons
+        run: npm run icons
+
+      - name: Build app (release binary for E2E)
+        run: npx tauri build --no-bundle
+
+      - name: Run E2E (WebdriverIO under xvfb)
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" npm run e2e
