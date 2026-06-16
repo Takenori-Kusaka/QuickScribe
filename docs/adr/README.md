@@ -11,3 +11,4 @@
 | [0005](0005-tech-stack.md) | アプリケーション技術スタック（Tauri 2） | Proposed |
 | [0006](0006-scope-completeness-policy.md) | スコープ完全性ポリシー（独断縮小を禁ず） | Accepted |
 | [0007](0007-research-question-framing-method.md) | deep researchの問い設計メソッド標準化 | Accepted |
+| [0008](0008-licensing-and-distribution.md) | ライセンス(MIT)・無料・ポータブル配布・無償OSS署名 | Accepted |
