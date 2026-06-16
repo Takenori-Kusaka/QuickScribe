@@ -53,5 +53,11 @@ jobs:
       - name: Type-check frontend
         run: npm run check
 
+      - name: Frontend unit tests (vitest)
+        run: npm test
+
+      - name: Rust unit tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
       - name: Build (compile, no bundle)
         run: npx tauri build --no-bundle
