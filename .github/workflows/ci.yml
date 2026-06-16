@@ -149,6 +149,17 @@ jobs:
             cmake \
             espeak-ng
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Generate icons (tauri generate_context にアイコンが必要)
+        run: npm run icons
+
       - name: Download tiny whisper model
         run: |
           mkdir -p models
