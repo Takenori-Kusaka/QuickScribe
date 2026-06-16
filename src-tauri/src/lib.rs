@@ -5,6 +5,9 @@
 // システム音声ループバック・デバイス切替・Stream Deck連携は後続の縦切りで追加する
 // (ADR-0006 によりスコープからは外さない)。
 
+mod stt;
+
+use std::path::PathBuf;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -30,6 +33,31 @@ fn save_note(content: String) -> Result<String, String> {
     let path = base.join(note_filename(&ts));
     std::fs::write(&path, content).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().to_string())
+}
+
+/// whisper モデルの既定パス（OSのデータディレクトリ配下）。
+fn model_path() -> PathBuf {
+    dirs::data_dir()
+        .unwrap_or_default()
+        .join("QuickScribe")
+        .join("models")
+        .join("ggml-base.bin")
+}
+
+/// 音声ファイルから文字起こしし、結果を保存して返す（S1.6 ファイル入力）。
+#[tauri::command]
+fn transcribe_file(path: String) -> Result<String, String> {
+    let audio = stt::read_wav_16k_mono(std::path::Path::new(&path))?;
+    let model = model_path();
+    if !model.exists() {
+        return Err(format!(
+            "whisperモデルが見つかりません: {}（モデルの自動取得は後続で実装）",
+            model.display()
+        ));
+    }
+    let text = stt::transcribe(&model, &audio, Some("ja"))?;
+    let _ = save_note(text.clone())?;
+    Ok(text)
 }
 
 #[cfg(test)]
@@ -73,7 +101,7 @@ pub fn run() {
                 })
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![save_note])
+        .invoke_handler(tauri::generate_handler![save_note, transcribe_file])
         // ウィンドウを閉じてもアプリは終了せず、トレイに常駐する（タスクバー常駐の挙動）。
         // ただし E2E(QUICKSCRIBE_E2E=1)時はドライバが正常終了できるよう既定の閉じる挙動にする。
         .on_window_event(|window, event| {
