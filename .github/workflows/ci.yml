@@ -120,3 +120,46 @@ jobs:
         env:
           QUICKSCRIBE_E2E: "1"
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" npm run e2e
+
+  transcribe:
+    name: transcribe (決定論テスト / Linux)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies (whisper build + espeak-ng)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libxdo-dev \
+            build-essential \
+            file \
+            clang \
+            libclang-dev \
+            cmake \
+            espeak-ng
+
+      - name: Download tiny whisper model
+        run: |
+          mkdir -p models
+          curl -L --fail -o models/ggml-tiny.bin \
+            https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
+
+      - name: Generate known speech audio (espeak-ng)
+        run: espeak-ng "Hello world. This is a test." -w test.wav
+
+      - name: Transcription integration test (decode -> whisper -> text)
+        env:
+          QS_MODEL_PATH: ${{ github.workspace }}/models/ggml-tiny.bin
+          QS_AUDIO_PATH: ${{ github.workspace }}/test.wav
+        run: cargo test --manifest-path src-tauri/Cargo.toml --test transcribe_integration -- --nocapture

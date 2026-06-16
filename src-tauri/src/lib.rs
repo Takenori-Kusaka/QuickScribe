@@ -5,7 +5,7 @@
 // システム音声ループバック・デバイス切替・Stream Deck連携は後続の縦切りで追加する
 // (ADR-0006 によりスコープからは外さない)。
 
-mod stt;
+pub mod stt;
 
 use std::path::PathBuf;
 use tauri::{
