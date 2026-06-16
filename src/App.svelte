@@ -1,15 +1,40 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
+  import { open } from "@tauri-apps/plugin-dialog";
   import { onMount } from "svelte";
   import { elapsedSeconds, buildNoteContent } from "./lib/note";
 
-  // Phase 1 (Walking Skeleton): 録音トグル + 指定フォルダ保存。
-  // 文字起こし(whisper)・整形(LLM)・システム音声取り込みは後続の縦切りで追加する。
   let recording = $state(false);
   let lastSaved = $state<string | null>(null);
   let error = $state<string | null>(null);
   let startedAt = $state<number | null>(null);
+  let status = $state<string>("");
+  let transcript = $state<string | null>(null);
+  let busy = $state(false);
+
+  // 音声ファイル(mp3等)を選んで文字起こし→保存する(S1.6)。
+  async function transcribeFromFile() {
+    error = null;
+    transcript = null;
+    const selected = await open({
+      multiple: false,
+      filters: [
+        { name: "音声ファイル", extensions: ["mp3", "wav", "m4a", "flac", "ogg", "aac"] },
+      ],
+    });
+    if (typeof selected !== "string") return;
+    busy = true;
+    try {
+      const text = await invoke<string>("transcribe_file", { path: selected });
+      transcript = text;
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+      status = "";
+    }
+  }
 
   async function toggle() {
     error = null;
@@ -34,9 +59,12 @@
 
   onMount(() => {
     // グローバルホットキー(Rust側で登録)からのトグルを受ける。
-    const un = listen("toggle-record", () => toggle());
+    const unToggle = listen("toggle-record", () => toggle());
+    // 文字起こしの進捗ステータスを受ける。
+    const unStatus = listen<string>("status", (e) => (status = e.payload));
     return () => {
-      un.then((f) => f());
+      unToggle.then((f) => f());
+      unStatus.then((f) => f());
     };
   });
 </script>
@@ -51,6 +79,19 @@
 
   <p class="hint">ホットキー: Ctrl/Cmd + Shift + R</p>
 
+  <button class="file" onclick={transcribeFromFile} disabled={busy}>
+    🎧 音声ファイルから文字起こし
+  </button>
+
+  {#if status}
+    <p class="status">{status}</p>
+  {/if}
+  {#if transcript}
+    <div class="transcript">
+      <h2>文字起こし</h2>
+      <p>{transcript}</p>
+    </div>
+  {/if}
   {#if lastSaved}
     <p class="saved">保存しました: <code>{lastSaved}</code></p>
   {/if}

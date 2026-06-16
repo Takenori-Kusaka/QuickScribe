@@ -5,9 +5,9 @@
 // システム音声ループバック・デバイス切替・Stream Deck連携は後続の縦切りで追加する
 // (ADR-0006 によりスコープからは外さない)。
 
+pub mod model;
 pub mod stt;
 
-use std::path::PathBuf;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -35,28 +35,19 @@ fn save_note(content: String) -> Result<String, String> {
     Ok(path.to_string_lossy().to_string())
 }
 
-/// whisper モデルの既定パス（OSのデータディレクトリ配下）。
-fn model_path() -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_default()
-        .join("QuickScribe")
-        .join("models")
-        .join("ggml-base.bin")
-}
-
 /// 音声ファイルから文字起こしし、結果を保存して返す（S1.6 ファイル入力）。
+/// モデルが無ければ初回に自動ダウンロードする（S2.2）。
 #[tauri::command]
-fn transcribe_file(path: String) -> Result<String, String> {
+fn transcribe_file(app: tauri::AppHandle, path: String) -> Result<String, String> {
     let audio = stt::decode_to_16k_mono(std::path::Path::new(&path))?;
-    let model = model_path();
-    if !model.exists() {
-        return Err(format!(
-            "whisperモデルが見つかりません: {}（モデルの自動取得は後続で実装）",
-            model.display()
-        ));
+    if !model::model_path().exists() {
+        let _ = app.emit("status", "whisperモデルを初回ダウンロード中…");
     }
+    let model = model::ensure_model()?;
+    let _ = app.emit("status", "文字起こし中…");
     let text = stt::transcribe(&model, &audio, Some("ja"))?;
     let _ = save_note(text.clone())?;
+    let _ = app.emit("status", "");
     Ok(text)
 }
 
@@ -92,6 +83,7 @@ pub fn run() {
     let handler_shortcut = toggle_shortcut.clone();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
