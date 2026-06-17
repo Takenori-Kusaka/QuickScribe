@@ -59,13 +59,25 @@ jobs:
       - name: Generate icons
         run: npm run icons
 
+      - name: Set version from tag (Cargo.toml = 単一の版ソース)
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Setting version to $VERSION"
+          # [package] セクション直下の version 行のみ置換。
+          perl -0pi -e 's/^version = "[^"]*"/version = "'"$VERSION"'"/m if !$done++' src-tauri/Cargo.toml
+          head -5 src-tauri/Cargo.toml
+
       - name: Build and publish release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "QuickScribe ${{ github.ref_name }}"
-          releaseBody: "自動生成リリース。インストーラ/実行パッケージは下記アセットを参照。初回アルファのため未署名(SmartScreen警告が出る場合があります)。"
+          releaseBody: "自動アップデート対応リリース。インストーラ/実行パッケージは下記アセット参照。未署名(SmartScreen警告が出る場合あり)。"
           releaseDraft: false
-          prerelease: true
+          prerelease: false
+          includeUpdaterJson: true
