@@ -116,10 +116,8 @@ where
     if let Some(l) = lang {
         params.set_language(Some(l));
     }
-    // 全CPUコアを使って高速化（既定は少数スレッドのため長時間音声が遅い）。
-    let threads = std::thread::available_parallelism()
-        .map(|n| n.get() as i32)
-        .unwrap_or(4);
+    // 物理コア数でスレッド設定（論理コア全指定はメモリ帯域律速で逆効果になりうる）。
+    let threads = num_cpus::get_physical().max(1) as i32;
     params.set_n_threads(threads);
     params.set_print_progress(false);
     params.set_print_special(false);
