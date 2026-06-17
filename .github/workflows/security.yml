@@ -1,0 +1,49 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 3 * * 1" # 毎週月曜に定期スキャン
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  codeql:
+    name: CodeQL (JS/TS)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@v3
+
+  cargo-audit:
+    name: cargo audit/deny (Rust)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-audit / cargo-deny
+        run: cargo install cargo-audit cargo-deny --locked
+      - name: cargo audit (脆弱性データベース照合)
+        working-directory: src-tauri
+        run: cargo audit
+      - name: cargo deny (ライセンス/脆弱性/重複)
+        working-directory: src-tauri
+        run: cargo deny check advisories || true
+
+  npm-audit:
+    name: npm audit
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: npm audit (high以上で警告)
+        run: npm audit --audit-level=high || true
