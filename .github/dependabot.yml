@@ -1,0 +1,50 @@
+# 依存関係の自動追従（whisper-rs=whisper.cpp/ggml の更新で精度向上・セキュリティ修正を取り込む）。
+# Dependabot が更新PRを起票し、CI(ビルド/単体/E2E/決定論文字起こし)で検証してからマージする。
+version: 2
+updates:
+  # Rust クレート（whisper-rs / symphonia / tauri / ureq 等）
+  - package-ecosystem: "cargo"
+    directory: "/src-tauri"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "rust"
+    groups:
+      tauri:
+        patterns:
+          - "tauri*"
+      whisper-audio:
+        patterns:
+          - "whisper-rs"
+          - "symphonia*"
+
+  # npm 依存（@tauri-apps/* / svelte / vite / vitest / wdio 等）
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "javascript"
+    groups:
+      tauri-js:
+        patterns:
+          - "@tauri-apps/*"
+      dev-tooling:
+        patterns:
+          - "@wdio/*"
+          - "vite"
+          - "vitest"
+          - "svelte*"
+
+  # GitHub Actions（ワークフローのアクション更新）
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "ci"
