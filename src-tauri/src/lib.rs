@@ -131,11 +131,12 @@ async fn stop_recording(
         .map_err(|e| e.to_string())?
 }
 
-/// プロバイダ未指定/モデル未指定時の既定モデルを返す（思考整理向けの妥当な既定）。
+/// プロバイダ毎の「最新ミドルレンジモデル」を自動選択する（UIでのモデル指定は不要）。
+/// 思考整理用途にコスト・速度・品質のバランスが良い中位モデルを既定とする。
 fn default_model_for(provider: &str) -> &'static str {
     match provider.trim().to_ascii_lowercase().as_str() {
-        "anthropic" | "claude" => "claude-opus-4-8",
-        "openai" | "gpt" => "gpt-4o-mini",
+        "anthropic" | "claude" => "claude-sonnet-4-6",
+        "openai" | "gpt" => "gpt-4o",
         _ => "gemini-2.5-flash",
     }
 }

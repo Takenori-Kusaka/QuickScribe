@@ -28,10 +28,12 @@
     anthropic: "Anthropic (Claude)",
     openai: "OpenAI",
   };
-  const DEFAULT_MODELS: Record<Provider, string> = {
+  // 各プロバイダの「最新ミドルレンジモデル」を自動選択する（モデルはバックエンドが補完。
+  // ここは表示用。実際の選択は src-tauri/src/lib.rs の default_model_for と一致させる）。
+  const AUTO_MODELS: Record<Provider, string> = {
     gemini: "gemini-2.5-flash",
-    anthropic: "claude-opus-4-8",
-    openai: "gpt-4o-mini",
+    anthropic: "claude-sonnet-4-6",
+    openai: "gpt-4o",
   };
   const KEY_PLACEHOLDERS: Record<Provider, string> = {
     gemini: "AIza...",
@@ -41,9 +43,8 @@
 
   let showSettings = $state(false);
   let provider = $state<Provider>("gemini");
-  // プロバイダごとに鍵とモデルを保持する（切替時に再入力不要）。
+  // プロバイダごとに鍵を保持する（切替時に再入力不要）。モデルは自動選択のため保持しない。
   let apiKeys = $state<Record<Provider, string>>({ gemini: "", anthropic: "", openai: "" });
-  let models = $state<Record<Provider, string>>({ ...DEFAULT_MODELS });
   let updateMsg = $state<string>("");
 
   function loadSettings() {
@@ -51,19 +52,15 @@
     if (!(provider in PROVIDER_LABELS)) provider = "gemini";
     for (const p of ["gemini", "anthropic", "openai"] as Provider[]) {
       apiKeys[p] = localStorage.getItem(`apiKey:${p}`) ?? "";
-      models[p] = localStorage.getItem(`model:${p}`) ?? DEFAULT_MODELS[p];
     }
-    // 旧バージョン(geminiKey/geminiModel)からの移行。
+    // 旧バージョン(geminiKey)からの移行。
     const legacyKey = localStorage.getItem("geminiKey");
     if (legacyKey && !apiKeys.gemini) apiKeys.gemini = legacyKey;
-    const legacyModel = localStorage.getItem("geminiModel");
-    if (legacyModel && models.gemini === DEFAULT_MODELS.gemini) models.gemini = legacyModel;
   }
   function saveSettings() {
     localStorage.setItem("provider", provider);
     for (const p of ["gemini", "anthropic", "openai"] as Provider[]) {
       localStorage.setItem(`apiKey:${p}`, apiKeys[p]);
-      localStorage.setItem(`model:${p}`, models[p]);
     }
     showSettings = false;
   }
@@ -150,7 +147,8 @@
         text: transcript,
         provider,
         apiKey: apiKeys[provider],
-        model: models[provider],
+        // モデルは空 → バックエンドが各プロバイダの最新ミドルレンジを自動選択する。
+        model: "",
       });
     } catch (e) {
       error = String(e);
@@ -258,14 +256,9 @@
           autocomplete="off"
         />
       </label>
-      <label>
-        {PROVIDER_LABELS[provider]} モデル
-        <input
-          type="text"
-          bind:value={models[provider]}
-          placeholder={DEFAULT_MODELS[provider]}
-        />
-      </label>
+      <p class="muted model-hint">
+        モデル: <code>{AUTO_MODELS[provider]}</code>（最新ミドルレンジを自動選択）
+      </p>
       <div class="settings-actions">
         <button class="btn small" onclick={saveSettings}>保存</button>
         <button class="btn small ghost" onclick={() => checkForUpdate(true)}>更新を確認</button>
@@ -659,6 +652,16 @@
   .muted {
     color: #6b7280;
     font-size: 0.78rem;
+  }
+  .model-hint {
+    margin: -0.2rem 0 0.8rem;
+  }
+  .model-hint code {
+    background: #eef2ff;
+    color: #4338ca;
+    padding: 0.05rem 0.3rem;
+    border-radius: 5px;
+    font-size: 0.72rem;
   }
   .center {
     text-align: center;
