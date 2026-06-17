@@ -25,8 +25,8 @@ chrono = "0.4"
 dirs = "5"
 # 物理コア数の取得（whisperスレッド数の最適化。論理コア全指定は逆効果）。
 num_cpus = "1"
-# whisperモデルの初回自動取得(HTTPダウンロード)。軽量・同期・rustls。
-ureq = "2"
+# whisperモデルの初回自動取得(HTTPダウンロード)+整形APIのJSON送受信。
+ureq = { version = "2", features = ["json"] }
 # 文字起こし(ローカル whisper.cpp / ADR-0002)。whisper-rs が whisper.cpp をビルドする。
 whisper-rs = "0.14"
 # 音声デコード(純Rust)。mp3等の圧縮音声/WAVを読む(S1.6)。外部ffmpeg不要・配布が軽い。

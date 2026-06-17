@@ -22,7 +22,25 @@
   let transcribeStartMs = $state<number | null>(null);
   let segments = $state<string[]>([]);
   let transcript = $state<string | null>(null);
+  let refined = $state<string | null>(null);
+  let refining = $state(false);
   let busy = $state(false);
+
+  // 設定（localStorageに保存。秘密情報はローカル端末内のみ）。
+  let showSettings = $state(false);
+  let geminiKey = $state<string>("");
+  let geminiModel = $state<string>("gemini-2.5-flash");
+  let updateMsg = $state<string>("");
+
+  function loadSettings() {
+    geminiKey = localStorage.getItem("geminiKey") ?? "";
+    geminiModel = localStorage.getItem("geminiModel") ?? "gemini-2.5-flash";
+  }
+  function saveSettings() {
+    localStorage.setItem("geminiKey", geminiKey);
+    localStorage.setItem("geminiModel", geminiModel);
+    showSettings = false;
+  }
 
   // 自動アップデート(起動時に非同期チェック→背景DL→完了後に再起動を確認)。
   type UpdateState = "idle" | "downloading" | "ready";
@@ -30,10 +48,15 @@
   let updateVersion = $state<string>("");
   let updatePct = $state<number>(0);
 
-  async function checkForUpdate() {
+  async function checkForUpdate(manual = false) {
     try {
+      updateMsg = manual ? "更新を確認中…" : "";
       const update = await check();
-      if (!update) return;
+      if (!update) {
+        updateMsg = manual ? "お使いのバージョンは最新です。" : "";
+        return;
+      }
+      updateMsg = "";
       updateVersion = update.version;
       updateState = "downloading";
       let downloaded = 0;
@@ -46,11 +69,10 @@
           updatePct = total > 0 ? Math.round((downloaded / total) * 100) : 0;
         }
       });
-      // ダウンロード+インストール完了。ユーザーに再起動を確認する。
       updateState = "ready";
     } catch (e) {
-      // 自動更新の失敗は致命的でない（手動DL可）。静かに無視しつつログ。
       console.error("update check failed", e);
+      updateMsg = manual ? `更新確認に失敗: ${e}` : "";
     }
   }
 
@@ -62,6 +84,7 @@
   async function transcribeFromFile() {
     error = null;
     transcript = null;
+    refined = null;
     segments = [];
     progress = 0;
     eta = "";
@@ -82,6 +105,30 @@
     } finally {
       busy = false;
       status = "";
+    }
+  }
+
+  // 文字起こしを整形（思考整理・要約）する＝コア価値。Gemini鍵が必要。
+  async function refineNow() {
+    if (!transcript) return;
+    if (!geminiKey.trim()) {
+      showSettings = true;
+      error = "整形にはGemini APIキーが必要です。設定から入力してください。";
+      return;
+    }
+    error = null;
+    refining = true;
+    refined = null;
+    try {
+      refined = await invoke<string>("refine_text", {
+        text: transcript,
+        apiKey: geminiKey,
+        model: geminiModel,
+      });
+    } catch (e) {
+      error = String(e);
+    } finally {
+      refining = false;
     }
   }
 
@@ -106,7 +153,7 @@
   }
 
   onMount(() => {
-    // 起動時に非同期でアップデート確認（UIをブロックしない）。
+    loadSettings();
     void checkForUpdate();
     const unToggle = listen("toggle-record", () => toggle());
     const unStatus = listen<string>("status", (e) => (status = e.payload));
@@ -135,9 +182,44 @@
 
 <main>
   <header>
-    <h1>QuickScribe</h1>
+    <div class="title-row">
+      <h1>QuickScribe</h1>
+      <button
+        class="gear"
+        data-testid="settings-btn"
+        title="設定"
+        aria-label="設定"
+        onclick={() => (showSettings = !showSettings)}
+      >
+        ⚙
+      </button>
+    </div>
     <p class="tagline">思考整理・自己理解のためのボイスジャーナル</p>
   </header>
+
+  {#if showSettings}
+    <section class="settings">
+      <h2>設定</h2>
+      <label>
+        Gemini APIキー（整形に使用・端末内のみ保存）
+        <input
+          type="password"
+          bind:value={geminiKey}
+          placeholder="AIza..."
+          autocomplete="off"
+        />
+      </label>
+      <label>
+        Gemini モデル
+        <input type="text" bind:value={geminiModel} placeholder="gemini-2.5-flash" />
+      </label>
+      <div class="settings-actions">
+        <button class="btn small" onclick={saveSettings}>保存</button>
+        <button class="btn small ghost" onclick={() => checkForUpdate(true)}>更新を確認</button>
+      </div>
+      {#if updateMsg}<p class="muted">{updateMsg}</p>{/if}
+    </section>
+  {/if}
 
   {#if updateState === "downloading"}
     <div class="update-banner">
@@ -199,11 +281,27 @@
   {/if}
 
   {#if transcript}
-    <section class="transcript">
-      <h2>文字起こし</h2>
-      <p>{transcript}</p>
+    <section class="card">
+      <div class="card-head">
+        <h2>文字起こし</h2>
+        <button class="btn small" onclick={refineNow} disabled={refining}>
+          {refining ? "整形中…" : "✨ 整形する"}
+        </button>
+      </div>
+      <div class="scroll">{transcript}</div>
     </section>
   {/if}
+
+  {#if refining}
+    <p class="muted center"><span class="spinner" aria-hidden="true"></span> AIが思考を整理しています…</p>
+  {/if}
+  {#if refined}
+    <section class="card refined">
+      <h2>整形（思考整理）</h2>
+      <div class="scroll">{refined}</div>
+    </section>
+  {/if}
+
   {#if lastSaved}
     <p class="saved">保存しました: <code>{lastSaved}</code></p>
   {/if}
@@ -222,24 +320,75 @@
       "Segoe UI", system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP",
       sans-serif;
     color: #1f2330;
-    padding: 1.5rem 1.25rem 2rem;
+    padding: 1.25rem 1.25rem 1.75rem;
     max-width: 560px;
     margin: 0 auto;
   }
   header {
-    text-align: center;
-    margin-bottom: 1.4rem;
+    margin-bottom: 1.1rem;
+  }
+  .title-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
   }
   h1 {
     margin: 0;
-    font-size: 1.55rem;
+    font-size: 1.5rem;
     font-weight: 700;
-    letter-spacing: 0.01em;
+  }
+  .gear {
+    position: absolute;
+    right: 0;
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    opacity: 0.6;
+    line-height: 1;
+  }
+  .gear:hover {
+    opacity: 1;
   }
   .tagline {
     color: #6b7280;
     font-size: 0.8rem;
     margin: 0.25rem 0 0;
+    text-align: center;
+  }
+
+  .settings {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 1px 4px rgba(17, 24, 39, 0.06);
+    text-align: left;
+  }
+  .settings h2 {
+    margin: 0 0 0.7rem;
+    font-size: 0.95rem;
+  }
+  .settings label {
+    display: block;
+    font-size: 0.76rem;
+    color: #4b5563;
+    margin-bottom: 0.7rem;
+  }
+  .settings input {
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 0.25rem;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 0.85rem;
+  }
+  .settings-actions {
+    display: flex;
+    gap: 0.5rem;
   }
 
   .update-banner {
@@ -282,7 +431,6 @@
     align-items: stretch;
   }
 
-  /* 統一されたボタン設計（Material風: 角丸・elevation・状態遷移） */
   .btn {
     display: inline-flex;
     align-items: center;
@@ -328,6 +476,18 @@
     background: #eef2ff;
     border-color: #a5b4fc;
   }
+  .btn.small {
+    font-size: 0.8rem;
+    padding: 0.45rem 0.85rem;
+    border-radius: 10px;
+    background: #4f46e5;
+    color: #fff;
+  }
+  .btn.small.ghost {
+    background: #fff;
+    color: #4f46e5;
+    border: 1px solid #c7d2fe;
+  }
   .dot {
     width: 10px;
     height: 10px;
@@ -368,6 +528,8 @@
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
     flex: none;
+    display: inline-block;
+    vertical-align: middle;
   }
   @keyframes spin {
     to {
@@ -399,7 +561,7 @@
   }
   .segments {
     margin-top: 0.6rem;
-    max-height: 160px;
+    max-height: 120px;
     overflow-y: auto;
     font-size: 0.82rem;
     line-height: 1.6;
@@ -407,27 +569,48 @@
     text-align: left;
   }
 
-  .transcript {
-    margin-top: 1.1rem;
+  .card {
+    margin-top: 1rem;
     background: #fff;
     border: 1px solid #e5e7eb;
     border-radius: 14px;
-    padding: 1rem 1.1rem;
+    padding: 0.9rem 1rem;
     text-align: left;
     box-shadow: 0 1px 4px rgba(17, 24, 39, 0.05);
   }
-  .transcript h2 {
-    margin: 0 0 0.5rem;
-    font-size: 0.8rem;
+  .card.refined {
+    border-color: #c7d2fe;
+    background: #fbfbff;
+  }
+  .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+  }
+  .card h2 {
+    margin: 0;
+    font-size: 0.82rem;
     color: #6b7280;
     font-weight: 600;
   }
-  .transcript p {
-    margin: 0;
+  /* 文字列エリアは固定高でスクロール。アプリ全体はスクロールせず保存先まで見える。 */
+  .scroll {
+    max-height: 220px;
+    overflow-y: auto;
     line-height: 1.75;
     white-space: pre-wrap;
+    font-size: 0.9rem;
+    padding-right: 0.3rem;
   }
 
+  .muted {
+    color: #6b7280;
+    font-size: 0.78rem;
+  }
+  .center {
+    text-align: center;
+  }
   .saved {
     font-size: 0.74rem;
     color: #047857;
