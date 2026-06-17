@@ -23,6 +23,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = "0.4"
 dirs = "5"
+# 物理コア数の取得（whisperスレッド数の最適化。論理コア全指定は逆効果）。
+num_cpus = "1"
 # whisperモデルの初回自動取得(HTTPダウンロード)。軽量・同期・rustls。
 ureq = "2"
 # 文字起こし(ローカル whisper.cpp / ADR-0002)。whisper-rs が whisper.cpp をビルドする。
