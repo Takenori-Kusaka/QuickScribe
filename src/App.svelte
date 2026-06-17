@@ -3,7 +3,12 @@
   import { listen } from "@tauri-apps/api/event";
   import { open } from "@tauri-apps/plugin-dialog";
   import { onMount } from "svelte";
-  import { elapsedSeconds, buildNoteContent } from "./lib/note";
+  import {
+    elapsedSeconds,
+    buildNoteContent,
+    estimateRemaining,
+    formatRemaining,
+  } from "./lib/note";
 
   let recording = $state(false);
   let lastSaved = $state<string | null>(null);
@@ -11,6 +16,8 @@
   let startedAt = $state<number | null>(null);
   let status = $state<string>("");
   let progress = $state<number>(0);
+  let eta = $state<string>("");
+  let transcribeStartMs = $state<number | null>(null);
   let segments = $state<string[]>([]);
   let transcript = $state<string | null>(null);
   let busy = $state(false);
@@ -21,6 +28,8 @@
     transcript = null;
     segments = [];
     progress = 0;
+    eta = "";
+    transcribeStartMs = null;
     const selected = await open({
       multiple: false,
       filters: [
@@ -63,7 +72,16 @@
   onMount(() => {
     const unToggle = listen("toggle-record", () => toggle());
     const unStatus = listen<string>("status", (e) => (status = e.payload));
-    const unProgress = listen<number>("progress", (e) => (progress = e.payload));
+    const unProgress = listen<number>("progress", (e) => {
+      progress = e.payload;
+      if (progress > 0 && transcribeStartMs === null) transcribeStartMs = Date.now();
+      if (transcribeStartMs && progress > 0 && progress < 100) {
+        const elapsed = (Date.now() - transcribeStartMs) / 1000;
+        eta = formatRemaining(estimateRemaining(elapsed, progress));
+      } else {
+        eta = "";
+      }
+    });
     const unSegment = listen<string>("segment", (e) => {
       const t = e.payload.trim();
       if (t) segments = [...segments, t];
@@ -117,7 +135,10 @@
         <div class="progress" role="progressbar" aria-valuenow={progress}>
           <div class="bar" style="width: {progress}%"></div>
         </div>
-        <div class="progress-pct">{progress}%</div>
+        <div class="progress-meta">
+          <span class="pct">{progress}%</span>
+          {#if eta}<span class="eta">{eta}</span>{/if}
+        </div>
       {/if}
       {#if segments.length}
         <div class="segments">
@@ -282,11 +303,16 @@
     background: linear-gradient(90deg, #6366f1, #4f46e5);
     transition: width 0.2s ease;
   }
-  .progress-pct {
-    text-align: right;
-    font-size: 0.7rem;
+  .progress-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
     color: #6b7280;
-    margin-top: 0.25rem;
+    margin-top: 0.3rem;
+  }
+  .progress-meta .pct {
+    font-weight: 600;
+    color: #4f46e5;
   }
   .segments {
     margin-top: 0.6rem;
