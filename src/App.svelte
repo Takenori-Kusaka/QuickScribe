@@ -10,13 +10,17 @@
   let error = $state<string | null>(null);
   let startedAt = $state<number | null>(null);
   let status = $state<string>("");
+  let progress = $state<number>(0);
+  let segments = $state<string[]>([]);
   let transcript = $state<string | null>(null);
   let busy = $state(false);
 
-  // 音声ファイル(mp3等)を選んで文字起こし→保存する(S1.6)。
+  // 音声ファイル(mp3等)を選んで文字起こし→保存する(S1.6)。非同期で実行しUIを固めない。
   async function transcribeFromFile() {
     error = null;
     transcript = null;
+    segments = [];
+    progress = 0;
     const selected = await open({
       multiple: false,
       filters: [
@@ -46,7 +50,6 @@
       const seconds = startedAt ? elapsedSeconds(startedAt, Date.now()) : 0;
       startedAt = null;
       try {
-        // Phase 1 はメモのプレースホルダを保存し、保存導線(フォルダ/権限)を確立する。
         const path = await invoke<string>("save_note", {
           content: buildNoteContent(seconds),
         });
@@ -58,93 +61,273 @@
   }
 
   onMount(() => {
-    // グローバルホットキー(Rust側で登録)からのトグルを受ける。
     const unToggle = listen("toggle-record", () => toggle());
-    // 文字起こしの進捗ステータスを受ける。
     const unStatus = listen<string>("status", (e) => (status = e.payload));
+    const unProgress = listen<number>("progress", (e) => (progress = e.payload));
+    const unSegment = listen<string>("segment", (e) => {
+      const t = e.payload.trim();
+      if (t) segments = [...segments, t];
+    });
     return () => {
       unToggle.then((f) => f());
       unStatus.then((f) => f());
+      unProgress.then((f) => f());
+      unSegment.then((f) => f());
     };
   });
 </script>
 
 <main>
-  <h1>QuickScribe</h1>
-  <p class="tagline">思考整理・自己理解のためのボイスジャーナル</p>
+  <header>
+    <h1>QuickScribe</h1>
+    <p class="tagline">思考整理・自己理解のためのボイスジャーナル</p>
+  </header>
 
-  <button class="record" class:recording onclick={toggle}>
-    {recording ? "■ 停止" : "● 録音開始"}
-  </button>
+  <div class="actions">
+    <button class="btn primary" class:recording onclick={toggle}>
+      <span class="dot" class:on={recording}></span>
+      {recording ? "停止" : "録音開始"}
+    </button>
+
+    <button class="btn secondary" onclick={transcribeFromFile} disabled={busy}>
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Zm5 9a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"
+        />
+      </svg>
+      音声ファイルから文字起こし
+    </button>
+  </div>
 
   <p class="hint">ホットキー: Ctrl/Cmd + Shift + R</p>
 
-  <button class="file" onclick={transcribeFromFile} disabled={busy}>
-    🎧 音声ファイルから文字起こし
-  </button>
-
-  {#if status}
-    <p class="status">{status}</p>
+  {#if busy || status}
+    <div class="panel">
+      <div class="status-row">
+        <span class="spinner" aria-hidden="true"></span>
+        <span class="status-text">{status || "処理中…"}</span>
+      </div>
+      {#if progress > 0}
+        <div class="progress" role="progressbar" aria-valuenow={progress}>
+          <div class="bar" style="width: {progress}%"></div>
+        </div>
+        <div class="progress-pct">{progress}%</div>
+      {/if}
+      {#if segments.length}
+        <div class="segments">
+          {#each segments as seg}<span>{seg}</span>{/each}
+        </div>
+      {/if}
+    </div>
   {/if}
+
   {#if transcript}
-    <div class="transcript">
+    <section class="transcript">
       <h2>文字起こし</h2>
       <p>{transcript}</p>
-    </div>
+    </section>
   {/if}
   {#if lastSaved}
     <p class="saved">保存しました: <code>{lastSaved}</code></p>
   {/if}
   {#if error}
-    <p class="error">エラー: {error}</p>
+    <p class="error">{error}</p>
   {/if}
 </main>
 
 <style>
+  :global(body) {
+    margin: 0;
+    background: #f3f4f6;
+  }
   main {
-    font-family: system-ui, sans-serif;
-    text-align: center;
-    padding: 1.5rem 1rem;
+    font-family:
+      "Segoe UI", system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP",
+      sans-serif;
     color: #1f2330;
+    padding: 1.5rem 1.25rem 2rem;
+    max-width: 560px;
+    margin: 0 auto;
+  }
+  header {
+    text-align: center;
+    margin-bottom: 1.4rem;
   }
   h1 {
     margin: 0;
-    font-size: 1.6rem;
-    letter-spacing: 0.02em;
+    font-size: 1.55rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
   }
   .tagline {
     color: #6b7280;
     font-size: 0.8rem;
-    margin: 0.2rem 0 1.4rem;
+    margin: 0.25rem 0 0;
   }
-  .record {
-    font-size: 1.05rem;
-    padding: 0.8rem 1.6rem;
-    border-radius: 999px;
+
+  .actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: stretch;
+  }
+
+  /* 統一されたボタン設計（Material風: 角丸・elevation・状態遷移） */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    font-size: 1rem;
+    font-weight: 600;
+    padding: 0.85rem 1.25rem;
+    border-radius: 14px;
     border: none;
-    background: #4f46e5;
-    color: white;
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition:
+      background 0.15s ease,
+      box-shadow 0.15s ease,
+      transform 0.05s ease;
   }
-  .record:hover {
+  .btn:active {
+    transform: translateY(1px);
+  }
+  .btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .btn.primary {
+    background: #4f46e5;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.35);
+  }
+  .btn.primary:hover {
     background: #4338ca;
   }
-  .record.recording {
+  .btn.primary.recording {
     background: #dc2626;
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.35);
   }
+  .btn.secondary {
+    background: #fff;
+    color: #4f46e5;
+    border: 1.5px solid #c7d2fe;
+    box-shadow: 0 1px 4px rgba(17, 24, 39, 0.06);
+  }
+  .btn.secondary:hover:not(:disabled) {
+    background: #eef2ff;
+    border-color: #a5b4fc;
+  }
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.9);
+  }
+  .dot.on {
+    background: #fff;
+    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.3);
+  }
+
   .hint {
     color: #9ca3af;
-    font-size: 0.75rem;
-    margin-top: 0.8rem;
+    font-size: 0.72rem;
+    text-align: center;
+    margin: 0.7rem 0 1.1rem;
   }
+
+  .panel {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 0.9rem 1rem;
+    box-shadow: 0 1px 4px rgba(17, 24, 39, 0.05);
+  }
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.85rem;
+    color: #374151;
+  }
+  .spinner {
+    width: 15px;
+    height: 15px;
+    border: 2px solid #c7d2fe;
+    border-top-color: #4f46e5;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex: none;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .progress {
+    margin-top: 0.7rem;
+    height: 8px;
+    background: #e5e7eb;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .bar {
+    height: 100%;
+    background: linear-gradient(90deg, #6366f1, #4f46e5);
+    transition: width 0.2s ease;
+  }
+  .progress-pct {
+    text-align: right;
+    font-size: 0.7rem;
+    color: #6b7280;
+    margin-top: 0.25rem;
+  }
+  .segments {
+    margin-top: 0.6rem;
+    max-height: 160px;
+    overflow-y: auto;
+    font-size: 0.82rem;
+    line-height: 1.6;
+    color: #4b5563;
+    text-align: left;
+  }
+
+  .transcript {
+    margin-top: 1.1rem;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 1rem 1.1rem;
+    text-align: left;
+    box-shadow: 0 1px 4px rgba(17, 24, 39, 0.05);
+  }
+  .transcript h2 {
+    margin: 0 0 0.5rem;
+    font-size: 0.8rem;
+    color: #6b7280;
+    font-weight: 600;
+  }
+  .transcript p {
+    margin: 0;
+    line-height: 1.75;
+    white-space: pre-wrap;
+  }
+
   .saved {
-    font-size: 0.75rem;
+    font-size: 0.74rem;
     color: #047857;
     word-break: break-all;
+    text-align: center;
+    margin-top: 0.9rem;
   }
   .error {
-    font-size: 0.75rem;
-    color: #dc2626;
+    font-size: 0.78rem;
+    color: #b91c1c;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 10px;
+    padding: 0.6rem 0.8rem;
+    margin-top: 0.9rem;
   }
 </style>

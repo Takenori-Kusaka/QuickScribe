@@ -36,19 +36,48 @@ fn save_note(content: String) -> Result<String, String> {
 }
 
 /// 音声ファイルから文字起こしし、結果を保存して返す（S1.6 ファイル入力）。
+/// 非同期＋別スレッド実行でUIをブロックしない。進捗・確定セグメントを逐次通知する。
 /// モデルが無ければ初回に自動ダウンロードする（S2.2）。
 #[tauri::command]
-fn transcribe_file(app: tauri::AppHandle, path: String) -> Result<String, String> {
-    let audio = stt::decode_to_16k_mono(std::path::Path::new(&path))?;
-    if !model::model_path().exists() {
-        let _ = app.emit("status", "whisperモデルを初回ダウンロード中…");
-    }
-    let model = model::ensure_model()?;
-    let _ = app.emit("status", "文字起こし中…");
-    let text = stt::transcribe(&model, &audio, Some("ja"))?;
-    let _ = save_note(text.clone())?;
-    let _ = app.emit("status", "");
-    Ok(text)
+async fn transcribe_file(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _ = app.emit("status", "音声を読み込み中…");
+        let audio = stt::decode_to_16k_mono(std::path::Path::new(&path))?;
+
+        // モデル（初回はダウンロードし進捗を通知）。
+        let app_dl = app.clone();
+        let model = model::ensure_model(move |done, total| {
+            let msg = match total {
+                Some(t) if t > 0 => {
+                    format!("whisperモデルをダウンロード中… {}%", done * 100 / t)
+                }
+                _ => format!("whisperモデルをダウンロード中… {} MB", done / 1_048_576),
+            };
+            let _ = app_dl.emit("status", msg);
+        })?;
+
+        let _ = app.emit("status", "文字起こし中…");
+        let app_p = app.clone();
+        let app_s = app.clone();
+        let text = stt::transcribe_with(
+            &model,
+            &audio,
+            Some("ja"),
+            move |pct| {
+                let _ = app_p.emit("progress", pct);
+            },
+            move |seg| {
+                let _ = app_s.emit("segment", seg);
+            },
+        )?;
+
+        let _ = save_note(text.clone())?;
+        let _ = app.emit("status", "");
+        let _ = app.emit("progress", 100);
+        Ok::<String, String>(text)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]
