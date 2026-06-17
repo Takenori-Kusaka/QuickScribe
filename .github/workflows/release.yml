@@ -46,7 +46,9 @@ jobs:
             file \
             clang \
             libclang-dev \
-            cmake
+            cmake \
+            libasound2-dev \
+            pkg-config
 
       - name: Set LIBCLANG_PATH (Windows, for whisper-rs bindgen)
         if: matrix.os == 'windows-latest'

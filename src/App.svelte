@@ -5,15 +5,9 @@
   import { check } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
   import { onMount } from "svelte";
-  import {
-    elapsedSeconds,
-    buildNoteContent,
-    estimateRemaining,
-    formatRemaining,
-  } from "./lib/note";
+  import { estimateRemaining, formatRemaining } from "./lib/note";
 
   let recording = $state(false);
-  let lastSaved = $state<string | null>(null);
   let error = $state<string | null>(null);
   let startedAt = $state<number | null>(null);
   let status = $state<string>("");
@@ -27,19 +21,82 @@
   let busy = $state(false);
 
   // 設定（localStorageに保存。秘密情報はローカル端末内のみ）。
+  // 整形プロバイダは Gemini / Anthropic(Claude) / OpenAI の3種をサポート(BYO鍵 / ADR-0005)。
+  type Provider = "gemini" | "anthropic" | "openai";
+  const PROVIDER_LABELS: Record<Provider, string> = {
+    gemini: "Gemini",
+    anthropic: "Anthropic (Claude)",
+    openai: "OpenAI",
+  };
+  // モデルは「実行時に各社のモデル一覧APIから最新ミドルレンジを解決」する（ビルド時固定にしない）。
+  // 取得失敗時のフォールバック表示（ローリングlatestエイリアス優先 / ADR-0007 deep research）。
+  const FALLBACK_MODELS: Record<Provider, string> = {
+    gemini: "gemini-flash-latest",
+    anthropic: "claude-sonnet-4-6",
+    openai: "gpt-4o",
+  };
+  const KEY_PLACEHOLDERS: Record<Provider, string> = {
+    gemini: "AIza...",
+    anthropic: "sk-ant-...",
+    openai: "sk-...",
+  };
+  const ALL_PROVIDERS: Provider[] = ["gemini", "anthropic", "openai"];
+  // 解決済みモデルのキャッシュ寿命（24時間）。これを過ぎたら再取得する。
+  const MODEL_TTL_MS = 24 * 60 * 60 * 1000;
+
   let showSettings = $state(false);
-  let geminiKey = $state<string>("");
-  let geminiModel = $state<string>("gemini-2.5-flash");
+  let provider = $state<Provider>("gemini");
+  // プロバイダごとに鍵を保持する（切替時に再入力不要）。
+  let apiKeys = $state<Record<Provider, string>>({ gemini: "", anthropic: "", openai: "" });
+  // 実行時に解決した最新モデルID（表示・整形に使用）。
+  let resolvedModel = $state<Record<Provider, string>>({ gemini: "", anthropic: "", openai: "" });
+  let resolvingModel = $state(false);
   let updateMsg = $state<string>("");
 
   function loadSettings() {
-    geminiKey = localStorage.getItem("geminiKey") ?? "";
-    geminiModel = localStorage.getItem("geminiModel") ?? "gemini-2.5-flash";
+    provider = (localStorage.getItem("provider") as Provider) || "gemini";
+    if (!(provider in PROVIDER_LABELS)) provider = "gemini";
+    for (const p of ALL_PROVIDERS) {
+      apiKeys[p] = localStorage.getItem(`apiKey:${p}`) ?? "";
+      resolvedModel[p] = localStorage.getItem(`resolvedModel:${p}`) ?? "";
+    }
+    // 旧バージョン(geminiKey)からの移行。
+    const legacyKey = localStorage.getItem("geminiKey");
+    if (legacyKey && !apiKeys.gemini) apiKeys.gemini = legacyKey;
   }
   function saveSettings() {
-    localStorage.setItem("geminiKey", geminiKey);
-    localStorage.setItem("geminiModel", geminiModel);
+    localStorage.setItem("provider", provider);
+    for (const p of ALL_PROVIDERS) {
+      localStorage.setItem(`apiKey:${p}`, apiKeys[p]);
+    }
     showSettings = false;
+    // 鍵が入っていれば現在のプロバイダの最新モデルを取得（強制更新）。
+    void resolveCurrentModel(true);
+  }
+
+  // 現在のプロバイダの最新ミドルレンジモデルを実行時に解決し、キャッシュする。
+  // force=false かつキャッシュが新しければ何もしない。鍵未入力なら何もしない。
+  async function resolveCurrentModel(force = false) {
+    const p = provider;
+    if (!apiKeys[p].trim()) return;
+    const at = Number(localStorage.getItem(`resolvedModelAt:${p}`) || 0);
+    if (!force && resolvedModel[p] && Date.now() - at < MODEL_TTL_MS) return;
+    resolvingModel = true;
+    try {
+      const m = await invoke<string>("resolve_model", {
+        provider: p,
+        apiKey: apiKeys[p],
+      });
+      if (m) {
+        resolvedModel[p] = m;
+        localStorage.setItem(`resolvedModel:${p}`, m);
+        localStorage.setItem(`resolvedModelAt:${p}`, String(Date.now()));
+      }
+    } catch (e) {
+      console.error("resolve_model failed", e);
+    } finally {
+      resolvingModel = false;
+    }
   }
 
   // 自動アップデート(起動時に非同期チェック→背景DL→完了後に再起動を確認)。
@@ -108,22 +165,26 @@
     }
   }
 
-  // 文字起こしを整形（思考整理・要約）する＝コア価値。Gemini鍵が必要。
+  // 文字起こしを整形（思考整理・要約）する＝コア価値。選択中プロバイダの鍵が必要。
   async function refineNow() {
     if (!transcript) return;
-    if (!geminiKey.trim()) {
+    if (!apiKeys[provider].trim()) {
       showSettings = true;
-      error = "整形にはGemini APIキーが必要です。設定から入力してください。";
+      error = `整形には ${PROVIDER_LABELS[provider]} のAPIキーが必要です。設定から入力してください。`;
       return;
     }
     error = null;
     refining = true;
     refined = null;
     try {
+      // 整形直前に最新モデルを確保（キャッシュが新しければ即返る）。
+      await resolveCurrentModel();
       refined = await invoke<string>("refine_text", {
         text: transcript,
-        apiKey: geminiKey,
-        model: geminiModel,
+        provider,
+        apiKey: apiKeys[provider],
+        // 解決済みモデル（空ならバックエンドがフォールバック既定を補完）。
+        model: resolvedModel[provider],
       });
     } catch (e) {
       error = String(e);
@@ -132,28 +193,43 @@
     }
   }
 
+  // 録音トグル（S1.1）。開始でマイク収集、停止で文字起こし→保存→表示まで貫通する。
   async function toggle() {
     error = null;
     if (!recording) {
-      recording = true;
-      startedAt = Date.now();
-    } else {
-      recording = false;
-      const seconds = startedAt ? elapsedSeconds(startedAt, Date.now()) : 0;
-      startedAt = null;
       try {
-        const path = await invoke<string>("save_note", {
-          content: buildNoteContent(seconds),
-        });
-        lastSaved = path;
+        await invoke("start_recording");
+        recording = true;
+        startedAt = Date.now();
+        // 新しい録音に向けて表示をリセット。
+        transcript = null;
+        refined = null;
+        segments = [];
+        progress = 0;
+        eta = "";
+        transcribeStartMs = null;
       } catch (e) {
         error = String(e);
+      }
+    } else {
+      recording = false;
+      startedAt = null;
+      busy = true;
+      try {
+        const text = await invoke<string>("stop_recording");
+        if (text) transcript = text;
+      } catch (e) {
+        error = String(e);
+      } finally {
+        busy = false;
+        status = "";
       }
     }
   }
 
   onMount(() => {
     loadSettings();
+    void resolveCurrentModel();
     void checkForUpdate();
     const unToggle = listen("toggle-record", () => toggle());
     const unStatus = listen<string>("status", (e) => (status = e.payload));
@@ -201,18 +277,26 @@
     <section class="settings">
       <h2>設定</h2>
       <label>
-        Gemini APIキー（整形に使用・端末内のみ保存）
+        整形プロバイダ
+        <select bind:value={provider} onchange={() => resolveCurrentModel()}>
+          <option value="gemini">Gemini</option>
+          <option value="anthropic">Anthropic (Claude)</option>
+          <option value="openai">OpenAI</option>
+        </select>
+      </label>
+      <label>
+        {PROVIDER_LABELS[provider]} APIキー（整形に使用・端末内のみ保存）
         <input
           type="password"
-          bind:value={geminiKey}
-          placeholder="AIza..."
+          bind:value={apiKeys[provider]}
+          placeholder={KEY_PLACEHOLDERS[provider]}
           autocomplete="off"
         />
       </label>
-      <label>
-        Gemini モデル
-        <input type="text" bind:value={geminiModel} placeholder="gemini-2.5-flash" />
-      </label>
+      <p class="muted model-hint">
+        モデル: <code>{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code>
+        {#if resolvingModel}（取得中…）{:else if resolvedModel[provider]}（最新を自動取得）{:else}（最新ミドルレンジを自動選択）{/if}
+      </p>
       <div class="settings-actions">
         <button class="btn small" onclick={saveSettings}>保存</button>
         <button class="btn small ghost" onclick={() => checkForUpdate(true)}>更新を確認</button>
@@ -302,9 +386,6 @@
     </section>
   {/if}
 
-  {#if lastSaved}
-    <p class="saved">保存しました: <code>{lastSaved}</code></p>
-  {/if}
   {#if error}
     <p class="error">{error}</p>
   {/if}
@@ -377,7 +458,8 @@
     color: #4b5563;
     margin-bottom: 0.7rem;
   }
-  .settings input {
+  .settings input,
+  .settings select {
     width: 100%;
     box-sizing: border-box;
     margin-top: 0.25rem;
@@ -385,6 +467,7 @@
     border: 1px solid #d1d5db;
     border-radius: 8px;
     font-size: 0.85rem;
+    background: #fff;
   }
   .settings-actions {
     display: flex;
@@ -608,15 +691,18 @@
     color: #6b7280;
     font-size: 0.78rem;
   }
+  .model-hint {
+    margin: -0.2rem 0 0.8rem;
+  }
+  .model-hint code {
+    background: #eef2ff;
+    color: #4338ca;
+    padding: 0.05rem 0.3rem;
+    border-radius: 5px;
+    font-size: 0.72rem;
+  }
   .center {
     text-align: center;
-  }
-  .saved {
-    font-size: 0.74rem;
-    color: #047857;
-    word-break: break-all;
-    text-align: center;
-    margin-top: 0.9rem;
   }
   .error {
     font-size: 0.78rem;
