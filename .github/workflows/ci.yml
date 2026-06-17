@@ -160,10 +160,19 @@ jobs:
       - name: Generate icons (tauri generate_context にアイコンが必要)
         run: npm run icons
 
+      - name: Cache whisper model
+        id: cache-model
+        uses: actions/cache@v4
+        with:
+          path: models/ggml-tiny.bin
+          key: ggml-tiny-bin-v1
+
       - name: Download tiny whisper model
+        if: steps.cache-model.outputs.cache-hit != 'true'
         run: |
           mkdir -p models
-          curl -L --fail -o models/ggml-tiny.bin \
+          curl -L --fail --retry 5 --retry-delay 15 --retry-all-errors \
+            -o models/ggml-tiny.bin \
             https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
 
       - name: Generate known speech audio (espeak-ng)

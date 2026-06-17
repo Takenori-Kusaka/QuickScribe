@@ -7,13 +7,13 @@ describe("QuickScribe アプリ起動", () => {
     const heading = await $("h1");
     await expect(heading).toHaveText("QuickScribe");
 
-    const btn = await $("button.record");
+    const btn = await $('[data-testid="record-btn"]');
     await expect(btn).toBeDisplayed();
     await expect(btn).toHaveText(expect.stringContaining("録音開始"));
   });
 
   it("録音ボタンが開始↔停止でトグルする", async () => {
-    const btn = await $("button.record");
+    const btn = await $('[data-testid="record-btn"]');
 
     await btn.click();
     await expect(btn).toHaveText(expect.stringContaining("停止"));

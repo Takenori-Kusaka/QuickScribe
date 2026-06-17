@@ -94,8 +94,19 @@ pub fn resample_linear(input: &[f32], from: u32, to: u32) -> Vec<f32> {
     out
 }
 
-/// whisper.cpp モデルで音声(16kHz mono f32)を文字起こしする。
-pub fn transcribe(model_path: &Path, audio: &[f32], lang: Option<&str>) -> Result<String, String> {
+/// whisper.cpp モデルで文字起こしする（進捗0-100%と確定セグメントを逐次通知）。
+/// 進捗UX(プログレス/逐次表示)を可能にしつつ、全CPUコアで高速化する。
+pub fn transcribe_with<P, S>(
+    model_path: &Path,
+    audio: &[f32],
+    lang: Option<&str>,
+    on_progress: P,
+    on_segment: S,
+) -> Result<String, String>
+where
+    P: FnMut(i32) + Send + 'static,
+    S: FnMut(String) + Send + 'static,
+{
     let model = model_path.to_str().ok_or("モデルパスが不正です")?;
     let ctx = WhisperContext::new_with_params(model, WhisperContextParameters::default())
         .map_err(|e| format!("モデル読込に失敗: {e}"))?;
@@ -105,9 +116,21 @@ pub fn transcribe(model_path: &Path, audio: &[f32], lang: Option<&str>) -> Resul
     if let Some(l) = lang {
         params.set_language(Some(l));
     }
+    // 全CPUコアを使って高速化（既定は少数スレッドのため長時間音声が遅い）。
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get() as i32)
+        .unwrap_or(4);
+    params.set_n_threads(threads);
     params.set_print_progress(false);
     params.set_print_special(false);
     params.set_print_realtime(false);
+
+    // 進捗(0-100)と確定セグメントの逐次通知。
+    params.set_progress_callback_safe(on_progress);
+    let mut on_seg = on_segment;
+    params.set_segment_callback_safe(move |data: whisper_rs::SegmentCallbackData| {
+        on_seg(data.text);
+    });
 
     state.full(params, audio).map_err(|e| e.to_string())?;
 
@@ -118,6 +141,11 @@ pub fn transcribe(model_path: &Path, audio: &[f32], lang: Option<&str>) -> Resul
         text.push_str(seg.trim());
     }
     Ok(text.trim().to_string())
+}
+
+/// コールバックなしの簡易版（統合テスト等で使用）。
+pub fn transcribe(model_path: &Path, audio: &[f32], lang: Option<&str>) -> Result<String, String> {
+    transcribe_with(model_path, audio, lang, |_| {}, |_| {})
 }
 
 #[cfg(test)]
