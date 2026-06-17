@@ -2,6 +2,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { open } from "@tauri-apps/plugin-dialog";
+  import { check } from "@tauri-apps/plugin-updater";
+  import { relaunch } from "@tauri-apps/plugin-process";
   import { onMount } from "svelte";
   import {
     elapsedSeconds,
@@ -21,6 +23,40 @@
   let segments = $state<string[]>([]);
   let transcript = $state<string | null>(null);
   let busy = $state(false);
+
+  // 自動アップデート(起動時に非同期チェック→背景DL→完了後に再起動を確認)。
+  type UpdateState = "idle" | "downloading" | "ready";
+  let updateState = $state<UpdateState>("idle");
+  let updateVersion = $state<string>("");
+  let updatePct = $state<number>(0);
+
+  async function checkForUpdate() {
+    try {
+      const update = await check();
+      if (!update) return;
+      updateVersion = update.version;
+      updateState = "downloading";
+      let downloaded = 0;
+      let total = 0;
+      await update.downloadAndInstall((event) => {
+        if (event.event === "Started") {
+          total = event.data.contentLength ?? 0;
+        } else if (event.event === "Progress") {
+          downloaded += event.data.chunkLength;
+          updatePct = total > 0 ? Math.round((downloaded / total) * 100) : 0;
+        }
+      });
+      // ダウンロード+インストール完了。ユーザーに再起動を確認する。
+      updateState = "ready";
+    } catch (e) {
+      // 自動更新の失敗は致命的でない（手動DL可）。静かに無視しつつログ。
+      console.error("update check failed", e);
+    }
+  }
+
+  async function restartNow() {
+    await relaunch();
+  }
 
   // 音声ファイル(mp3等)を選んで文字起こし→保存する(S1.6)。非同期で実行しUIを固めない。
   async function transcribeFromFile() {
@@ -70,6 +106,8 @@
   }
 
   onMount(() => {
+    // 起動時に非同期でアップデート確認（UIをブロックしない）。
+    void checkForUpdate();
     const unToggle = listen("toggle-record", () => toggle());
     const unStatus = listen<string>("status", (e) => (status = e.payload));
     const unProgress = listen<number>("progress", (e) => {
@@ -100,6 +138,18 @@
     <h1>QuickScribe</h1>
     <p class="tagline">思考整理・自己理解のためのボイスジャーナル</p>
   </header>
+
+  {#if updateState === "downloading"}
+    <div class="update-banner">
+      <span class="spinner" aria-hidden="true"></span>
+      新バージョン {updateVersion} を背景でダウンロード中… {updatePct}%
+    </div>
+  {:else if updateState === "ready"}
+    <div class="update-banner ready">
+      <span>新バージョン {updateVersion} の準備ができました。</span>
+      <button class="btn-restart" onclick={restartNow}>再起動して更新</button>
+    </div>
+  {/if}
 
   <div class="actions">
     <button class="btn primary" class:recording data-testid="record-btn" onclick={toggle}>
@@ -190,6 +240,39 @@
     color: #6b7280;
     font-size: 0.8rem;
     margin: 0.25rem 0 0;
+  }
+
+  .update-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    background: #eef2ff;
+    border: 1px solid #c7d2fe;
+    color: #3730a3;
+    border-radius: 12px;
+    padding: 0.6rem 0.9rem;
+    font-size: 0.82rem;
+    margin-bottom: 1rem;
+  }
+  .update-banner.ready {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+    color: #065f46;
+  }
+  .btn-restart {
+    border: none;
+    background: #059669;
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.8rem;
+    padding: 0.4rem 0.8rem;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .btn-restart:hover {
+    background: #047857;
   }
 
   .actions {

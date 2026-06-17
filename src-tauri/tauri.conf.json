@@ -1,7 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "QuickScribe",
-  "version": "0.0.1",
   "identifier": "com.takenori-kusaka.quickscribe",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -26,6 +25,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "deb", "appimage"],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -36,5 +36,13 @@
     "category": "Productivity",
     "shortDescription": "思考整理ボイスジャーナル",
     "longDescription": "話した内容をローカルで保存し、思考整理・自己理解を助けるボイスジャーナル。"
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/Takenori-Kusaka/QuickScribe/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENBM0RDRTg5MDIyQzQ4RApSV1NOeENLUTZOeWpERXRtRk8wYzRnUjVsODAxalAxT0trS3RuK0M0VUsyVDVuQVNZMXhOQkJiRQo="
+    }
   }
 }
