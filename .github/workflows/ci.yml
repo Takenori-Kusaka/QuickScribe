@@ -45,7 +45,9 @@ jobs:
             file \
             clang \
             libclang-dev \
-            cmake
+            cmake \
+            libasound2-dev \
+            pkg-config
 
       - name: Set LIBCLANG_PATH (Windows, for whisper-rs bindgen)
         if: matrix.os == 'windows-latest'
@@ -104,6 +106,8 @@ jobs:
             clang \
             libclang-dev \
             cmake \
+            libasound2-dev \
+            pkg-config \
             webkit2gtk-driver \
             xvfb
 
@@ -150,6 +154,8 @@ jobs:
             clang \
             libclang-dev \
             cmake \
+            libasound2-dev \
+            pkg-config \
             espeak-ng
 
       - uses: actions/setup-node@v4

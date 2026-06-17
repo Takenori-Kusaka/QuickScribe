@@ -5,15 +5,9 @@
   import { check } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
   import { onMount } from "svelte";
-  import {
-    elapsedSeconds,
-    buildNoteContent,
-    estimateRemaining,
-    formatRemaining,
-  } from "./lib/note";
+  import { estimateRemaining, formatRemaining } from "./lib/note";
 
   let recording = $state(false);
-  let lastSaved = $state<string | null>(null);
   let error = $state<string | null>(null);
   let startedAt = $state<number | null>(null);
   let status = $state<string>("");
@@ -27,18 +21,50 @@
   let busy = $state(false);
 
   // 設定（localStorageに保存。秘密情報はローカル端末内のみ）。
+  // 整形プロバイダは Gemini / Anthropic(Claude) / OpenAI の3種をサポート(BYO鍵 / ADR-0005)。
+  type Provider = "gemini" | "anthropic" | "openai";
+  const PROVIDER_LABELS: Record<Provider, string> = {
+    gemini: "Gemini",
+    anthropic: "Anthropic (Claude)",
+    openai: "OpenAI",
+  };
+  const DEFAULT_MODELS: Record<Provider, string> = {
+    gemini: "gemini-2.5-flash",
+    anthropic: "claude-opus-4-8",
+    openai: "gpt-4o-mini",
+  };
+  const KEY_PLACEHOLDERS: Record<Provider, string> = {
+    gemini: "AIza...",
+    anthropic: "sk-ant-...",
+    openai: "sk-...",
+  };
+
   let showSettings = $state(false);
-  let geminiKey = $state<string>("");
-  let geminiModel = $state<string>("gemini-2.5-flash");
+  let provider = $state<Provider>("gemini");
+  // プロバイダごとに鍵とモデルを保持する（切替時に再入力不要）。
+  let apiKeys = $state<Record<Provider, string>>({ gemini: "", anthropic: "", openai: "" });
+  let models = $state<Record<Provider, string>>({ ...DEFAULT_MODELS });
   let updateMsg = $state<string>("");
 
   function loadSettings() {
-    geminiKey = localStorage.getItem("geminiKey") ?? "";
-    geminiModel = localStorage.getItem("geminiModel") ?? "gemini-2.5-flash";
+    provider = (localStorage.getItem("provider") as Provider) || "gemini";
+    if (!(provider in PROVIDER_LABELS)) provider = "gemini";
+    for (const p of ["gemini", "anthropic", "openai"] as Provider[]) {
+      apiKeys[p] = localStorage.getItem(`apiKey:${p}`) ?? "";
+      models[p] = localStorage.getItem(`model:${p}`) ?? DEFAULT_MODELS[p];
+    }
+    // 旧バージョン(geminiKey/geminiModel)からの移行。
+    const legacyKey = localStorage.getItem("geminiKey");
+    if (legacyKey && !apiKeys.gemini) apiKeys.gemini = legacyKey;
+    const legacyModel = localStorage.getItem("geminiModel");
+    if (legacyModel && models.gemini === DEFAULT_MODELS.gemini) models.gemini = legacyModel;
   }
   function saveSettings() {
-    localStorage.setItem("geminiKey", geminiKey);
-    localStorage.setItem("geminiModel", geminiModel);
+    localStorage.setItem("provider", provider);
+    for (const p of ["gemini", "anthropic", "openai"] as Provider[]) {
+      localStorage.setItem(`apiKey:${p}`, apiKeys[p]);
+      localStorage.setItem(`model:${p}`, models[p]);
+    }
     showSettings = false;
   }
 
@@ -108,12 +134,12 @@
     }
   }
 
-  // 文字起こしを整形（思考整理・要約）する＝コア価値。Gemini鍵が必要。
+  // 文字起こしを整形（思考整理・要約）する＝コア価値。選択中プロバイダの鍵が必要。
   async function refineNow() {
     if (!transcript) return;
-    if (!geminiKey.trim()) {
+    if (!apiKeys[provider].trim()) {
       showSettings = true;
-      error = "整形にはGemini APIキーが必要です。設定から入力してください。";
+      error = `整形には ${PROVIDER_LABELS[provider]} のAPIキーが必要です。設定から入力してください。`;
       return;
     }
     error = null;
@@ -122,8 +148,9 @@
     try {
       refined = await invoke<string>("refine_text", {
         text: transcript,
-        apiKey: geminiKey,
-        model: geminiModel,
+        provider,
+        apiKey: apiKeys[provider],
+        model: models[provider],
       });
     } catch (e) {
       error = String(e);
@@ -132,22 +159,36 @@
     }
   }
 
+  // 録音トグル（S1.1）。開始でマイク収集、停止で文字起こし→保存→表示まで貫通する。
   async function toggle() {
     error = null;
     if (!recording) {
-      recording = true;
-      startedAt = Date.now();
-    } else {
-      recording = false;
-      const seconds = startedAt ? elapsedSeconds(startedAt, Date.now()) : 0;
-      startedAt = null;
       try {
-        const path = await invoke<string>("save_note", {
-          content: buildNoteContent(seconds),
-        });
-        lastSaved = path;
+        await invoke("start_recording");
+        recording = true;
+        startedAt = Date.now();
+        // 新しい録音に向けて表示をリセット。
+        transcript = null;
+        refined = null;
+        segments = [];
+        progress = 0;
+        eta = "";
+        transcribeStartMs = null;
       } catch (e) {
         error = String(e);
+      }
+    } else {
+      recording = false;
+      startedAt = null;
+      busy = true;
+      try {
+        const text = await invoke<string>("stop_recording");
+        if (text) transcript = text;
+      } catch (e) {
+        error = String(e);
+      } finally {
+        busy = false;
+        status = "";
       }
     }
   }
@@ -201,17 +242,29 @@
     <section class="settings">
       <h2>設定</h2>
       <label>
-        Gemini APIキー（整形に使用・端末内のみ保存）
+        整形プロバイダ
+        <select bind:value={provider}>
+          <option value="gemini">Gemini</option>
+          <option value="anthropic">Anthropic (Claude)</option>
+          <option value="openai">OpenAI</option>
+        </select>
+      </label>
+      <label>
+        {PROVIDER_LABELS[provider]} APIキー（整形に使用・端末内のみ保存）
         <input
           type="password"
-          bind:value={geminiKey}
-          placeholder="AIza..."
+          bind:value={apiKeys[provider]}
+          placeholder={KEY_PLACEHOLDERS[provider]}
           autocomplete="off"
         />
       </label>
       <label>
-        Gemini モデル
-        <input type="text" bind:value={geminiModel} placeholder="gemini-2.5-flash" />
+        {PROVIDER_LABELS[provider]} モデル
+        <input
+          type="text"
+          bind:value={models[provider]}
+          placeholder={DEFAULT_MODELS[provider]}
+        />
       </label>
       <div class="settings-actions">
         <button class="btn small" onclick={saveSettings}>保存</button>
@@ -302,9 +355,6 @@
     </section>
   {/if}
 
-  {#if lastSaved}
-    <p class="saved">保存しました: <code>{lastSaved}</code></p>
-  {/if}
   {#if error}
     <p class="error">{error}</p>
   {/if}
@@ -377,7 +427,8 @@
     color: #4b5563;
     margin-bottom: 0.7rem;
   }
-  .settings input {
+  .settings input,
+  .settings select {
     width: 100%;
     box-sizing: border-box;
     margin-top: 0.25rem;
@@ -385,6 +436,7 @@
     border: 1px solid #d1d5db;
     border-radius: 8px;
     font-size: 0.85rem;
+    background: #fff;
   }
   .settings-actions {
     display: flex;
@@ -610,13 +662,6 @@
   }
   .center {
     text-align: center;
-  }
-  .saved {
-    font-size: 0.74rem;
-    color: #047857;
-    word-break: break-all;
-    text-align: center;
-    margin-top: 0.9rem;
   }
   .error {
     font-size: 0.78rem;

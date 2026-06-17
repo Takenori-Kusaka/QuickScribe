@@ -6,6 +6,7 @@
 // (ADR-0006 によりスコープからは外さない)。
 
 pub mod model;
+pub mod record;
 pub mod refine;
 pub mod stt;
 
@@ -36,62 +37,126 @@ fn save_note(content: String) -> Result<String, String> {
     Ok(path.to_string_lossy().to_string())
 }
 
+/// 16kHz mono 音声を文字起こしし、保存して返す共通処理（録音/ファイル入力で共用）。
+/// 別スレッド(spawn_blocking 内)から呼ぶ前提。モデルが無ければ初回に自動DLする（S2.2）。
+/// 進捗(0-100%)と確定セグメントを逐次通知してUIに進捗UXを提供する。
+fn transcribe_blocking(app: &tauri::AppHandle, audio: &[f32]) -> Result<String, String> {
+    // モデル（初回はダウンロードし進捗を通知）。
+    let app_dl = app.clone();
+    let model = model::ensure_model(move |done, total| {
+        let msg = match total {
+            Some(t) if t > 0 => format!("whisperモデルをダウンロード中… {}%", done * 100 / t),
+            _ => format!("whisperモデルをダウンロード中… {} MB", done / 1_048_576),
+        };
+        let _ = app_dl.emit("status", msg);
+    })?;
+
+    let _ = app.emit("status", "文字起こし中…");
+    let app_p = app.clone();
+    let app_s = app.clone();
+    let text = stt::transcribe_with(
+        &model,
+        audio,
+        Some("ja"),
+        move |pct| {
+            let _ = app_p.emit("progress", pct);
+        },
+        move |seg| {
+            let _ = app_s.emit("segment", seg);
+        },
+    )?;
+
+    let _ = save_note(text.clone())?;
+    let _ = app.emit("status", "");
+    let _ = app.emit("progress", 100);
+    Ok(text)
+}
+
 /// 音声ファイルから文字起こしし、結果を保存して返す（S1.6 ファイル入力）。
-/// 非同期＋別スレッド実行でUIをブロックしない。進捗・確定セグメントを逐次通知する。
-/// モデルが無ければ初回に自動ダウンロードする（S2.2）。
+/// 非同期＋別スレッド実行でUIをブロックしない。
 #[tauri::command]
 async fn transcribe_file(app: tauri::AppHandle, path: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let _ = app.emit("status", "音声を読み込み中…");
         let audio = stt::decode_to_16k_mono(std::path::Path::new(&path))?;
-
-        // モデル（初回はダウンロードし進捗を通知）。
-        let app_dl = app.clone();
-        let model = model::ensure_model(move |done, total| {
-            let msg = match total {
-                Some(t) if t > 0 => {
-                    format!("whisperモデルをダウンロード中… {}%", done * 100 / t)
-                }
-                _ => format!("whisperモデルをダウンロード中… {} MB", done / 1_048_576),
-            };
-            let _ = app_dl.emit("status", msg);
-        })?;
-
-        let _ = app.emit("status", "文字起こし中…");
-        let app_p = app.clone();
-        let app_s = app.clone();
-        let text = stt::transcribe_with(
-            &model,
-            &audio,
-            Some("ja"),
-            move |pct| {
-                let _ = app_p.emit("progress", pct);
-            },
-            move |seg| {
-                let _ = app_s.emit("segment", seg);
-            },
-        )?;
-
-        let _ = save_note(text.clone())?;
-        let _ = app.emit("status", "");
-        let _ = app.emit("progress", 100);
-        Ok::<String, String>(text)
+        transcribe_blocking(&app, &audio)
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
-/// 文字起こしテキストを整形(思考整理・要約)して保存し返す（E3 コアドメイン）。
-/// 非同期＋別スレッドでUIをブロックしない。Gemini APIキーはフロントの設定から渡す。
+/// マイク録音を開始する（S1.1）。既定の入力デバイスから収集を始める。
+/// E2E(QUICKSCRIBE_E2E=1)時は実マイク無しでもUIトグルを成立させるため何もしない。
 #[tauri::command]
-async fn refine_text(text: String, api_key: String, model: String) -> Result<String, String> {
+fn start_recording(state: tauri::State<'_, record::RecorderState>) -> Result<(), String> {
+    if std::env::var("QUICKSCRIBE_E2E").is_ok() {
+        return Ok(());
+    }
+    let mut cur = state
+        .current
+        .lock()
+        .map_err(|_| "録音状態のロックに失敗".to_string())?;
+    if cur.is_some() {
+        return Err("すでに録音中です".into());
+    }
+    *cur = Some(record::start()?);
+    Ok(())
+}
+
+/// マイク録音を停止し、録音音声を文字起こし・保存して返す（S1.1）。
+/// 非同期＋別スレッドで文字起こしを実行しUIをブロックしない。
+#[tauri::command]
+async fn stop_recording(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, record::RecorderState>,
+) -> Result<String, String> {
+    if std::env::var("QUICKSCRIBE_E2E").is_ok() {
+        return Ok(String::new());
+    }
+    // 録音ハンドルを取り出して停止し、音声(16k mono)を得る。ロックは await をまたがない。
+    let recording = {
+        let mut cur = state
+            .current
+            .lock()
+            .map_err(|_| "録音状態のロックに失敗".to_string())?;
+        cur.take().ok_or_else(|| "録音していません".to_string())?
+    };
+    let audio = recording.finish()?;
+    if audio.is_empty() {
+        return Err("録音データが空でした（マイク入力を確認してください）".into());
+    }
+
+    tauri::async_runtime::spawn_blocking(move || transcribe_blocking(&app, &audio))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// プロバイダ未指定/モデル未指定時の既定モデルを返す（思考整理向けの妥当な既定）。
+fn default_model_for(provider: &str) -> &'static str {
+    match provider.trim().to_ascii_lowercase().as_str() {
+        "anthropic" | "claude" => "claude-opus-4-8",
+        "openai" | "gpt" => "gpt-4o-mini",
+        _ => "gemini-2.5-flash",
+    }
+}
+
+/// 文字起こしテキストを整形(思考整理・要約)して保存し返す（E3 コアドメイン）。
+/// 非同期＋別スレッドでUIをブロックしない。プロバイダ(Gemini/Anthropic/OpenAI)と
+/// APIキー・モデルはフロントの設定から渡す（コードに鍵を埋め込まない / ADR-0005）。
+#[tauri::command]
+async fn refine_text(
+    text: String,
+    provider: String,
+    api_key: String,
+    model: String,
+) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let m = if model.trim().is_empty() {
-            "gemini-2.5-flash".to_string()
+            default_model_for(&provider).to_string()
         } else {
             model
         };
-        let refined = refine::refine_with_gemini(&api_key, &m, &text)?;
+        let refined = refine::refine(&provider, &api_key, &m, &text)?;
         let _ = save_note(refined.clone())?;
         Ok::<String, String>(refined)
     })
@@ -143,7 +208,14 @@ pub fn run() {
                 })
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![save_note, transcribe_file, refine_text])
+        .manage(record::RecorderState::default())
+        .invoke_handler(tauri::generate_handler![
+            save_note,
+            transcribe_file,
+            start_recording,
+            stop_recording,
+            refine_text
+        ])
         // ウィンドウを閉じてもアプリは終了せず、トレイに常駐する（タスクバー常駐の挙動）。
         // ただし E2E(QUICKSCRIBE_E2E=1)時はドライバが正常終了できるよう既定の閉じる挙動にする。
         .on_window_event(|window, event| {
