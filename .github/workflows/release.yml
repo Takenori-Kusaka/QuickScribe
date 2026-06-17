@@ -53,20 +53,10 @@ jobs:
         run: echo "LIBCLANG_PATH=$((Get-Command clang).Source | Split-Path)" >> $env:GITHUB_ENV
         shell: pwsh
 
-      # whisper.cpp(ggml)をAVX2/FMA/F16C有効でビルド(SSE2スカラ実行の遅さを解消)。
-      # AVX2必須=Haswell(2013)以降が対象。
-      - name: Set CPU optimization flags (Linux, AVX2)
-        if: matrix.os == 'ubuntu-22.04'
-        run: |
-          echo "CFLAGS=-mavx2 -mfma -mf16c -mavx" >> "$GITHUB_ENV"
-          echo "CXXFLAGS=-mavx2 -mfma -mf16c -mavx" >> "$GITHUB_ENV"
-
-      - name: Set CPU optimization flags (Windows, AVX2)
-        if: matrix.os == 'windows-latest'
-        run: |
-          echo "CFLAGS=/arch:AVX2" >> $env:GITHUB_ENV
-          echo "CXXFLAGS=/arch:AVX2" >> $env:GITHUB_ENV
-        shell: pwsh
+      # 注: whisper-rs-sys が同梱する whisper.cpp は GGML_CPU_ALL_VARIANTS
+      # (AVX/AVX2/AVX512等の複数CPUバリアントを実行時選択)でビルドされる。
+      # グローバルな CFLAGS=/arch:AVX2 は各バリアントの /arch 指定と衝突し
+      # Windowsビルドを壊すため設定しない。高速化は別途モデル選択/dispatch検証で対応。
 
       - name: Install npm dependencies
         run: npm ci
