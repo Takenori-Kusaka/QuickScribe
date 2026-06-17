@@ -6,6 +6,7 @@
 // (ADR-0006 によりスコープからは外さない)。
 
 pub mod model;
+pub mod refine;
 pub mod stt;
 
 use tauri::{
@@ -80,6 +81,24 @@ async fn transcribe_file(app: tauri::AppHandle, path: String) -> Result<String, 
     .map_err(|e| e.to_string())?
 }
 
+/// 文字起こしテキストを整形(思考整理・要約)して保存し返す（E3 コアドメイン）。
+/// 非同期＋別スレッドでUIをブロックしない。Gemini APIキーはフロントの設定から渡す。
+#[tauri::command]
+async fn refine_text(text: String, api_key: String, model: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let m = if model.trim().is_empty() {
+            "gemini-2.5-flash".to_string()
+        } else {
+            model
+        };
+        let refined = refine::refine_with_gemini(&api_key, &m, &text)?;
+        let _ = save_note(refined.clone())?;
+        Ok::<String, String>(refined)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,7 +143,7 @@ pub fn run() {
                 })
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![save_note, transcribe_file])
+        .invoke_handler(tauri::generate_handler![save_note, transcribe_file, refine_text])
         // ウィンドウを閉じてもアプリは終了せず、トレイに常駐する（タスクバー常駐の挙動）。
         // ただし E2E(QUICKSCRIBE_E2E=1)時はドライバが正常終了できるよう既定の閉じる挙動にする。
         .on_window_event(|window, event| {
