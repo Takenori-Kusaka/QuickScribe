@@ -28,10 +28,10 @@
     anthropic: "Anthropic (Claude)",
     openai: "OpenAI",
   };
-  // 各プロバイダの「最新ミドルレンジモデル」を自動選択する（モデルはバックエンドが補完。
-  // ここは表示用。実際の選択は src-tauri/src/lib.rs の default_model_for と一致させる）。
-  const AUTO_MODELS: Record<Provider, string> = {
-    gemini: "gemini-2.5-flash",
+  // モデルは「実行時に各社のモデル一覧APIから最新ミドルレンジを解決」する（ビルド時固定にしない）。
+  // 取得失敗時のフォールバック表示（ローリングlatestエイリアス優先 / ADR-0007 deep research）。
+  const FALLBACK_MODELS: Record<Provider, string> = {
+    gemini: "gemini-flash-latest",
     anthropic: "claude-sonnet-4-6",
     openai: "gpt-4o",
   };
@@ -40,18 +40,25 @@
     anthropic: "sk-ant-...",
     openai: "sk-...",
   };
+  const ALL_PROVIDERS: Provider[] = ["gemini", "anthropic", "openai"];
+  // 解決済みモデルのキャッシュ寿命（24時間）。これを過ぎたら再取得する。
+  const MODEL_TTL_MS = 24 * 60 * 60 * 1000;
 
   let showSettings = $state(false);
   let provider = $state<Provider>("gemini");
-  // プロバイダごとに鍵を保持する（切替時に再入力不要）。モデルは自動選択のため保持しない。
+  // プロバイダごとに鍵を保持する（切替時に再入力不要）。
   let apiKeys = $state<Record<Provider, string>>({ gemini: "", anthropic: "", openai: "" });
+  // 実行時に解決した最新モデルID（表示・整形に使用）。
+  let resolvedModel = $state<Record<Provider, string>>({ gemini: "", anthropic: "", openai: "" });
+  let resolvingModel = $state(false);
   let updateMsg = $state<string>("");
 
   function loadSettings() {
     provider = (localStorage.getItem("provider") as Provider) || "gemini";
     if (!(provider in PROVIDER_LABELS)) provider = "gemini";
-    for (const p of ["gemini", "anthropic", "openai"] as Provider[]) {
+    for (const p of ALL_PROVIDERS) {
       apiKeys[p] = localStorage.getItem(`apiKey:${p}`) ?? "";
+      resolvedModel[p] = localStorage.getItem(`resolvedModel:${p}`) ?? "";
     }
     // 旧バージョン(geminiKey)からの移行。
     const legacyKey = localStorage.getItem("geminiKey");
@@ -59,10 +66,37 @@
   }
   function saveSettings() {
     localStorage.setItem("provider", provider);
-    for (const p of ["gemini", "anthropic", "openai"] as Provider[]) {
+    for (const p of ALL_PROVIDERS) {
       localStorage.setItem(`apiKey:${p}`, apiKeys[p]);
     }
     showSettings = false;
+    // 鍵が入っていれば現在のプロバイダの最新モデルを取得（強制更新）。
+    void resolveCurrentModel(true);
+  }
+
+  // 現在のプロバイダの最新ミドルレンジモデルを実行時に解決し、キャッシュする。
+  // force=false かつキャッシュが新しければ何もしない。鍵未入力なら何もしない。
+  async function resolveCurrentModel(force = false) {
+    const p = provider;
+    if (!apiKeys[p].trim()) return;
+    const at = Number(localStorage.getItem(`resolvedModelAt:${p}`) || 0);
+    if (!force && resolvedModel[p] && Date.now() - at < MODEL_TTL_MS) return;
+    resolvingModel = true;
+    try {
+      const m = await invoke<string>("resolve_model", {
+        provider: p,
+        apiKey: apiKeys[p],
+      });
+      if (m) {
+        resolvedModel[p] = m;
+        localStorage.setItem(`resolvedModel:${p}`, m);
+        localStorage.setItem(`resolvedModelAt:${p}`, String(Date.now()));
+      }
+    } catch (e) {
+      console.error("resolve_model failed", e);
+    } finally {
+      resolvingModel = false;
+    }
   }
 
   // 自動アップデート(起動時に非同期チェック→背景DL→完了後に再起動を確認)。
@@ -143,12 +177,14 @@
     refining = true;
     refined = null;
     try {
+      // 整形直前に最新モデルを確保（キャッシュが新しければ即返る）。
+      await resolveCurrentModel();
       refined = await invoke<string>("refine_text", {
         text: transcript,
         provider,
         apiKey: apiKeys[provider],
-        // モデルは空 → バックエンドが各プロバイダの最新ミドルレンジを自動選択する。
-        model: "",
+        // 解決済みモデル（空ならバックエンドがフォールバック既定を補完）。
+        model: resolvedModel[provider],
       });
     } catch (e) {
       error = String(e);
@@ -193,6 +229,7 @@
 
   onMount(() => {
     loadSettings();
+    void resolveCurrentModel();
     void checkForUpdate();
     const unToggle = listen("toggle-record", () => toggle());
     const unStatus = listen<string>("status", (e) => (status = e.payload));
@@ -241,7 +278,7 @@
       <h2>設定</h2>
       <label>
         整形プロバイダ
-        <select bind:value={provider}>
+        <select bind:value={provider} onchange={() => resolveCurrentModel()}>
           <option value="gemini">Gemini</option>
           <option value="anthropic">Anthropic (Claude)</option>
           <option value="openai">OpenAI</option>
@@ -257,7 +294,8 @@
         />
       </label>
       <p class="muted model-hint">
-        モデル: <code>{AUTO_MODELS[provider]}</code>（最新ミドルレンジを自動選択）
+        モデル: <code>{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code>
+        {#if resolvingModel}（取得中…）{:else if resolvedModel[provider]}（最新を自動取得）{:else}（最新ミドルレンジを自動選択）{/if}
       </p>
       <div class="settings-actions">
         <button class="btn small" onclick={saveSettings}>保存</button>

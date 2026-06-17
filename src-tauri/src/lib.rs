@@ -131,14 +131,31 @@ async fn stop_recording(
         .map_err(|e| e.to_string())?
 }
 
-/// プロバイダ毎の「最新ミドルレンジモデル」を自動選択する（UIでのモデル指定は不要）。
-/// 思考整理用途にコスト・速度・品質のバランスが良い中位モデルを既定とする。
+/// 実行時のモデル解決に失敗したときのフォールバック既定（ミドルレンジ相当）。
+/// 可能な範囲で「常に最新」を指すローリングエイリアスを採用する（deep research / ADR-0007）:
+/// - gemini: `gemini-flash-latest`（公式のローリングlatestエイリアス）
+/// - openai: `gpt-4o`（最新4oスナップショットを指すローリングエイリアス）
+/// - anthropic: ローリングlatestが無いため取得時点の最新stable sonnetを既定にする。
 fn default_model_for(provider: &str) -> &'static str {
     match provider.trim().to_ascii_lowercase().as_str() {
         "anthropic" | "claude" => "claude-sonnet-4-6",
         "openai" | "gpt" => "gpt-4o",
-        _ => "gemini-2.5-flash",
+        _ => "gemini-flash-latest",
     }
+}
+
+/// 実行時に各プロバイダのモデル一覧APIから「最新ミドルレンジ」モデルIDを解決する。
+/// ビルド時固定でなく常に最新を選ぶため（ユーザ要望 / ADR-0007 deep research）。
+/// 取得・解析に失敗したらフォールバック既定を返す（UIを止めない）。
+#[tauri::command]
+async fn resolve_model(provider: String, api_key: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resolved = refine::resolve_latest_model(&provider, &api_key)
+            .unwrap_or_else(|_| default_model_for(&provider).to_string());
+        Ok::<String, String>(resolved)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// 文字起こしテキストを整形(思考整理・要約)して保存し返す（E3 コアドメイン）。
@@ -215,6 +232,7 @@ pub fn run() {
             transcribe_file,
             start_recording,
             stop_recording,
+            resolve_model,
             refine_text
         ])
         // ウィンドウを閉じてもアプリは終了せず、トレイに常駐する（タスクバー常駐の挙動）。
