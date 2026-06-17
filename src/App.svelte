@@ -84,12 +84,17 @@
   </header>
 
   <div class="actions">
-    <button class="btn primary" class:recording onclick={toggle}>
+    <button class="btn primary" class:recording data-testid="record-btn" onclick={toggle}>
       <span class="dot" class:on={recording}></span>
       {recording ? "停止" : "録音開始"}
     </button>
 
-    <button class="btn secondary" onclick={transcribeFromFile} disabled={busy}>
+    <button
+      class="btn secondary"
+      data-testid="file-btn"
+      onclick={transcribeFromFile}
+      disabled={busy}
+    >
       <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
         <path
           fill="currentColor"
