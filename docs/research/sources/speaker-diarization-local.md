@@ -62,10 +62,37 @@ pyannote.audio がこれを行う。sherpa-onnx はこれをPython無し・ONNX/
 ---
 
 ## C. Whisper との統合（whisperX 方式）
-→ サブエージェント調査結果を反映予定（whisperX の overlap-max 割当アルゴリズム）。
+- ソース: https://github.com/m-bain/whisperX/blob/main/whisperx/diarize.py (取得 2026-06-18)
+- `assign_word_speakers()`: 各単語/セグメントを**時間的オーバーラップ（intersection）が最大の話者**に割当（IoUではなく重複時間の合算で argmax）。
+  - `intersection = min(end_turn, end_word) - max(start_turn, start_word)`、話者ごとに合算し最大話者を採用。
+  - 重なり無し時は `fill_nearest=True` のとき最近傍話者を割当（既定Falseでは未割当）。
+- Rust再実装: 各 whisper セグメント区間 vs 各 diarization 話者区間で `max(0, min(e1,e2)-max(s1,s2))` を話者キーで合算し argmax。線形走査で十分（IntervalTreeは性能最適化のみ）。
 
 ## D/E. 精度・現実性・推奨
 → 本文回答に記載。
+
+---
+
+## 埋め込みモデルのライセンス（商用バンドル可否）
+- **3D-Speaker (modelscope/3D-Speaker)**: コードは Apache-2.0（https://github.com/modelscope/3D-Speaker/blob/main/LICENSE 取得 2026-06-18）。⚠️ **重みのライセンスは別物の可能性** — ModelScope モデルカード（`iic/speech_eres2net_..._zh-cn_3dspeaker_16k`）のライセンス欄を要確認。sherpa-onnx 再配布は商用可の傍証。
+- **WeSpeaker (wenet-e2e/wespeaker)**: コード Apache-2.0。ただし **VoxCeleb 学習済みモデルは CC BY 4.0**（帰属必須）。
+- **NeMo TitaNet (nvidia/speakerverification_en_titanet_large)**: **CC-BY-4.0**（商用可・帰属必須）。https://huggingface.co/nvidia/speakerverification_en_titanet_large (取得 2026-06-18)
+- いずれもバンドル・商用配布可。CC-BY系・Apache系とも **帰属表示/NOTICE保持義務**あり。
+
+## クラスタリング設定（C++ ヘッダ一次確認）
+- ソース: https://github.com/k2-fsa/sherpa-onnx/blob/master/sherpa-onnx/csrc/fast-clustering-config.h (取得 2026-06-18)
+- `num_clusters > 0` → 固定話者数（threshold無視、話者数既知なら推奨）。`num_clusters <= 0` → threshold で自動話者数検出。
+
+## 話者埋め込みの言語非依存性（日本語適用）
+- 埋め込み(ERes2Net/ECAPA/x-vector)は原理的に**概ね言語非依存**。zh-cn 学習モデルの他言語転移は正の汎化を示す（https://arxiv.org/pdf/1908.01447）。
+- ただし**完全な言語不変ではない**: クロスリンガルでスコアシフト（劣化）あり、言語依存正規化等で補償（https://arxiv.org/pdf/2110.09150）。
+- 実務: zh-cn ERes2Net を日本語ジャーナルの diarization に**使用可能**だが、精度劣化の可能性 → 閾値調整・日本語実測が必要。
+
+## 未確認・要確認点（更新）
+1. 3D-Speaker ONNX 重みの ModelScope モデルカード ライセンス欄（コードと別の可能性）。
+2. WeSpeaker 事前学習モデルカードのライセンス。
+3. sherpa-onnx `c-api.h` の `SherpaOnnxFastClusteringConfig` フィールド名（Rust FFI 時）— ただし公式 `sherpa-onnx` crate を使えば FFI 自作不要。
+4. 日本語データでの zh-cn ERes2Net 実測精度（EER/閾値）。
 
 ---
 
