@@ -94,12 +94,24 @@ pub fn resample_linear(input: &[f32], from: u32, to: u32) -> Vec<f32> {
     out
 }
 
+/// whisperのセグメント時刻(センチ秒=1/100秒)を [HH:MM:SS] 文字列にする（純粋関数・テスト対象）。
+pub fn format_timestamp(centiseconds: i64) -> String {
+    let total_secs = (centiseconds.max(0) / 100) as u64;
+    let h = total_secs / 3600;
+    let m = (total_secs % 3600) / 60;
+    let s = total_secs % 60;
+    format!("{h:02}:{m:02}:{s:02}")
+}
+
 /// whisper.cpp モデルで文字起こしする（進捗0-100%と確定セグメントを逐次通知）。
 /// 進捗UX(プログレス/逐次表示)を可能にしつつ、全CPUコアで高速化する。
+/// `timestamps` が true のとき、各セグメント行頭に [HH:MM:SS] を付与する
+/// （整形AIが発話の時間関係を解釈できるようにする / whisper-metadata 調査）。
 pub fn transcribe_with<P, S>(
     model_path: &Path,
     audio: &[f32],
     lang: Option<&str>,
+    timestamps: bool,
     on_progress: P,
     on_segment: S,
 ) -> Result<String, String>
@@ -136,14 +148,21 @@ where
     let mut text = String::new();
     for i in 0..n {
         let seg = state.full_get_segment_text(i).map_err(|e| e.to_string())?;
-        text.push_str(seg.trim());
+        let seg = seg.trim();
+        if timestamps {
+            // セグメント開始時刻(センチ秒)を行頭に付与。AI整形が時間関係を解釈できる。
+            let t0 = state.full_get_segment_t0(i).unwrap_or(0);
+            text.push_str(&format!("[{}] {}\n", format_timestamp(t0), seg));
+        } else {
+            text.push_str(seg);
+        }
     }
     Ok(text.trim().to_string())
 }
 
 /// コールバックなしの簡易版（統合テスト等で使用）。
 pub fn transcribe(model_path: &Path, audio: &[f32], lang: Option<&str>) -> Result<String, String> {
-    transcribe_with(model_path, audio, lang, |_| {}, |_| {})
+    transcribe_with(model_path, audio, lang, false, |_| {}, |_| {})
 }
 
 #[cfg(test)]
@@ -166,5 +185,18 @@ mod tests {
     #[test]
     fn resample_empty_is_empty() {
         assert!(resample_linear(&[], 44100, 16000).is_empty());
+    }
+
+    #[test]
+    fn timestamp_formats_hms() {
+        assert_eq!(format_timestamp(0), "00:00:00");
+        assert_eq!(format_timestamp(100), "00:00:01"); // 100センチ秒=1秒
+        assert_eq!(format_timestamp(6125), "00:01:01"); // 61.25秒
+        assert_eq!(format_timestamp(366000), "01:01:00"); // 3660秒
+    }
+
+    #[test]
+    fn timestamp_clamps_negative() {
+        assert_eq!(format_timestamp(-50), "00:00:00");
     }
 }

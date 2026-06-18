@@ -58,6 +58,9 @@
   let recordShortcut = $state<string>(DEFAULT_SHORTCUT);
   let shortcutMsg = $state<string>("");
 
+  // 文字起こしメタデータ設定。タイムスタンプは既定ON（整形AIが時間関係を解釈できる）。
+  let includeTimestamps = $state<boolean>(true);
+
   function loadSettings() {
     provider = (localStorage.getItem("provider") as Provider) || "gemini";
     if (!(provider in PROVIDER_LABELS)) provider = "gemini";
@@ -69,6 +72,7 @@
     const legacyKey = localStorage.getItem("geminiKey");
     if (legacyKey && !apiKeys.gemini) apiKeys.gemini = legacyKey;
     recordShortcut = localStorage.getItem("recordShortcut") || DEFAULT_SHORTCUT;
+    includeTimestamps = localStorage.getItem("includeTimestamps") !== "false";
   }
   function saveSettings() {
     localStorage.setItem("provider", provider);
@@ -76,6 +80,7 @@
       localStorage.setItem(`apiKey:${p}`, apiKeys[p]);
     }
     void applyShortcut();
+    localStorage.setItem("includeTimestamps", String(includeTimestamps));
     showSettings = false;
     // 鍵が入っていれば現在のプロバイダの最新モデルを取得（強制更新）。
     void resolveCurrentModel(true);
@@ -200,7 +205,10 @@
     if (typeof selected !== "string") return;
     busy = true;
     try {
-      const text = await invoke<string>("transcribe_file", { path: selected });
+      const text = await invoke<string>("transcribe_file", {
+        path: selected,
+        timestamps: includeTimestamps,
+      });
       transcript = text;
     } catch (e) {
       error = String(e);
@@ -280,7 +288,9 @@
       startedAt = null;
       busy = true;
       try {
-        const text = await invoke<string>("stop_recording");
+        const text = await invoke<string>("stop_recording", {
+          timestamps: includeTimestamps,
+        });
         if (text) transcript = text;
       } catch (e) {
         error = String(e);
@@ -475,6 +485,19 @@
         />
       </label>
       {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
+
+      <div class="meta-group">
+        <span class="meta-title">文字起こしのメタデータ</span>
+        <label class="check">
+          <input type="checkbox" bind:checked={includeTimestamps} />
+          タイムスタンプを含める
+        </label>
+        <p class="tip">発話の時間関係をAI整形が解釈できます。速度への影響はほぼありません。</p>
+        <p class="tip">
+          ※話者の区別（誰が話したか）はwhisper単体では非対応です（特に日本語）。
+        </p>
+      </div>
+
       <div class="settings-actions">
         <button class="btn small" onclick={saveSettings}>保存</button>
         <button class="btn small ghost" onclick={() => checkForUpdate(true)}>更新を確認</button>
@@ -594,6 +617,36 @@
   .settings-actions {
     display: flex;
     gap: 0.5rem;
+  }
+  .meta-group {
+    border-top: 1px solid #eef0f3;
+    padding-top: 0.7rem;
+    margin-bottom: 0.8rem;
+  }
+  .meta-title {
+    display: block;
+    font-size: 0.76rem;
+    color: #4b5563;
+    font-weight: 600;
+    margin-bottom: 0.45rem;
+  }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.84rem;
+    color: #1f2330;
+    margin-bottom: 0.3rem;
+  }
+  .check input {
+    width: auto;
+    margin: 0;
+  }
+  .tip {
+    font-size: 0.7rem;
+    color: #6b7280;
+    margin: 0.2rem 0 0;
+    line-height: 1.5;
   }
 
   .update-banner {

@@ -43,7 +43,11 @@ fn save_note(content: String) -> Result<String, String> {
 /// 16kHz mono 音声を文字起こしし、保存して返す共通処理（録音/ファイル入力で共用）。
 /// 別スレッド(spawn_blocking 内)から呼ぶ前提。モデルが無ければ初回に自動DLする（S2.2）。
 /// 進捗(0-100%)と確定セグメントを逐次通知してUIに進捗UXを提供する。
-fn transcribe_blocking(app: &tauri::AppHandle, audio: &[f32]) -> Result<String, String> {
+fn transcribe_blocking(
+    app: &tauri::AppHandle,
+    audio: &[f32],
+    timestamps: bool,
+) -> Result<String, String> {
     // モデル（初回はダウンロードし進捗を通知）。
     let app_dl = app.clone();
     let model = model::ensure_model(move |done, total| {
@@ -61,6 +65,7 @@ fn transcribe_blocking(app: &tauri::AppHandle, audio: &[f32]) -> Result<String, 
         &model,
         audio,
         Some("ja"),
+        timestamps,
         move |pct| {
             let _ = app_p.emit("progress", pct);
         },
@@ -78,11 +83,15 @@ fn transcribe_blocking(app: &tauri::AppHandle, audio: &[f32]) -> Result<String, 
 /// 音声ファイルから文字起こしし、結果を保存して返す（S1.6 ファイル入力）。
 /// 非同期＋別スレッド実行でUIをブロックしない。
 #[tauri::command]
-async fn transcribe_file(app: tauri::AppHandle, path: String) -> Result<String, String> {
+async fn transcribe_file(
+    app: tauri::AppHandle,
+    path: String,
+    timestamps: bool,
+) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let _ = app.emit("status", "音声を読み込み中…");
         let audio = stt::decode_to_16k_mono(std::path::Path::new(&path))?;
-        transcribe_blocking(&app, &audio)
+        transcribe_blocking(&app, &audio, timestamps)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -112,6 +121,7 @@ fn start_recording(state: tauri::State<'_, record::RecorderState>) -> Result<(),
 async fn stop_recording(
     app: tauri::AppHandle,
     state: tauri::State<'_, record::RecorderState>,
+    timestamps: bool,
 ) -> Result<String, String> {
     if std::env::var("QUICKSCRIBE_E2E").is_ok() {
         return Ok(String::new());
@@ -129,7 +139,7 @@ async fn stop_recording(
         return Err("録音データが空でした（マイク入力を確認してください）".into());
     }
 
-    tauri::async_runtime::spawn_blocking(move || transcribe_blocking(&app, &audio))
+    tauri::async_runtime::spawn_blocking(move || transcribe_blocking(&app, &audio, timestamps))
         .await
         .map_err(|e| e.to_string())?
 }
