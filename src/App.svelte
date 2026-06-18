@@ -367,7 +367,7 @@
   });
 </script>
 
-<main class:has-settings={showSettings}>
+<main>
   <div class="content">
   <header>
     <div class="title-row">
@@ -485,10 +485,23 @@
     <p class="error">{error}</p>
   {/if}
   </div>
+</main>
 
-  {#if showSettings}
+{#if showSettings}
+  <div
+    class="settings-overlay"
+    role="presentation"
+    onclick={(e) => {
+      if (e.target === e.currentTarget) showSettings = false;
+    }}
+  >
     <aside class="settings">
-      <h2>設定</h2>
+      <div class="settings-head">
+        <h2>設定</h2>
+        <button class="close" aria-label="閉じる" onclick={() => (showSettings = false)}
+          >×</button
+        >
+      </div>
       <label>
         整形プロバイダ
         <select bind:value={provider} onchange={() => resolveCurrentModel()}>
@@ -528,9 +541,8 @@
           <input type="checkbox" bind:checked={includeTimestamps} />
           タイムスタンプを含める
         </label>
-        <p class="tip">発話の時間関係をAI整形が解釈できます。速度への影響はほぼありません。</p>
         <p class="tip">
-          ※話者の区別（誰が話したか）はwhisper単体では非対応です（特に日本語）。
+          いつ何を話したかの時刻を残し、AIが話の流れを踏まえて整理します。
         </p>
       </div>
 
@@ -568,8 +580,8 @@
       </div>
       {#if updateMsg}<p class="muted">{updateMsg}</p>{/if}
     </aside>
-  {/if}
-</main>
+  </div>
+{/if}
 
 <style>
   /* スクロールバーの領域を常時確保し、設定展開でバーが出てもレイアウトがずれないようにする。 */
@@ -588,31 +600,40 @@
     padding: 1.25rem 1.25rem 1.75rem;
     max-width: 560px;
     margin: 0 auto;
+  }
+
+  /* 設定はフルスクリーンのモーダルダイアログとして表示する。 */
+  .settings-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(17, 24, 39, 0.45);
     display: flex;
-    gap: 1.25rem;
     align-items: flex-start;
+    justify-content: center;
+    padding: 1.5rem;
+    overflow-y: auto;
+    z-index: 50;
   }
-  /* 設定パネルを開いている間は横幅を広げ、ウィンドウが広ければ本体と横並びにする。 */
-  main.has-settings {
-    max-width: 960px;
+  .settings-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.7rem;
   }
-  .content {
-    flex: 1 1 auto;
-    min-width: 0;
+  .settings-head h2 {
+    margin: 0;
   }
-  .settings {
-    flex: 0 0 320px;
+  .close {
+    background: none;
+    border: none;
+    font-size: 1.4rem;
+    line-height: 1;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 0 0.2rem;
   }
-  /* 狭いウィンドウでは縦積み（設定を上に出す）。広げると自動で横並びになる。 */
-  @media (max-width: 720px) {
-    main {
-      flex-direction: column;
-    }
-    .settings {
-      flex-basis: auto;
-      width: 100%;
-      order: -1;
-    }
+  .close:hover {
+    color: #1f2330;
   }
   header {
     margin-bottom: 1.1rem;
@@ -652,9 +673,10 @@
     background: #fff;
     border: 1px solid #e5e7eb;
     border-radius: 14px;
-    padding: 1rem;
-    margin-bottom: 1rem;
-    box-shadow: 0 1px 4px rgba(17, 24, 39, 0.06);
+    padding: 1.1rem 1.2rem;
+    width: 100%;
+    max-width: 520px;
+    box-shadow: 0 8px 30px rgba(17, 24, 39, 0.2);
     text-align: left;
   }
   .settings h2 {
