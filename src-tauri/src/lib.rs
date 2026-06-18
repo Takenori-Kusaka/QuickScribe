@@ -151,9 +151,9 @@ fn transcribe_blocking(
         },
     )?;
 
-    // 文字起こしテキストの保存は設定(keep_text)に従う。保存先も設定を尊重。
+    // 文字起こしテキストの保存は設定(keep_text)に従う。空(文字起こし対象なし)は保存しない。
     let settings = current_settings(app);
-    if settings.keep_text {
+    if settings.keep_text && !text.trim().is_empty() {
         if let Ok(dir) = resolve_save_dir(&settings) {
             let _ = save_text_in(&dir, &text);
         }
@@ -221,46 +221,38 @@ async fn stop_recording(
     if recorded.mono16k.is_empty() {
         return Err("録音データが空でした（マイク入力を確認してください）".into());
     }
+    let raw = recorded.raw;
+    let sample_rate = recorded.sample_rate;
+    let channels = recorded.channels;
+    let audio = recorded.mono16k;
 
-    // 音声保存（設定ON時のみ）。原音をそのまま保存し、文字起こし用16kHzとは独立。
-    let settings = current_settings(&app);
-    if settings.save_audio {
-        if let Ok(dir) = resolve_save_dir(&settings) {
-            let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
-            let stem = format!("rec-{ts}");
-            // 形式に応じて保存（opus=Ogg Opus / それ以外=WAV）。
-            let result = if settings.audio_format == "opus" {
-                audio_save::save_opus(
-                    &recorded.raw,
-                    recorded.sample_rate,
-                    recorded.channels,
-                    &dir,
-                    &stem,
-                )
-            } else {
-                audio_save::save_wav(
-                    &recorded.raw,
-                    recorded.sample_rate,
-                    recorded.channels,
-                    &dir,
-                    &stem,
-                )
-            };
-            match result {
-                Ok(p) => {
-                    let _ = app.emit("status", format!("音声を保存しました: {}", p.display()));
-                }
-                Err(e) => {
+    tauri::async_runtime::spawn_blocking(move || {
+        let text = transcribe_blocking(&app, &audio, timestamps)?;
+        // 文字起こし対象（発話）が無ければ、音声は保存せず空を返す（フロントで通知）。
+        if text.trim().is_empty() {
+            let _ = app.emit("status", "");
+            return Ok(String::new());
+        }
+        // 音声保存は「文字起こし対象があった場合かつ設定ON」のみ。原音を保存。
+        let settings = current_settings(&app);
+        if settings.save_audio {
+            if let Ok(dir) = resolve_save_dir(&settings) {
+                let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+                let stem = format!("rec-{ts}");
+                let result = if settings.audio_format == "opus" {
+                    audio_save::save_opus(&raw, sample_rate, channels, &dir, &stem)
+                } else {
+                    audio_save::save_wav(&raw, sample_rate, channels, &dir, &stem)
+                };
+                if let Err(e) = result {
                     let _ = app.emit("status", format!("音声保存に失敗: {e}"));
                 }
             }
         }
-    }
-
-    let audio = recorded.mono16k;
-    tauri::async_runtime::spawn_blocking(move || transcribe_blocking(&app, &audio, timestamps))
-        .await
-        .map_err(|e| e.to_string())?
+        Ok(text)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// 実行時のモデル解決に失敗したときのフォールバック既定（ミドルレンジ相当）。

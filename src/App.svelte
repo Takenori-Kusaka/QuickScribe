@@ -330,7 +330,12 @@
         const text = await invoke<string>("stop_recording", {
           timestamps: includeTimestamps,
         });
-        if (text) transcript = text;
+        if (text) {
+          transcript = text;
+        } else {
+          // 文字起こし対象（発話）が無かった → 音声は保存していない旨を表示。
+          error = "文字起こしできる音声が含まれていませんでした（音声は保存していません）。";
+        }
       } catch (e) {
         error = String(e);
       } finally {
