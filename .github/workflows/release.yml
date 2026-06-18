@@ -8,6 +8,11 @@ on:
 permissions:
   contents: write
 
+# 新しいCMake(4.x, windows-latest)は古いlibopus(audiopus_sys同梱)の
+# cmake_minimum_required < 3.5 を拒否するため、CMake公式の回避策で最低ポリシー版を指定。
+env:
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+
 jobs:
   release:
     name: release (${{ matrix.os }})
