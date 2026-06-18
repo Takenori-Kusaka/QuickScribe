@@ -10,9 +10,12 @@ pub mod model;
 pub mod record;
 pub mod refine;
 pub mod stt;
-// Windows タスクバーのサムネイルツールバー（録音ボタン）。Windowsのみ。
+// Windows タスクバーのサムネイルツールバー/オーバーレイ。Windowsのみ。
 #[cfg(windows)]
 mod taskbar;
+// Windows タスクバーに埋め込む録音ウィジェット（常時表示の操作ボタン）。Windowsのみ。
+#[cfg(windows)]
+mod taskbar_widget;
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -331,6 +334,8 @@ fn set_recording_overlay(app: tauri::AppHandle, recording: bool) {
                 taskbar::set_overlay(h.0 as isize, recording);
             }
         }
+        // タスクバー埋め込みウィジェットのボタン表示（録音⇄停止）も更新。
+        taskbar_widget::set_recording(recording);
     }
     #[cfg(not(windows))]
     {
@@ -469,12 +474,14 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Windows: タスクバーのサムネイルツールバーに録音トグルボタンを取り付ける。
+            // Windows: タスクバーのサムネイルツールバー（補助）に録音ボタンを取り付ける。
             #[cfg(windows)]
             {
                 if let Some(w) = app.get_webview_window("main") {
                     taskbar::install(&w, app.handle().clone());
                 }
+                // タスクバーに録音/停止＋ウィンドウ表示ボタンを埋め込む（本命の操作導線）。
+                taskbar_widget::install(app.handle().clone());
             }
 
             Ok(())
