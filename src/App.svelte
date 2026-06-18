@@ -321,7 +321,8 @@
   });
 </script>
 
-<main>
+<main class:has-settings={showSettings}>
+  <div class="content">
   <header>
     <div class="title-row">
       <h1>QuickScribe</h1>
@@ -337,49 +338,6 @@
     </div>
     <p class="tagline">思考整理・自己理解のためのボイスジャーナル</p>
   </header>
-
-  {#if showSettings}
-    <section class="settings">
-      <h2>設定</h2>
-      <label>
-        整形プロバイダ
-        <select bind:value={provider} onchange={() => resolveCurrentModel()}>
-          <option value="gemini">Gemini</option>
-          <option value="anthropic">Anthropic (Claude)</option>
-          <option value="openai">OpenAI</option>
-        </select>
-      </label>
-      <label>
-        {PROVIDER_LABELS[provider]} APIキー（整形に使用・端末内のみ保存）
-        <input
-          type="password"
-          bind:value={apiKeys[provider]}
-          placeholder={KEY_PLACEHOLDERS[provider]}
-          autocomplete="off"
-        />
-      </label>
-      <p class="muted model-hint">
-        モデル: <code>{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code>
-        {#if resolvingModel}（取得中…）{:else if resolvedModel[provider]}（最新を自動取得）{:else}（最新ミドルレンジを自動選択）{/if}
-      </p>
-      <label>
-        録音開始/停止のホットキー（入力欄を選んで押したいキーを押す）
-        <input
-          type="text"
-          readonly
-          value={recordShortcut}
-          onkeydown={onShortcutKeydown}
-          placeholder="例: CommandOrControl+Shift+R"
-        />
-      </label>
-      {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
-      <div class="settings-actions">
-        <button class="btn small" onclick={saveSettings}>保存</button>
-        <button class="btn small ghost" onclick={() => checkForUpdate(true)}>更新を確認</button>
-      </div>
-      {#if updateMsg}<p class="muted">{updateMsg}</p>{/if}
-    </section>
-  {/if}
 
   {#if updateState === "downloading"}
     <div class="update-banner">
@@ -480,9 +438,57 @@
   {#if error}
     <p class="error">{error}</p>
   {/if}
+  </div>
+
+  {#if showSettings}
+    <aside class="settings">
+      <h2>設定</h2>
+      <label>
+        整形プロバイダ
+        <select bind:value={provider} onchange={() => resolveCurrentModel()}>
+          <option value="gemini">Gemini</option>
+          <option value="anthropic">Anthropic (Claude)</option>
+          <option value="openai">OpenAI</option>
+        </select>
+      </label>
+      <label>
+        {PROVIDER_LABELS[provider]} APIキー（整形に使用・端末内のみ保存）
+        <input
+          type="password"
+          bind:value={apiKeys[provider]}
+          placeholder={KEY_PLACEHOLDERS[provider]}
+          autocomplete="off"
+        />
+      </label>
+      <p class="muted model-hint">
+        モデル: <code>{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code>
+        {#if resolvingModel}（取得中…）{:else if resolvedModel[provider]}（最新を自動取得）{:else}（最新ミドルレンジを自動選択）{/if}
+      </p>
+      <label>
+        録音開始/停止のホットキー（入力欄を選んで押したいキーを押す）
+        <input
+          type="text"
+          readonly
+          value={recordShortcut}
+          onkeydown={onShortcutKeydown}
+          placeholder="例: CommandOrControl+Shift+R"
+        />
+      </label>
+      {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
+      <div class="settings-actions">
+        <button class="btn small" onclick={saveSettings}>保存</button>
+        <button class="btn small ghost" onclick={() => checkForUpdate(true)}>更新を確認</button>
+      </div>
+      {#if updateMsg}<p class="muted">{updateMsg}</p>{/if}
+    </aside>
+  {/if}
 </main>
 
 <style>
+  /* スクロールバーの領域を常時確保し、設定展開でバーが出てもレイアウトがずれないようにする。 */
+  :global(html) {
+    scrollbar-gutter: stable;
+  }
   :global(body) {
     margin: 0;
     background: #f3f4f6;
@@ -495,6 +501,31 @@
     padding: 1.25rem 1.25rem 1.75rem;
     max-width: 560px;
     margin: 0 auto;
+    display: flex;
+    gap: 1.25rem;
+    align-items: flex-start;
+  }
+  /* 設定パネルを開いている間は横幅を広げ、ウィンドウが広ければ本体と横並びにする。 */
+  main.has-settings {
+    max-width: 960px;
+  }
+  .content {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .settings {
+    flex: 0 0 320px;
+  }
+  /* 狭いウィンドウでは縦積み（設定を上に出す）。広げると自動で横並びになる。 */
+  @media (max-width: 720px) {
+    main {
+      flex-direction: column;
+    }
+    .settings {
+      flex-basis: auto;
+      width: 100%;
+      order: -1;
+    }
   }
   header {
     margin-bottom: 1.1rem;
