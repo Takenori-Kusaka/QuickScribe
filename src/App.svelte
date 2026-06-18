@@ -61,6 +61,12 @@
   // 文字起こしメタデータ設定。タイムスタンプは既定ON（整形AIが時間関係を解釈できる）。
   let includeTimestamps = $state<boolean>(true);
 
+  // 保存設定。文字起こしテキスト保持/録音音声保存/形式/保存先フォルダ。
+  let keepText = $state<boolean>(true);
+  let saveAudio = $state<boolean>(false);
+  let audioFormat = $state<string>("wav");
+  let saveDir = $state<string>(""); // 空=既定(ドキュメント/QuickScribe)
+
   function loadSettings() {
     provider = (localStorage.getItem("provider") as Provider) || "gemini";
     if (!(provider in PROVIDER_LABELS)) provider = "gemini";
@@ -73,6 +79,30 @@
     if (legacyKey && !apiKeys.gemini) apiKeys.gemini = legacyKey;
     recordShortcut = localStorage.getItem("recordShortcut") || DEFAULT_SHORTCUT;
     includeTimestamps = localStorage.getItem("includeTimestamps") !== "false";
+    keepText = localStorage.getItem("keepText") !== "false";
+    saveAudio = localStorage.getItem("saveAudio") === "true";
+    audioFormat = localStorage.getItem("audioFormat") || "wav";
+    saveDir = localStorage.getItem("saveDir") || "";
+  }
+
+  // 保存設定をバックエンドへ反映する（保存系コマンドが参照）。
+  async function syncSaveSettings() {
+    try {
+      await invoke("set_save_settings", {
+        saveDir,
+        saveAudio,
+        audioFormat,
+        keepText,
+      });
+    } catch (e) {
+      console.error("set_save_settings failed", e);
+    }
+  }
+
+  // 保存先フォルダを選ぶ（ディレクトリ選択ダイアログ）。
+  async function pickSaveDir() {
+    const d = await open({ directory: true, multiple: false });
+    if (typeof d === "string") saveDir = d;
   }
   function saveSettings() {
     localStorage.setItem("provider", provider);
@@ -81,6 +111,11 @@
     }
     void applyShortcut();
     localStorage.setItem("includeTimestamps", String(includeTimestamps));
+    localStorage.setItem("keepText", String(keepText));
+    localStorage.setItem("saveAudio", String(saveAudio));
+    localStorage.setItem("audioFormat", audioFormat);
+    localStorage.setItem("saveDir", saveDir);
+    void syncSaveSettings();
     showSettings = false;
     // 鍵が入っていれば現在のプロバイダの最新モデルを取得（強制更新）。
     void resolveCurrentModel(true);
@@ -304,6 +339,7 @@
   onMount(() => {
     loadSettings();
     void applyShortcut();
+    void syncSaveSettings();
     void resolveCurrentModel();
     void checkForUpdate();
     const unToggle = listen("toggle-record", () => toggle());
@@ -498,6 +534,31 @@
         </p>
       </div>
 
+      <div class="meta-group">
+        <span class="meta-title">保存</span>
+        <label class="check">
+          <input type="checkbox" bind:checked={keepText} />
+          文字起こしテキストを保存（.txt）
+        </label>
+        <label class="check">
+          <input type="checkbox" bind:checked={saveAudio} />
+          録音音声を保存
+        </label>
+        {#if saveAudio}
+          <label>
+            音声形式
+            <select bind:value={audioFormat}>
+              <option value="wav">WAV（無圧縮・確実）</option>
+            </select>
+          </label>
+          <p class="tip">Opus（高圧縮・モダン）は近日対応予定です。</p>
+        {/if}
+        <div class="dir-row">
+          <span class="tip">保存先: {saveDir || "既定（ドキュメント/QuickScribe）"}</span>
+          <button class="btn small ghost" onclick={pickSaveDir}>変更</button>
+        </div>
+      </div>
+
       <div class="settings-actions">
         <button class="btn small" onclick={saveSettings}>保存</button>
         <button class="btn small ghost" onclick={() => checkForUpdate(true)}>更新を確認</button>
@@ -647,6 +708,16 @@
     color: #6b7280;
     margin: 0.2rem 0 0;
     line-height: 1.5;
+  }
+  .dir-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+  .dir-row .tip {
+    word-break: break-all;
   }
 
   .update-banner {

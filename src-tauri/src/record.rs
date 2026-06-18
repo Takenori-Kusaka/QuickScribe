@@ -27,9 +27,19 @@ pub struct RecorderState {
     pub current: Mutex<Option<Recording>>,
 }
 
+/// 録音停止後の音声データ。文字起こし用(16kHz mono)と保存用(原音)を併せ持つ。
+pub struct Recorded {
+    /// 文字起こし用に 16kHz mono へ変換済みの音声。
+    pub mono16k: Vec<f32>,
+    /// 保存用の原音（インターリーブ f32・原サンプルレート/チャンネル）。
+    pub raw: Vec<f32>,
+    pub sample_rate: u32,
+    pub channels: u16,
+}
+
 impl Recording {
-    /// 録音を停止し、収集した音声を 16kHz mono f32 で返す。
-    pub fn finish(self) -> Result<Vec<f32>, String> {
+    /// 録音を停止し、文字起こし用(16kHz mono)と保存用(原音)の音声を返す。
+    pub fn finish(self) -> Result<Recorded, String> {
         self.stop.store(true, Ordering::Relaxed);
         let _ = self.join.join();
         let raw = self
@@ -37,7 +47,13 @@ impl Recording {
             .lock()
             .map_err(|_| "録音バッファの取得に失敗".to_string())?
             .clone();
-        Ok(to_mono_16k(&raw, self.sample_rate, self.channels))
+        let mono16k = to_mono_16k(&raw, self.sample_rate, self.channels);
+        Ok(Recorded {
+            mono16k,
+            raw,
+            sample_rate: self.sample_rate,
+            channels: self.channels,
+        })
     }
 }
 

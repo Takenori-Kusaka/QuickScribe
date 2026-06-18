@@ -5,6 +5,7 @@
 // システム音声ループバック・デバイス切替・Stream Deck連携は後続の縦切りで追加する
 // (ADR-0006 によりスコープからは外さない)。
 
+pub mod audio_save;
 pub mod model;
 pub mod record;
 pub mod refine;
@@ -28,16 +29,89 @@ fn note_filename(ts: &str) -> String {
     format!("note-{ts}.txt")
 }
 
-#[tauri::command]
-fn save_note(content: String) -> Result<String, String> {
-    let base = dirs::document_dir()
+/// 保存に関する設定（保存先・音声保存可否/形式・文字起こしテキスト保持）。
+/// フロントの設定から set_save_settings で更新し、保存系コマンドが参照する。
+#[derive(Clone)]
+struct SaveSettings {
+    /// 保存先フォルダ。None は既定(ドキュメント/QuickScribe)。
+    save_dir: Option<String>,
+    /// 録音音声を保存するか。
+    save_audio: bool,
+    /// 保存形式("wav"。今後 "opus")。
+    audio_format: String,
+    /// 文字起こしテキスト(.txt)を保存するか。
+    keep_text: bool,
+}
+
+impl Default for SaveSettings {
+    fn default() -> Self {
+        Self {
+            save_dir: None,
+            save_audio: false,
+            audio_format: "wav".to_string(),
+            keep_text: true,
+        }
+    }
+}
+
+#[derive(Default)]
+struct AppSettings {
+    inner: std::sync::Mutex<SaveSettings>,
+}
+
+/// 現在の保存設定のスナップショットを返す。
+fn current_settings(app: &tauri::AppHandle) -> SaveSettings {
+    app.state::<AppSettings>()
+        .inner
+        .lock()
+        .map(|g| g.clone())
+        .unwrap_or_default()
+}
+
+/// 保存先フォルダを解決する（未設定なら ドキュメント/QuickScribe）。
+fn resolve_save_dir(settings: &SaveSettings) -> Result<std::path::PathBuf, String> {
+    if let Some(d) = settings.save_dir.as_ref().filter(|d| !d.trim().is_empty()) {
+        return Ok(std::path::PathBuf::from(d));
+    }
+    Ok(dirs::document_dir()
         .ok_or_else(|| "ドキュメントフォルダが見つかりません".to_string())?
-        .join("QuickScribe");
-    std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+        .join("QuickScribe"))
+}
+
+/// タイムスタンプ付きファイル名で dir 配下にテキストを書き出し、パスを返す。
+fn save_text_in(dir: &std::path::Path, content: &str) -> Result<String, String> {
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
-    let path = base.join(note_filename(&ts));
+    let path = dir.join(note_filename(&ts));
     std::fs::write(&path, content).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().to_string())
+}
+
+/// フロントの保存設定を反映する。
+#[tauri::command]
+fn set_save_settings(
+    state: tauri::State<'_, AppSettings>,
+    save_dir: Option<String>,
+    save_audio: bool,
+    audio_format: String,
+    keep_text: bool,
+) -> Result<(), String> {
+    let mut s = state
+        .inner
+        .lock()
+        .map_err(|_| "設定のロックに失敗".to_string())?;
+    s.save_dir = save_dir.filter(|d| !d.trim().is_empty());
+    s.save_audio = save_audio;
+    s.audio_format = audio_format;
+    s.keep_text = keep_text;
+    Ok(())
+}
+
+/// 整形結果など任意テキストを保存先へ書き出す（整形は常に保存）。
+#[tauri::command]
+fn save_note(app: tauri::AppHandle, content: String) -> Result<String, String> {
+    let dir = resolve_save_dir(&current_settings(&app))?;
+    save_text_in(&dir, &content)
 }
 
 /// 16kHz mono 音声を文字起こしし、保存して返す共通処理（録音/ファイル入力で共用）。
@@ -74,7 +148,13 @@ fn transcribe_blocking(
         },
     )?;
 
-    let _ = save_note(text.clone())?;
+    // 文字起こしテキストの保存は設定(keep_text)に従う。保存先も設定を尊重。
+    let settings = current_settings(app);
+    if settings.keep_text {
+        if let Ok(dir) = resolve_save_dir(&settings) {
+            let _ = save_text_in(&dir, &text);
+        }
+    }
     let _ = app.emit("status", "");
     let _ = app.emit("progress", 100);
     Ok(text)
@@ -134,11 +214,36 @@ async fn stop_recording(
             .map_err(|_| "録音状態のロックに失敗".to_string())?;
         cur.take().ok_or_else(|| "録音していません".to_string())?
     };
-    let audio = recording.finish()?;
-    if audio.is_empty() {
+    let recorded = recording.finish()?;
+    if recorded.mono16k.is_empty() {
         return Err("録音データが空でした（マイク入力を確認してください）".into());
     }
 
+    // 音声保存（設定ON時のみ）。原音をそのまま保存し、文字起こし用16kHzとは独立。
+    let settings = current_settings(&app);
+    if settings.save_audio {
+        if let Ok(dir) = resolve_save_dir(&settings) {
+            let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+            let stem = format!("rec-{ts}");
+            // 現状は WAV のみ（Opus/.opus は後続PRで audio_format=="opus" に対応）。
+            match audio_save::save_wav(
+                &recorded.raw,
+                recorded.sample_rate,
+                recorded.channels,
+                &dir,
+                &stem,
+            ) {
+                Ok(p) => {
+                    let _ = app.emit("status", format!("音声を保存しました: {}", p.display()));
+                }
+                Err(e) => {
+                    let _ = app.emit("status", format!("音声保存に失敗: {e}"));
+                }
+            }
+        }
+    }
+
+    let audio = recorded.mono16k;
     tauri::async_runtime::spawn_blocking(move || transcribe_blocking(&app, &audio, timestamps))
         .await
         .map_err(|e| e.to_string())?
@@ -176,6 +281,7 @@ async fn resolve_model(provider: String, api_key: String) -> Result<String, Stri
 /// APIキー・モデルはフロントの設定から渡す（コードに鍵を埋め込まない / ADR-0005）。
 #[tauri::command]
 async fn refine_text(
+    app: tauri::AppHandle,
     text: String,
     provider: String,
     api_key: String,
@@ -188,7 +294,10 @@ async fn refine_text(
             model
         };
         let refined = refine::refine(&provider, &api_key, &m, &text)?;
-        let _ = save_note(refined.clone())?;
+        // 整形結果（ジャーナルの成果物）は常に保存先へ書き出す。
+        if let Ok(dir) = resolve_save_dir(&current_settings(&app)) {
+            let _ = save_text_in(&dir, &refined);
+        }
         Ok::<String, String>(refined)
     })
     .await
@@ -270,6 +379,7 @@ pub fn run() {
                 .build(),
         )
         .manage(record::RecorderState::default())
+        .manage(AppSettings::default())
         .invoke_handler(tauri::generate_handler![
             save_note,
             transcribe_file,
@@ -278,7 +388,8 @@ pub fn run() {
             resolve_model,
             refine_text,
             read_text_file,
-            set_record_shortcut
+            set_record_shortcut,
+            set_save_settings
         ])
         // ウィンドウを閉じてもアプリは終了せず、トレイに常駐する（タスクバー常駐の挙動）。
         // ただし E2E(QUICKSCRIBE_E2E=1)時はドライバが正常終了できるよう既定の閉じる挙動にする。
