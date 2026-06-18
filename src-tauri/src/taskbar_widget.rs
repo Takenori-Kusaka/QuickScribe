@@ -11,16 +11,16 @@ use std::sync::OnceLock;
 
 use tauri::{Emitter, Manager};
 use windows::core::{w, PCWSTR};
-use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreateSolidBrush, DeleteObject, Ellipse, EndPaint, FillRect, FrameRect, Rectangle,
-    SelectObject, HGDIOBJ, PAINTSTRUCT,
+    BeginPaint, CreateSolidBrush, DeleteObject, Ellipse, EndPaint, FillRect, FrameRect,
+    InvalidateRect, Rectangle, SelectObject, HGDIOBJ, PAINTSTRUCT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, FindWindowExW, FindWindowW, GetClientRect, GetWindowRect,
-    InvalidateRect, LoadCursorW, MoveWindow, RegisterClassW, SetTimer, HINSTANCE, IDC_ARROW,
-    WINDOW_EX_STYLE, WM_LBUTTONUP, WM_PAINT, WM_TIMER, WNDCLASSW, WS_CHILD, WS_VISIBLE,
+    LoadCursorW, MoveWindow, RegisterClassW, SetTimer, IDC_ARROW, WINDOW_EX_STYLE, WM_LBUTTONUP,
+    WM_PAINT, WM_TIMER, WNDCLASSW, WS_CHILD, WS_VISIBLE,
 };
 
 /// 録音中フラグ（描画に使用）。
