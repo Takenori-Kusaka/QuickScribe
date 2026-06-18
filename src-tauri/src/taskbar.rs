@@ -10,6 +10,10 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use tauri::Emitter;
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Graphics::Gdi::{
+    CreateBitmap, CreateDIBSection, DeleteObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+    DIB_RGB_COLORS, HGDIOBJ,
+};
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
 };
@@ -18,8 +22,8 @@ use windows::Win32::UI::Shell::{
     THB_FLAGS, THB_ICON, THB_TOOLTIP, THUMBBUTTON,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    ChangeWindowMessageFilterEx, LoadIconW, PostMessageW, RegisterWindowMessageW, HICON,
-    IDI_APPLICATION, IDI_ERROR, MSGFLT_ALLOW, WM_APP, WM_COMMAND,
+    ChangeWindowMessageFilterEx, CreateIconIndirect, LoadIconW, PostMessageW, RegisterWindowMessageW,
+    HICON, ICONINFO, IDI_APPLICATION, MSGFLT_ALLOW, WM_APP, WM_COMMAND,
 };
 
 /// 録音トグルボタンのID（WM_COMMAND の LOWORD で判定）。
@@ -143,6 +147,56 @@ unsafe fn app_icon() -> HICON {
     LoadIconW(None, IDI_APPLICATION).unwrap_or_default()
 }
 
+/// 「録音中」を表す赤い丸（●）のアイコンを生成する。
+/// RECインジケータの一般的慣習（カメラ/レコーダ/配信アプリ等が赤丸）に倣う。
+/// 32bppのアルファ付きDIBSection（CreateBitmapのDDBはアルファが不安定なため）で作る。
+unsafe fn recording_icon() -> HICON {
+    const N: i32 = 16;
+    let mut bmi = BITMAPINFO::default();
+    bmi.bmiHeader = BITMAPINFOHEADER {
+        biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+        biWidth: N,
+        biHeight: -N, // 負=トップダウン
+        biPlanes: 1,
+        biBitCount: 32,
+        biCompression: BI_RGB.0 as u32,
+        ..Default::default()
+    };
+    let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
+    let hbm_color = match CreateDIBSection(None, &bmi, DIB_RGB_COLORS, &mut bits, None, 0) {
+        Ok(h) if !bits.is_null() => h,
+        _ => return HICON::default(),
+    };
+
+    // 円の内側＝不透明な赤、外側＝完全透明（プリマルチプライドではなく素のARGBでOK）。
+    let px = bits as *mut u32;
+    let center = (N as f32 - 1.0) / 2.0;
+    let radius = center - 0.5;
+    for y in 0..N {
+        for x in 0..N {
+            let dx = x as f32 - center;
+            let dy = y as f32 - center;
+            let inside = dx * dx + dy * dy <= radius * radius;
+            // BGRA(LE)で 0xAARRGGBB。内側=不透明な赤、外側=透明。
+            let v: u32 = if inside { 0xFFE0_2020 } else { 0x0000_0000 };
+            *px.add((y * N + x) as usize) = v;
+        }
+    }
+
+    let hbm_mask = CreateBitmap(N, N, 1, 1, None);
+    let info = ICONINFO {
+        fIcon: true.into(),
+        xHotspot: 0,
+        yHotspot: 0,
+        hbmMask: hbm_mask,
+        hbmColor: hbm_color,
+    };
+    let icon = CreateIconIndirect(&info).unwrap_or_default();
+    let _ = DeleteObject(HGDIOBJ(hbm_color.0));
+    let _ = DeleteObject(HGDIOBJ(hbm_mask.0));
+    icon
+}
+
 /// タスクバーボタンに録音中バッジ(オーバーレイアイコン)を表示/解除する。
 /// hwnd_raw は WebviewWindow::hwnd() の生ポインタ(isize)。録音状態をタスクバー上で可視化する。
 pub fn set_overlay(hwnd_raw: isize, recording: bool) {
@@ -156,8 +210,8 @@ pub fn set_overlay(hwnd_raw: isize, recording: bool) {
         let _ = taskbar.HrInit();
         let hwnd = HWND(hwnd_raw as *mut _);
         if recording {
-            // 赤系の標準アイコンを録音中バッジとして重ねる（専用アイコンは今後差し替え）。
-            let icon = LoadIconW(None, IDI_ERROR).unwrap_or_default();
+            // 録音中＝赤い丸（●）。RECインジケータの世界的慣習に倣う。
+            let icon = recording_icon();
             let _ = taskbar.SetOverlayIcon(hwnd, icon, w!("録音中"));
         } else {
             let _ = taskbar.SetOverlayIcon(hwnd, HICON::default(), PCWSTR::null());
