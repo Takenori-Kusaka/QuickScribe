@@ -58,6 +58,9 @@
   let recordShortcut = $state<string>(DEFAULT_SHORTCUT);
   let shortcutMsg = $state<string>("");
 
+  // 文字起こしメタデータ設定。タイムスタンプは既定ON（整形AIが時間関係を解釈できる）。
+  let includeTimestamps = $state<boolean>(true);
+
   function loadSettings() {
     provider = (localStorage.getItem("provider") as Provider) || "gemini";
     if (!(provider in PROVIDER_LABELS)) provider = "gemini";
@@ -69,6 +72,7 @@
     const legacyKey = localStorage.getItem("geminiKey");
     if (legacyKey && !apiKeys.gemini) apiKeys.gemini = legacyKey;
     recordShortcut = localStorage.getItem("recordShortcut") || DEFAULT_SHORTCUT;
+    includeTimestamps = localStorage.getItem("includeTimestamps") !== "false";
   }
   function saveSettings() {
     localStorage.setItem("provider", provider);
@@ -76,6 +80,7 @@
       localStorage.setItem(`apiKey:${p}`, apiKeys[p]);
     }
     void applyShortcut();
+    localStorage.setItem("includeTimestamps", String(includeTimestamps));
     showSettings = false;
     // 鍵が入っていれば現在のプロバイダの最新モデルを取得（強制更新）。
     void resolveCurrentModel(true);
@@ -200,7 +205,10 @@
     if (typeof selected !== "string") return;
     busy = true;
     try {
-      const text = await invoke<string>("transcribe_file", { path: selected });
+      const text = await invoke<string>("transcribe_file", {
+        path: selected,
+        timestamps: includeTimestamps,
+      });
       transcript = text;
     } catch (e) {
       error = String(e);
@@ -280,7 +288,9 @@
       startedAt = null;
       busy = true;
       try {
-        const text = await invoke<string>("stop_recording");
+        const text = await invoke<string>("stop_recording", {
+          timestamps: includeTimestamps,
+        });
         if (text) transcript = text;
       } catch (e) {
         error = String(e);
@@ -321,7 +331,8 @@
   });
 </script>
 
-<main>
+<main class:has-settings={showSettings}>
+  <div class="content">
   <header>
     <div class="title-row">
       <h1>QuickScribe</h1>
@@ -337,49 +348,6 @@
     </div>
     <p class="tagline">思考整理・自己理解のためのボイスジャーナル</p>
   </header>
-
-  {#if showSettings}
-    <section class="settings">
-      <h2>設定</h2>
-      <label>
-        整形プロバイダ
-        <select bind:value={provider} onchange={() => resolveCurrentModel()}>
-          <option value="gemini">Gemini</option>
-          <option value="anthropic">Anthropic (Claude)</option>
-          <option value="openai">OpenAI</option>
-        </select>
-      </label>
-      <label>
-        {PROVIDER_LABELS[provider]} APIキー（整形に使用・端末内のみ保存）
-        <input
-          type="password"
-          bind:value={apiKeys[provider]}
-          placeholder={KEY_PLACEHOLDERS[provider]}
-          autocomplete="off"
-        />
-      </label>
-      <p class="muted model-hint">
-        モデル: <code>{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code>
-        {#if resolvingModel}（取得中…）{:else if resolvedModel[provider]}（最新を自動取得）{:else}（最新ミドルレンジを自動選択）{/if}
-      </p>
-      <label>
-        録音開始/停止のホットキー（入力欄を選んで押したいキーを押す）
-        <input
-          type="text"
-          readonly
-          value={recordShortcut}
-          onkeydown={onShortcutKeydown}
-          placeholder="例: CommandOrControl+Shift+R"
-        />
-      </label>
-      {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
-      <div class="settings-actions">
-        <button class="btn small" onclick={saveSettings}>保存</button>
-        <button class="btn small ghost" onclick={() => checkForUpdate(true)}>更新を確認</button>
-      </div>
-      {#if updateMsg}<p class="muted">{updateMsg}</p>{/if}
-    </section>
-  {/if}
 
   {#if updateState === "downloading"}
     <div class="update-banner">
@@ -480,9 +448,70 @@
   {#if error}
     <p class="error">{error}</p>
   {/if}
+  </div>
+
+  {#if showSettings}
+    <aside class="settings">
+      <h2>設定</h2>
+      <label>
+        整形プロバイダ
+        <select bind:value={provider} onchange={() => resolveCurrentModel()}>
+          <option value="gemini">Gemini</option>
+          <option value="anthropic">Anthropic (Claude)</option>
+          <option value="openai">OpenAI</option>
+        </select>
+      </label>
+      <label>
+        {PROVIDER_LABELS[provider]} APIキー（整形に使用・端末内のみ保存）
+        <input
+          type="password"
+          bind:value={apiKeys[provider]}
+          placeholder={KEY_PLACEHOLDERS[provider]}
+          autocomplete="off"
+        />
+      </label>
+      <p class="muted model-hint">
+        モデル: <code>{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code>
+        {#if resolvingModel}（取得中…）{:else if resolvedModel[provider]}（最新を自動取得）{:else}（最新ミドルレンジを自動選択）{/if}
+      </p>
+      <label>
+        録音開始/停止のホットキー（入力欄を選んで押したいキーを押す）
+        <input
+          type="text"
+          readonly
+          value={recordShortcut}
+          onkeydown={onShortcutKeydown}
+          placeholder="例: CommandOrControl+Shift+R"
+        />
+      </label>
+      {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
+
+      <div class="meta-group">
+        <span class="meta-title">文字起こしのメタデータ</span>
+        <label class="check">
+          <input type="checkbox" bind:checked={includeTimestamps} />
+          タイムスタンプを含める
+        </label>
+        <p class="tip">発話の時間関係をAI整形が解釈できます。速度への影響はほぼありません。</p>
+        <p class="tip">
+          ※話者の区別（誰が話したか）はwhisper単体では非対応です（特に日本語）。
+        </p>
+      </div>
+
+      <div class="settings-actions">
+        <button class="btn small" onclick={saveSettings}>保存</button>
+        <button class="btn small ghost" onclick={() => checkForUpdate(true)}>更新を確認</button>
+      </div>
+      {#if updateMsg}<p class="muted">{updateMsg}</p>{/if}
+    </aside>
+  {/if}
 </main>
 
 <style>
+  /* スクロールバーの領域を常時確保し、設定展開でバーが出てもレイアウトがずれないようにする。 */
+  :global(html) {
+    scrollbar-gutter: stable;
+  }
   :global(body) {
     margin: 0;
     background: #f3f4f6;
@@ -495,6 +524,31 @@
     padding: 1.25rem 1.25rem 1.75rem;
     max-width: 560px;
     margin: 0 auto;
+    display: flex;
+    gap: 1.25rem;
+    align-items: flex-start;
+  }
+  /* 設定パネルを開いている間は横幅を広げ、ウィンドウが広ければ本体と横並びにする。 */
+  main.has-settings {
+    max-width: 960px;
+  }
+  .content {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .settings {
+    flex: 0 0 320px;
+  }
+  /* 狭いウィンドウでは縦積み（設定を上に出す）。広げると自動で横並びになる。 */
+  @media (max-width: 720px) {
+    main {
+      flex-direction: column;
+    }
+    .settings {
+      flex-basis: auto;
+      width: 100%;
+      order: -1;
+    }
   }
   header {
     margin-bottom: 1.1rem;
@@ -563,6 +617,36 @@
   .settings-actions {
     display: flex;
     gap: 0.5rem;
+  }
+  .meta-group {
+    border-top: 1px solid #eef0f3;
+    padding-top: 0.7rem;
+    margin-bottom: 0.8rem;
+  }
+  .meta-title {
+    display: block;
+    font-size: 0.76rem;
+    color: #4b5563;
+    font-weight: 600;
+    margin-bottom: 0.45rem;
+  }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.84rem;
+    color: #1f2330;
+    margin-bottom: 0.3rem;
+  }
+  .check input {
+    width: auto;
+    margin: 0;
+  }
+  .tip {
+    font-size: 0.7rem;
+    color: #6b7280;
+    margin: 0.2rem 0 0;
+    line-height: 1.5;
   }
 
   .update-banner {

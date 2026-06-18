@@ -18,11 +18,14 @@ use windows::Win32::UI::Shell::{
     THB_FLAGS, THB_ICON, THB_TOOLTIP, THUMBBUTTON,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    LoadIconW, RegisterWindowMessageW, HICON, IDI_APPLICATION, WM_COMMAND,
+    LoadIconW, PostMessageW, RegisterWindowMessageW, HICON, IDI_APPLICATION, WM_APP, WM_COMMAND,
 };
 
 /// 録音トグルボタンのID（WM_COMMAND の LOWORD で判定）。
 const TOGGLE_BTN_ID: u32 = 1;
+
+/// 競合保険でボタン追加を再試行させる自分宛メッセージ。
+const WM_ADD_THUMBBUTTONS: u32 = WM_APP + 1;
 
 /// "TaskbarButtonCreated" の登録メッセージID（Explorer再起動時にも再送される）。
 static TASKBAR_CREATED_MSG: AtomicU32 = AtomicU32::new(0);
@@ -43,6 +46,21 @@ pub fn install(window: &tauri::WebviewWindow, app: tauri::AppHandle) {
         TASKBAR_CREATED_MSG.store(msg, Ordering::Relaxed);
         let refdata: *mut tauri::AppHandle = Box::into_raw(Box::new(app));
         let _ = SetWindowSubclass(hwnd, Some(subclass_proc), 0, refdata as usize);
+
+        // 競合保険: TaskbarButtonCreated を取りこぼしても、表示が落ち着いた頃に
+        // 自分宛メッセージを送ってボタン追加を再試行する（HWNDはisizeでスレッドへ渡す）。
+        let hwnd_raw = hwnd.0 as isize;
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            unsafe {
+                let _ = PostMessageW(
+                    Some(HWND(hwnd_raw as *mut _)),
+                    WM_ADD_THUMBBUTTONS,
+                    WPARAM(0),
+                    LPARAM(0),
+                );
+            }
+        });
     }
 }
 
@@ -58,7 +76,7 @@ unsafe extern "system" fn subclass_proc(
     let app = &*(refdata as *const tauri::AppHandle);
 
     let created = TASKBAR_CREATED_MSG.load(Ordering::Relaxed);
-    if created != 0 && msg == created {
+    if (created != 0 && msg == created) || msg == WM_ADD_THUMBBUTTONS {
         if let Err(e) = add_buttons(hwnd) {
             eprintln!("サムネイルボタン追加に失敗: {e}");
         }
