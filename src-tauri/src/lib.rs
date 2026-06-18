@@ -321,6 +321,23 @@ fn read_text_file(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|e| format!("テキストの読み込みに失敗: {e}"))
 }
 
+/// タスクバーボタンに録音中バッジ(オーバーレイ)を表示/解除する（Windowsのみ。状態の可視化）。
+#[tauri::command]
+fn set_recording_overlay(app: tauri::AppHandle, recording: bool) {
+    #[cfg(windows)]
+    {
+        if let Some(w) = app.get_webview_window("main") {
+            if let Ok(h) = w.hwnd() {
+                taskbar::set_overlay(h.0 as isize, recording);
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (&app, recording);
+    }
+}
+
 /// 録音トグルのグローバルホットキーを再設定する（設定でキー変更可能にする）。
 /// 受理形式は Tauri アクセラレータ表記（例: "CommandOrControl+Shift+R"）。
 #[tauri::command]
@@ -400,7 +417,8 @@ pub fn run() {
             refine_text,
             read_text_file,
             set_record_shortcut,
-            set_save_settings
+            set_save_settings,
+            set_recording_overlay
         ])
         // ウィンドウを閉じてもアプリは終了せず、トレイに常駐する（タスクバー常駐の挙動）。
         // ただし E2E(QUICKSCRIBE_E2E=1)時はドライバが正常終了できるよう既定の閉じる挙動にする。
@@ -425,7 +443,7 @@ pub fn run() {
 
             TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("QuickScribe — クリックで録音 開始/停止")
+                .tooltip("QuickScribe")
                 .menu(&menu)
                 // 右クリックメニューのみで開閉しないよう、左クリックの既定メニュー表示は無効化
                 .show_menu_on_left_click(false)
@@ -438,8 +456,7 @@ pub fn run() {
                     "show" => show_main_window(app),
                     _ => {}
                 })
-                // トレイアイコン左クリックで録音トグル（最短操作で録音開始/停止）。
-                // ウィンドウ表示は右クリックメニューの「ウィンドウを表示」から行う。
+                // トレイアイコン左クリックでウィンドウを表示（録音操作はタスクバーから行う）。
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
@@ -447,7 +464,7 @@ pub fn run() {
                         ..
                     } = event
                     {
-                        let _ = tray.app_handle().emit("toggle-record", ());
+                        show_main_window(tray.app_handle());
                     }
                 })
                 .build(app)?;
