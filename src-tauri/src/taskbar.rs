@@ -5,7 +5,7 @@
 //
 // 注: このモジュールは #[cfg(windows)] でのみコンパイルされる。実行時挙動はWindows実機で要確認。
 
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use tauri::Emitter;
 use windows::core::w;
@@ -18,7 +18,8 @@ use windows::Win32::UI::Shell::{
     THB_FLAGS, THB_ICON, THB_TOOLTIP, THUMBBUTTON,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    LoadIconW, PostMessageW, RegisterWindowMessageW, HICON, IDI_APPLICATION, WM_APP, WM_COMMAND,
+    ChangeWindowMessageFilterEx, LoadIconW, PostMessageW, RegisterWindowMessageW, HICON,
+    IDI_APPLICATION, MSGFLT_ALLOW, WM_APP, WM_COMMAND,
 };
 
 /// 録音トグルボタンのID（WM_COMMAND の LOWORD で判定）。
@@ -29,6 +30,9 @@ const WM_ADD_THUMBBUTTONS: u32 = WM_APP + 1;
 
 /// "TaskbarButtonCreated" の登録メッセージID（Explorer再起動時にも再送される）。
 static TASKBAR_CREATED_MSG: AtomicU32 = AtomicU32::new(0);
+
+/// 既にボタンを追加済みか（二重 Add を避け、2回目以降は Update にする）。
+static BUTTONS_ADDED: AtomicBool = AtomicBool::new(false);
 
 /// メインウィンドウにサムネイルツールバーを取り付ける（setup から呼ぶ）。
 /// AppHandle は subclass の dwRefData に渡すため Box でリーク（アプリ寿命と同じ）。
@@ -46,6 +50,12 @@ pub fn install(window: &tauri::WebviewWindow, app: tauri::AppHandle) {
         TASKBAR_CREATED_MSG.store(msg, Ordering::Relaxed);
         let refdata: *mut tauri::AppHandle = Box::into_raw(Box::new(app));
         let _ = SetWindowSubclass(hwnd, Some(subclass_proc), 0, refdata as usize);
+
+        // UIPI対策（MS公式サンプル準拠）。昇格起動時に TaskbarButtonCreated と
+        // クリックの WM_COMMAND がメッセージフィルタで遮断されると「何も出ない」ため、
+        // 明示的に許可する（非昇格でも無害）。これが出ない最有力原因への対処。
+        let _ = ChangeWindowMessageFilterEx(hwnd, msg, MSGFLT_ALLOW, None);
+        let _ = ChangeWindowMessageFilterEx(hwnd, WM_COMMAND, MSGFLT_ALLOW, None);
 
         // 競合保険: TaskbarButtonCreated を取りこぼしても、表示が落ち着いた頃に
         // 自分宛メッセージを送ってボタン追加を再試行する（HWNDはisizeでスレッドへ渡す）。
@@ -77,8 +87,11 @@ unsafe extern "system" fn subclass_proc(
 
     let created = TASKBAR_CREATED_MSG.load(Ordering::Relaxed);
     if (created != 0 && msg == created) || msg == WM_ADD_THUMBBUTTONS {
-        if let Err(e) = add_buttons(hwnd) {
-            eprintln!("サムネイルボタン追加に失敗: {e}");
+        // 初回は Add、2回目以降は Update（ThumbBarAddButtonsは一度きりのため）。
+        let already = BUTTONS_ADDED.swap(true, Ordering::Relaxed);
+        if let Err(e) = add_or_update_buttons(hwnd, already) {
+            BUTTONS_ADDED.store(false, Ordering::Relaxed); // 次回再試行できるよう戻す。
+            eprintln!("サムネイルボタン設定に失敗: {e}");
         }
     }
 
@@ -94,8 +107,8 @@ unsafe extern "system" fn subclass_proc(
     DefSubclassProc(hwnd, msg, wparam, lparam)
 }
 
-/// ITaskbarList3 を生成してサムネイルボタンを追加する。
-unsafe fn add_buttons(hwnd: HWND) -> windows::core::Result<()> {
+/// ITaskbarList3 でサムネイルボタンを追加（初回）または更新（2回目以降）する。
+unsafe fn add_or_update_buttons(hwnd: HWND, update: bool) -> windows::core::Result<()> {
     // COM はUIスレッドで既に初期化済みのことが多いが、念のため（既存モードと衝突しても無視）。
     let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
 
@@ -118,7 +131,11 @@ unsafe fn add_buttons(hwnd: HWND) -> windows::core::Result<()> {
         szTip: tip,
         dwFlags: THBF_ENABLED,
     }];
-    taskbar.ThumbBarAddButtons(hwnd, &buttons)
+    if update {
+        taskbar.ThumbBarUpdateButtons(hwnd, &buttons)
+    } else {
+        taskbar.ThumbBarAddButtons(hwnd, &buttons)
+    }
 }
 
 /// ボタン用アイコン（取得失敗時はnull=アイコン無し表示）。
