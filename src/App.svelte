@@ -308,6 +308,8 @@
         await invoke("start_recording");
         recording = true;
         startedAt = Date.now();
+        // タスクバーボタンに録音中バッジを表示（状態の可視化）。
+        void invoke("set_recording_overlay", { recording: true });
         // 新しい録音に向けて表示をリセット。
         transcript = null;
         refined = null;
@@ -321,6 +323,8 @@
     } else {
       recording = false;
       startedAt = null;
+      // タスクバーの録音中バッジを解除。
+      void invoke("set_recording_overlay", { recording: false });
       busy = true;
       try {
         const text = await invoke<string>("stop_recording", {
