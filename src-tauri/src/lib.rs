@@ -205,9 +205,9 @@ async fn stop_recording(
     app: tauri::AppHandle,
     state: tauri::State<'_, record::RecorderState>,
     timestamps: bool,
-) -> Result<String, String> {
+) -> Result<(), String> {
     if std::env::var("QUICKSCRIBE_E2E").is_ok() {
-        return Ok(String::new());
+        return Ok(());
     }
     // 録音ハンドルを取り出して停止し、音声(16k mono)を得る。ロックは await をまたがない。
     let recording = {
@@ -226,33 +226,51 @@ async fn stop_recording(
     let channels = recorded.channels;
     let audio = recorded.mono16k;
 
-    tauri::async_runtime::spawn_blocking(move || {
-        let text = transcribe_blocking(&app, &audio, timestamps)?;
-        // 文字起こし対象（発話）が無ければ、音声は保存せず空を返す（フロントで通知）。
-        if text.trim().is_empty() {
-            let _ = app.emit("status", "");
-            return Ok(String::new());
-        }
-        // 音声保存は「文字起こし対象があった場合かつ設定ON」のみ。原音を保存。
-        let settings = current_settings(&app);
-        if settings.save_audio {
-            if let Ok(dir) = resolve_save_dir(&settings) {
-                let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
-                let stem = format!("rec-{ts}");
-                let result = if settings.audio_format == "opus" {
-                    audio_save::save_opus(&raw, sample_rate, channels, &dir, &stem)
-                } else {
-                    audio_save::save_wav(&raw, sample_rate, channels, &dir, &stem)
-                };
-                if let Err(e) = result {
-                    let _ = app.emit("status", format!("音声保存に失敗: {e}"));
+    // 文字起こしはバックグラウンドで実行（録音の非同期化＝stopは即返り録音状態を解放する）。
+    // これにより文字起こし/整形中でも次の録音を開始できる。結果はイベントで通知する。
+    let app_evt = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let app_blk = app_evt.clone();
+        let result = tauri::async_runtime::spawn_blocking(move || {
+            let text = transcribe_blocking(&app_blk, &audio, timestamps)?;
+            // 文字起こし対象（発話）が無ければ、音声は保存せず空を返す。
+            if text.trim().is_empty() {
+                let _ = app_blk.emit("status", "");
+                return Ok::<String, String>(String::new());
+            }
+            // 音声保存は「文字起こし対象があった場合かつ設定ON」のみ。原音を保存。
+            let settings = current_settings(&app_blk);
+            if settings.save_audio {
+                if let Ok(dir) = resolve_save_dir(&settings) {
+                    let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+                    let stem = format!("rec-{ts}");
+                    let r = if settings.audio_format == "opus" {
+                        audio_save::save_opus(&raw, sample_rate, channels, &dir, &stem)
+                    } else {
+                        audio_save::save_wav(&raw, sample_rate, channels, &dir, &stem)
+                    };
+                    if let Err(e) = r {
+                        let _ = app_blk.emit("status", format!("音声保存に失敗: {e}"));
+                    }
                 }
             }
+            Ok(text)
+        })
+        .await;
+        match result {
+            Ok(Ok(text)) => {
+                let _ = app_evt.emit("transcribe-done", text);
+            }
+            Ok(Err(e)) => {
+                let _ = app_evt.emit("transcribe-error", e);
+            }
+            Err(e) => {
+                let _ = app_evt.emit("transcribe-error", e.to_string());
+            }
         }
-        Ok(text)
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    });
+
+    Ok(())
 }
 
 /// 実行時のモデル解決に失敗したときのフォールバック既定（ミドルレンジ相当）。
@@ -319,6 +337,19 @@ fn read_text_file(path: String) -> Result<String, String> {
 /// タスクバーボタンに録音中バッジ(オーバーレイ)を表示/解除する（Windowsのみ。状態の可視化）。
 #[tauri::command]
 fn set_recording_overlay(app: tauri::AppHandle, recording: bool) {
+    // トレイのツールチップ＋アイコンで録音状態を表示（全プラットフォーム）。
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        let _ = tray.set_tooltip(Some(if recording {
+            "QuickScribe — 録音中"
+        } else {
+            "QuickScribe — 待機中"
+        }));
+        if recording {
+            let _ = tray.set_icon(Some(recording_tray_image()));
+        } else if let Some(def) = app.default_window_icon().cloned() {
+            let _ = tray.set_icon(Some(def));
+        }
+    }
     #[cfg(windows)]
     {
         if let Some(w) = app.get_webview_window("main") {
@@ -329,10 +360,28 @@ fn set_recording_overlay(app: tauri::AppHandle, recording: bool) {
         // タスクバー埋め込みウィジェットのボタン表示（録音⇄停止）も更新。
         taskbar_widget::set_recording(recording);
     }
-    #[cfg(not(windows))]
-    {
-        let _ = (&app, recording);
+}
+
+/// トレイ用の「録音中」アイコン（赤い丸）を生成する。
+fn recording_tray_image() -> tauri::image::Image<'static> {
+    const N: u32 = 32;
+    let mut rgba = vec![0u8; (N * N * 4) as usize];
+    let center = (N as f32 - 1.0) / 2.0;
+    let radius = center - 2.0;
+    for y in 0..N {
+        for x in 0..N {
+            let dx = x as f32 - center;
+            let dy = y as f32 - center;
+            if dx * dx + dy * dy <= radius * radius {
+                let i = ((y * N + x) * 4) as usize;
+                rgba[i] = 0xE0; // R
+                rgba[i + 1] = 0x20; // G
+                rgba[i + 2] = 0x20; // B
+                rgba[i + 3] = 0xFF; // A
+            }
+        }
     }
+    tauri::image::Image::new_owned(rgba, N, N)
 }
 
 /// 録音トグルのグローバルホットキーを再設定する（設定でキー変更可能にする）。

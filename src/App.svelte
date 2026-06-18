@@ -19,6 +19,8 @@
   let refined = $state<string | null>(null);
   let refining = $state(false);
   let busy = $state(false);
+  // バックグラウンド文字起こし中（録音ボタンはブロックしない＝録音の非同期化）。
+  let transcribing = $state(false);
 
   // 設定（localStorageに保存。秘密情報はローカル端末内のみ）。
   // 整形プロバイダは Gemini / Anthropic(Claude) / OpenAI の3種をサポート(BYO鍵 / ADR-0005)。
@@ -60,6 +62,8 @@
 
   // 文字起こしメタデータ設定。タイムスタンプは既定ON（整形AIが時間関係を解釈できる）。
   let includeTimestamps = $state<boolean>(true);
+  // 停止後に文字起こし→整形まで自動実行する（一気通貫）。
+  let autoPipeline = $state<boolean>(false);
 
   // 保存設定。文字起こしテキスト保持/録音音声保存/形式/保存先フォルダ。
   let keepText = $state<boolean>(true);
@@ -79,6 +83,7 @@
     if (legacyKey && !apiKeys.gemini) apiKeys.gemini = legacyKey;
     recordShortcut = localStorage.getItem("recordShortcut") || DEFAULT_SHORTCUT;
     includeTimestamps = localStorage.getItem("includeTimestamps") !== "false";
+    autoPipeline = localStorage.getItem("autoPipeline") === "true";
     keepText = localStorage.getItem("keepText") !== "false";
     saveAudio = localStorage.getItem("saveAudio") === "true";
     audioFormat = localStorage.getItem("audioFormat") || "opus";
@@ -111,6 +116,7 @@
     }
     void applyShortcut();
     localStorage.setItem("includeTimestamps", String(includeTimestamps));
+    localStorage.setItem("autoPipeline", String(autoPipeline));
     localStorage.setItem("keepText", String(keepText));
     localStorage.setItem("saveAudio", String(saveAudio));
     localStorage.setItem("audioFormat", audioFormat);
@@ -325,22 +331,14 @@
       startedAt = null;
       // タスクバーの録音中バッジを解除。
       void invoke("set_recording_overlay", { recording: false });
-      busy = true;
+      // 文字起こしはバックグラウンドで走る（録音はすぐ再開できる＝非同期）。
+      // 結果は transcribe-done / transcribe-error イベントで受け取る。
+      transcribing = true;
       try {
-        const text = await invoke<string>("stop_recording", {
-          timestamps: includeTimestamps,
-        });
-        if (text) {
-          transcript = text;
-        } else {
-          // 文字起こし対象（発話）が無かった → 音声は保存していない旨を表示。
-          error = "文字起こしできる音声が含まれていませんでした（音声は保存していません）。";
-        }
+        await invoke("stop_recording", { timestamps: includeTimestamps });
       } catch (e) {
+        transcribing = false;
         error = String(e);
-      } finally {
-        busy = false;
-        status = "";
       }
     }
   }
@@ -367,11 +365,31 @@
       const t = e.payload.trim();
       if (t) segments = [...segments, t];
     });
+    // バックグラウンド文字起こしの完了/失敗（録音の非同期化）。
+    const unDone = listen<string>("transcribe-done", (e) => {
+      transcribing = false;
+      status = "";
+      const text = e.payload;
+      if (text) {
+        transcript = text;
+        // 一気通貫: 自動で整形まで実行（鍵がある時のみ）。
+        if (autoPipeline && apiKeys[provider].trim()) void refineNow();
+      } else {
+        error = "文字起こしできる音声が含まれていませんでした（音声は保存していません）。";
+      }
+    });
+    const unErr = listen<string>("transcribe-error", (e) => {
+      transcribing = false;
+      status = "";
+      error = e.payload;
+    });
     return () => {
       unToggle.then((f) => f());
       unStatus.then((f) => f());
       unProgress.then((f) => f());
       unSegment.then((f) => f());
+      unDone.then((f) => f());
+      unErr.then((f) => f());
     };
   });
 </script>
@@ -445,7 +463,7 @@
 
   <p class="hint">録音ホットキー: <code>{recordShortcut}</code>（設定で変更可）</p>
 
-  {#if busy || status}
+  {#if busy || transcribing || status}
     <div class="panel">
       <div class="status-row">
         <span class="spinner" aria-hidden="true"></span>
@@ -552,6 +570,13 @@
         </label>
         <p class="tip">
           いつ何を話したかの時刻を残し、AIが話の流れを踏まえて整理します。
+        </p>
+        <label class="check">
+          <input type="checkbox" bind:checked={autoPipeline} />
+          停止後、文字起こしから整形まで自動実行する
+        </label>
+        <p class="tip">
+          録音を止めると、文字起こし→AI整形まで一気に実行します（整形プロバイダの鍵が必要）。
         </p>
       </div>
 
