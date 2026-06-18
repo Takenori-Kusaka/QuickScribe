@@ -55,10 +55,38 @@
   let resolvingModel = $state(false);
   let updateMsg = $state<string>("");
 
-  // 録音トグルのグローバルホットキー（設定で変更可能 / Tauriアクセラレータ表記）。
+  // 録音トグルのグローバルホットキー。内部・保存・登録は Tauri アクセラレータ表記
+  // ("CommandOrControl+Shift+R")だが、表示は実行環境に合わせて Ctrl/Cmd に変換する。
   const DEFAULT_SHORTCUT = "CommandOrControl+Shift+R";
   let recordShortcut = $state<string>(DEFAULT_SHORTCUT);
   let shortcutMsg = $state<string>("");
+
+  // 実行環境(OS)を判定し、修飾キーを親しみやすい表記にする。
+  const IS_MAC =
+    typeof navigator !== "undefined" &&
+    /mac/i.test(`${navigator.userAgent} ${navigator.platform ?? ""}`);
+  function displayShortcut(accel: string): string {
+    return accel
+      .split("+")
+      .map((t) => {
+        switch (t) {
+          case "CommandOrControl":
+          case "CmdOrCtrl":
+            return IS_MAC ? "Cmd" : "Ctrl";
+          case "Control":
+            return "Ctrl";
+          case "Super":
+          case "Meta":
+          case "Command":
+            return IS_MAC ? "Cmd" : "Win";
+          case "Alt":
+            return IS_MAC ? "Option" : "Alt";
+          default:
+            return t;
+        }
+      })
+      .join("+");
+  }
 
   // 文字起こしメタデータ設定。タイムスタンプは既定ON（整形AIが時間関係を解釈できる）。
   let includeTimestamps = $state<boolean>(true);
@@ -159,7 +187,7 @@
     try {
       await invoke("set_record_shortcut", { accelerator: recordShortcut });
       localStorage.setItem("recordShortcut", recordShortcut);
-      shortcutMsg = `ホットキーを設定しました: ${recordShortcut}`;
+      shortcutMsg = `ホットキーを設定しました: ${displayShortcut(recordShortcut)}`;
     } catch (e) {
       shortcutMsg = String(e);
     }
@@ -461,7 +489,7 @@
     </button>
   </div>
 
-  <p class="hint">録音ホットキー: <code>{recordShortcut}</code>（設定で変更可）</p>
+  <p class="hint">録音ホットキー: <code>{displayShortcut(recordShortcut)}</code>（設定で変更可）</p>
 
   {#if busy || transcribing || status}
     <div class="panel">
@@ -555,9 +583,9 @@
         <input
           type="text"
           readonly
-          value={recordShortcut}
+          value={displayShortcut(recordShortcut)}
           onkeydown={onShortcutKeydown}
-          placeholder="例: CommandOrControl+Shift+R"
+          placeholder={IS_MAC ? "例: Cmd+Shift+R" : "例: Ctrl+Shift+R"}
         />
       </label>
       {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
