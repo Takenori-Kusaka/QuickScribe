@@ -225,14 +225,25 @@ async fn stop_recording(
         if let Ok(dir) = resolve_save_dir(&settings) {
             let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
             let stem = format!("rec-{ts}");
-            // 現状は WAV のみ（Opus/.opus は後続PRで audio_format=="opus" に対応）。
-            match audio_save::save_wav(
-                &recorded.raw,
-                recorded.sample_rate,
-                recorded.channels,
-                &dir,
-                &stem,
-            ) {
+            // 形式に応じて保存（opus=Ogg Opus / それ以外=WAV）。
+            let result = if settings.audio_format == "opus" {
+                audio_save::save_opus(
+                    &recorded.raw,
+                    recorded.sample_rate,
+                    recorded.channels,
+                    &dir,
+                    &stem,
+                )
+            } else {
+                audio_save::save_wav(
+                    &recorded.raw,
+                    recorded.sample_rate,
+                    recorded.channels,
+                    &dir,
+                    &stem,
+                )
+            };
+            match result {
                 Ok(p) => {
                     let _ = app.emit("status", format!("音声を保存しました: {}", p.display()));
                 }

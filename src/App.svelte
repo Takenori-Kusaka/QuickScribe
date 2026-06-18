@@ -64,7 +64,7 @@
   // 保存設定。文字起こしテキスト保持/録音音声保存/形式/保存先フォルダ。
   let keepText = $state<boolean>(true);
   let saveAudio = $state<boolean>(false);
-  let audioFormat = $state<string>("wav");
+  let audioFormat = $state<string>("opus");
   let saveDir = $state<string>(""); // 空=既定(ドキュメント/QuickScribe)
 
   function loadSettings() {
@@ -81,7 +81,7 @@
     includeTimestamps = localStorage.getItem("includeTimestamps") !== "false";
     keepText = localStorage.getItem("keepText") !== "false";
     saveAudio = localStorage.getItem("saveAudio") === "true";
-    audioFormat = localStorage.getItem("audioFormat") || "wav";
+    audioFormat = localStorage.getItem("audioFormat") || "opus";
     saveDir = localStorage.getItem("saveDir") || "";
   }
 
@@ -548,10 +548,13 @@
           <label>
             音声形式
             <select bind:value={audioFormat}>
+              <option value="opus">Opus（高圧縮・モダン / .opus）</option>
               <option value="wav">WAV（無圧縮・確実）</option>
             </select>
           </label>
-          <p class="tip">Opus（高圧縮・モダン）は近日対応予定です。</p>
+          <p class="tip">
+            Opusは小容量でジャーナル向き。WAVは無圧縮で容量大ですが確実です。
+          </p>
         {/if}
         <div class="dir-row">
           <span class="tip">保存先: {saveDir || "既定（ドキュメント/QuickScribe）"}</span>
