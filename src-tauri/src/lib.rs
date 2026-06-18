@@ -233,6 +233,15 @@ pub fn run() {
     let toggle_shortcut = Shortcut::new(Some(Modifiers::SHIFT | Modifiers::CONTROL), Code::KeyR);
 
     tauri::Builder::default()
+        // 単一インスタンス: 2回目起動のargvを常駐インスタンスへ転送する（最初に登録する必要あり）。
+        // `quickscribe --toggle-record` で録音トグル、引数無しはウィンドウ表示。
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if argv.iter().any(|a| a == "--toggle-record") {
+                let _ = app.emit("toggle-record", ());
+            } else {
+                show_main_window(app);
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
