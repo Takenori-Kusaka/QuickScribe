@@ -1,10 +1,11 @@
-// Windows: タスクバー(Shell_TrayWnd)に自前ウィンドウを子として埋め込み、
-// 「録音/停止」トグルボタンと「ウィンドウを開く」ボタンを常時表示する。
-// 手本: TrafficMonitor（FindWindow("Shell_TrayWnd") + 親=タスクバーで子ウィンドウ作成 + 座標追従）。
-// 一次情報: docs/research/sources/windows-taskbar-widget-impl.md
+// Windows: タスクバーの上に重ねる「独立した最前面オーバーレイウィンドウ」で
+// 録音/停止・ウィンドウ表示ボタンを常時表示する。
 //
-// 注: タスクバーへの埋め込みは Windows 非公式の手法。セキュリティソフトや Windows 更新で
-//     壊れうるため、実機での反復調整が前提。コンパイルは CI(windows) で検証する。
+// 重要(win11-taskbar-embed-rootcause 調査): Win11 22H2+ のタスクバーは XAML Islands で
+// 再実装されており、SetParent による子ウィンドウ埋め込みは描画されないことがある。
+// そこで子埋め込みをやめ、Shell_TrayWnd の矩形上に WS_EX_TOPMOST|TOOLWINDOW|NOACTIVATE の
+// 独立トップレベルウィンドウを座標計算で重ねる（プロセス境界/XAMLに非依存＝Win11で堅い）。
+// どこで失敗するか切り分けるため、各ステップを診断ログ(ドキュメント/QuickScribe/taskbar-diag.log)へ出力する。
 
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::sync::OnceLock;
@@ -19,21 +20,36 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, FindWindowExW, FindWindowW, GetClientRect, GetWindowRect,
-    LoadCursorW, MoveWindow, RegisterClassW, SetTimer, IDC_ARROW, WINDOW_EX_STYLE, WM_LBUTTONUP,
-    WM_PAINT, WM_TIMER, WNDCLASSW, WS_CHILD, WS_VISIBLE,
+    IsWindowVisible, LoadCursorW, RegisterClassW, SetTimer, SetWindowPos, ShowWindow, HWND_TOPMOST,
+    IDC_ARROW, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOWNOACTIVATE, WM_LBUTTONUP, WM_PAINT, WM_TIMER,
+    WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 
-/// 録音中フラグ（描画に使用）。
 static RECORDING: AtomicBool = AtomicBool::new(false);
-/// ウィジェットのHWND（isize）。状態変化時に再描画するため保持。
 static WIDGET_HWND: AtomicIsize = AtomicIsize::new(0);
-/// emit / ウィンドウ表示に使う AppHandle。
 static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
 
-const WIDTH: i32 = 60; // 2ボタン分の幅
+const WIDTH: i32 = 60; // 2ボタン分
 const TIMER_ID: usize = 1;
 
-/// タスクバーにウィジェットを埋め込む（setup から呼ぶ。UIスレッド上）。
+/// 診断ログを ドキュメント/QuickScribe/taskbar-diag.log に追記する。
+fn diag(msg: &str) {
+    if let Some(doc) = dirs::document_dir() {
+        let dir = doc.join("QuickScribe");
+        let _ = std::fs::create_dir_all(&dir);
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dir.join("taskbar-diag.log"))
+        {
+            use std::io::Write;
+            let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+            let _ = writeln!(f, "[{ts}] {msg}");
+        }
+    }
+}
+
+/// タスクバーにオーバーレイウィジェットを設置する（setup から呼ぶ。UIスレッド上）。
 pub fn install(app: tauri::AppHandle) {
     let _ = APP.set(app);
     unsafe { create_widget() };
@@ -51,9 +67,13 @@ pub fn set_recording(recording: bool) {
 }
 
 unsafe fn create_widget() {
+    diag("create_widget: start");
     let hinstance = match GetModuleHandleW(None) {
         Ok(h) => HINSTANCE(h.0),
-        Err(_) => return,
+        Err(e) => {
+            diag(&format!("GetModuleHandleW failed: {e}"));
+            return;
+        }
     };
     let class = w!("QuickScribeTaskbarWidget");
     let wc = WNDCLASSW {
@@ -67,56 +87,80 @@ unsafe fn create_widget() {
 
     let taskbar = match FindWindowW(w!("Shell_TrayWnd"), PCWSTR::null()) {
         Ok(h) => h,
-        Err(_) => return,
+        Err(e) => {
+            diag(&format!("FindWindow(Shell_TrayWnd) failed: {e}"));
+            return;
+        }
     };
-    let mut tb = RECT::default();
-    let _ = GetWindowRect(taskbar, &mut tb);
-    let height = (tb.bottom - tb.top).max(24);
+    diag(&format!("Shell_TrayWnd hwnd = {:?}", taskbar.0));
 
-    // 親=タスクバー + WS_CHILD でタスクバーの子ウィンドウとして埋め込む。
+    // 独立トップレベルの最前面ツールウィンドウ（子ではない）。
     let hwnd = match CreateWindowExW(
-        WINDOW_EX_STYLE(0),
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED,
         class,
         w!("QuickScribe"),
-        WS_CHILD | WS_VISIBLE,
+        WS_POPUP,
         0,
         0,
         WIDTH,
-        height,
-        Some(taskbar),
+        40,
+        None, // 親なし＝トップレベル
         None,
         Some(hinstance),
         None,
     ) {
         Ok(h) => h,
-        Err(_) => return,
+        Err(e) => {
+            diag(&format!("CreateWindowExW failed: {e}"));
+            return;
+        }
     };
     WIDGET_HWND.store(hwnd.0 as isize, Ordering::Relaxed);
-    reposition(hwnd, taskbar);
-    // 1秒ごとに位置を追従（タスクバーサイズ変更/解像度変更対策）。
+    diag(&format!("created widget hwnd = {:?}", hwnd.0));
+
+    // 不透明レイヤード（全面不透明・自前WM_PAINT描画。透明度はLWA未設定で完全不透明）。
+    use windows::Win32::UI::WindowsAndMessaging::{SetLayeredWindowAttributes, LWA_ALPHA};
+    let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA);
+
+    reposition(hwnd);
+    let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
     SetTimer(Some(hwnd), TIMER_ID, 1000, None);
+    diag(&format!("after show: visible = {}", IsWindowVisible(hwnd).as_bool()));
 }
 
-/// 通知領域(TrayNotifyWnd)の左に配置する。
-unsafe fn reposition(hwnd: HWND, taskbar: HWND) {
+/// Shell_TrayWnd の矩形上（通知領域の左）に、スクリーン座標で重ねる。
+unsafe fn reposition(hwnd: HWND) {
+    let taskbar = match FindWindowW(w!("Shell_TrayWnd"), PCWSTR::null()) {
+        Ok(h) => h,
+        Err(_) => return,
+    };
     let mut tb = RECT::default();
     if GetWindowRect(taskbar, &mut tb).is_err() {
         return;
     }
     let height = (tb.bottom - tb.top).max(24);
-    let tray = FindWindowExW(Some(taskbar), None, w!("TrayNotifyWnd"), PCWSTR::null());
-    let x = match tray {
+
+    // 通知領域(TrayNotifyWnd)の左に配置（スクリーン座標）。
+    let x = match FindWindowExW(Some(taskbar), None, w!("TrayNotifyWnd"), PCWSTR::null()) {
         Ok(t) => {
             let mut tr = RECT::default();
             if GetWindowRect(t, &mut tr).is_ok() {
-                (tr.left - tb.left) - WIDTH - 8
+                tr.left - WIDTH - 8
             } else {
-                (tb.right - tb.left) - WIDTH - 200
+                tb.right - WIDTH - 200
             }
         }
-        Err(_) => (tb.right - tb.left) - WIDTH - 200,
+        Err(_) => tb.right - WIDTH - 200,
     };
-    let _ = MoveWindow(hwnd, x.max(0), 0, WIDTH, height, true.into());
+    let _ = SetWindowPos(
+        hwnd,
+        Some(HWND_TOPMOST),
+        x.max(tb.left),
+        tb.top,
+        WIDTH,
+        height,
+        SWP_NOACTIVATE | SWP_SHOWWINDOW,
+    );
 }
 
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
@@ -126,19 +170,15 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             LRESULT(0)
         }
         WM_TIMER => {
-            if let Ok(tb) = FindWindowW(w!("Shell_TrayWnd"), PCWSTR::null()) {
-                reposition(hwnd, tb);
-            }
+            reposition(hwnd);
             LRESULT(0)
         }
         WM_LBUTTONUP => {
             let x = (lparam.0 & 0xFFFF) as i16 as i32;
             if let Some(app) = APP.get() {
                 if x < WIDTH / 2 {
-                    // 左ボタン: 録音 開始/停止
                     let _ = app.emit("toggle-record", ());
                 } else if let Some(win) = app.get_webview_window("main") {
-                    // 右ボタン: ウィンドウを開く
                     let _ = win.show();
                     let _ = win.unminimize();
                     let _ = win.set_focus();
