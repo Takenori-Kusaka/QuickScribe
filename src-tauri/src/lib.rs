@@ -9,6 +9,9 @@ pub mod model;
 pub mod record;
 pub mod refine;
 pub mod stt;
+// Windows タスクバーのサムネイルツールバー（録音ボタン）。Windowsのみ。
+#[cfg(windows)]
+mod taskbar;
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -315,6 +318,14 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // Windows: タスクバーのサムネイルツールバーに録音トグルボタンを取り付ける。
+            #[cfg(windows)]
+            {
+                if let Some(w) = app.get_webview_window("main") {
+                    taskbar::install(&w, app.handle().clone());
+                }
+            }
 
             Ok(())
         })

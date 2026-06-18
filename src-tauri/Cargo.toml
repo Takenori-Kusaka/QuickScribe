@@ -46,6 +46,16 @@ symphonia = { version = "0.5", default-features = false, features = [
     "pcm",
 ] }
 
+# Windows タスクバーのサムネイルツールバー(ITaskbarList3)実装用。
+# tauri 2.11系の windows クレートと整合させる(HWNDの型不一致回避)。HWNDは生ポインタ経由で再ラップ。
+[target."cfg(windows)".dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
 [profile.release]
 panic = "abort"
 codegen-units = 1
