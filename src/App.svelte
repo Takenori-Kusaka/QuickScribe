@@ -53,6 +53,11 @@
   let resolvingModel = $state(false);
   let updateMsg = $state<string>("");
 
+  // 録音トグルのグローバルホットキー（設定で変更可能 / Tauriアクセラレータ表記）。
+  const DEFAULT_SHORTCUT = "CommandOrControl+Shift+R";
+  let recordShortcut = $state<string>(DEFAULT_SHORTCUT);
+  let shortcutMsg = $state<string>("");
+
   function loadSettings() {
     provider = (localStorage.getItem("provider") as Provider) || "gemini";
     if (!(provider in PROVIDER_LABELS)) provider = "gemini";
@@ -63,15 +68,55 @@
     // 旧バージョン(geminiKey)からの移行。
     const legacyKey = localStorage.getItem("geminiKey");
     if (legacyKey && !apiKeys.gemini) apiKeys.gemini = legacyKey;
+    recordShortcut = localStorage.getItem("recordShortcut") || DEFAULT_SHORTCUT;
   }
   function saveSettings() {
     localStorage.setItem("provider", provider);
     for (const p of ALL_PROVIDERS) {
       localStorage.setItem(`apiKey:${p}`, apiKeys[p]);
     }
+    void applyShortcut();
     showSettings = false;
     // 鍵が入っていれば現在のプロバイダの最新モデルを取得（強制更新）。
     void resolveCurrentModel(true);
+  }
+
+  // キー入力イベントから Tauri アクセラレータ表記を組み立てる（修飾キー＋1キー）。
+  function accelFromEvent(e: KeyboardEvent): string | null {
+    const k = e.key;
+    if (["Control", "Shift", "Alt", "Meta"].includes(k)) return null; // 修飾キー単体は無視
+    const parts: string[] = [];
+    if (e.ctrlKey || e.metaKey) parts.push("CommandOrControl");
+    if (e.shiftKey) parts.push("Shift");
+    if (e.altKey) parts.push("Alt");
+    let key: string;
+    if (k.length === 1) key = k.toUpperCase();
+    else if (k.startsWith("Arrow")) key = k.slice(5); // ArrowUp -> Up
+    else key = k; // F1..F12, Space, Enter 等
+    parts.push(key);
+    if (parts.length < 2) return null; // 修飾キー無しは誤爆防止のため不可
+    return parts.join("+");
+  }
+
+  // ショートカット入力欄でのキー押下を捕捉して表記を更新する。
+  function onShortcutKeydown(e: KeyboardEvent) {
+    e.preventDefault();
+    const accel = accelFromEvent(e);
+    if (accel) {
+      recordShortcut = accel;
+      shortcutMsg = "";
+    }
+  }
+
+  // 現在の表記でグローバルホットキーを再登録する。
+  async function applyShortcut() {
+    try {
+      await invoke("set_record_shortcut", { accelerator: recordShortcut });
+      localStorage.setItem("recordShortcut", recordShortcut);
+      shortcutMsg = `ホットキーを設定しました: ${recordShortcut}`;
+    } catch (e) {
+      shortcutMsg = String(e);
+    }
   }
 
   // 現在のプロバイダの最新ミドルレンジモデルを実行時に解決し、キャッシュする。
@@ -193,6 +238,25 @@
     }
   }
 
+  // メモ/テキストファイルを読み込んで整形だけ実行する（文字起こし不要の用途）。
+  async function refineFromMemo() {
+    error = null;
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: "テキスト/メモ", extensions: ["txt", "md", "markdown", "text"] }],
+    });
+    if (typeof selected !== "string") return;
+    try {
+      const text = await invoke<string>("read_text_file", { path: selected });
+      transcript = text;
+      refined = null;
+      segments = [];
+      await refineNow();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
   // 録音トグル（S1.1）。開始でマイク収集、停止で文字起こし→保存→表示まで貫通する。
   async function toggle() {
     error = null;
@@ -229,6 +293,7 @@
 
   onMount(() => {
     loadSettings();
+    void applyShortcut();
     void resolveCurrentModel();
     void checkForUpdate();
     const unToggle = listen("toggle-record", () => toggle());
@@ -297,6 +362,17 @@
         モデル: <code>{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code>
         {#if resolvingModel}（取得中…）{:else if resolvedModel[provider]}（最新を自動取得）{:else}（最新ミドルレンジを自動選択）{/if}
       </p>
+      <label>
+        録音開始/停止のホットキー（入力欄を選んで押したいキーを押す）
+        <input
+          type="text"
+          readonly
+          value={recordShortcut}
+          onkeydown={onShortcutKeydown}
+          placeholder="例: CommandOrControl+Shift+R"
+        />
+      </label>
+      {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
       <div class="settings-actions">
         <button class="btn small" onclick={saveSettings}>保存</button>
         <button class="btn small ghost" onclick={() => checkForUpdate(true)}>更新を確認</button>
@@ -337,9 +413,24 @@
       </svg>
       音声ファイルから文字起こし
     </button>
+
+    <button
+      class="btn secondary"
+      data-testid="memo-btn"
+      onclick={refineFromMemo}
+      disabled={refining}
+    >
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Zm0 2 4 4h-4V4ZM8 13h8v2H8v-2Zm0 4h8v2H8v-2Z"
+        />
+      </svg>
+      メモ/テキストから整形
+    </button>
   </div>
 
-  <p class="hint">ホットキー: Ctrl/Cmd + Shift + R</p>
+  <p class="hint">録音ホットキー: <code>{recordShortcut}</code>（設定で変更可）</p>
 
   {#if busy || status}
     <div class="panel">

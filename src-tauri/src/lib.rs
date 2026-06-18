@@ -182,6 +182,26 @@ async fn refine_text(
     .map_err(|e| e.to_string())?
 }
 
+/// メモ/テキストファイル(.txt/.md等)を読み込んで内容を返す（整形のみ用途 / 文字起こし不要）。
+#[tauri::command]
+fn read_text_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| format!("テキストの読み込みに失敗: {e}"))
+}
+
+/// 録音トグルのグローバルホットキーを再設定する（設定でキー変更可能にする）。
+/// 受理形式は Tauri アクセラレータ表記（例: "CommandOrControl+Shift+R"）。
+#[tauri::command]
+fn set_record_shortcut(app: tauri::AppHandle, accelerator: String) -> Result<(), String> {
+    let shortcut: Shortcut = accelerator
+        .parse()
+        .map_err(|e| format!("ショートカット表記が不正です（{accelerator}）: {e}"))?;
+    let gs = app.global_shortcut();
+    let _ = gs.unregister_all();
+    gs.register(shortcut)
+        .map_err(|e| format!("ショートカット登録に失敗: {e}"))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,9 +229,8 @@ fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // 既定の開始/停止ホットキー: Ctrl/Cmd + Shift + R
+    // 既定の開始/停止ホットキー: Ctrl/Cmd + Shift + R（設定で変更可能。set_record_shortcut）。
     let toggle_shortcut = Shortcut::new(Some(Modifiers::SHIFT | Modifiers::CONTROL), Code::KeyR);
-    let handler_shortcut = toggle_shortcut.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -219,8 +238,10 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(move |app, shortcut, event| {
-                    if event.state() == ShortcutState::Pressed && shortcut == &handler_shortcut {
+                // 録音トグルのショートカットは1つだけ登録するため、押下イベントは全て録音トグルに割当て。
+                // （ユーザがキーを変更しても再登録だけで済む。set_record_shortcut 参照）
+                .with_handler(move |app, _shortcut, event| {
+                    if event.state() == ShortcutState::Pressed {
                         let _ = app.emit("toggle-record", ());
                     }
                 })
@@ -233,7 +254,9 @@ pub fn run() {
             start_recording,
             stop_recording,
             resolve_model,
-            refine_text
+            refine_text,
+            read_text_file,
+            set_record_shortcut
         ])
         // ウィンドウを閉じてもアプリは終了せず、トレイに常駐する（タスクバー常駐の挙動）。
         // ただし E2E(QUICKSCRIBE_E2E=1)時はドライバが正常終了できるよう既定の閉じる挙動にする。
