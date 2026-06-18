@@ -14,8 +14,8 @@ use tauri::{Emitter, Manager};
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreateSolidBrush, DeleteObject, Ellipse, EndPaint, FillRect, FrameRect,
-    InvalidateRect, Rectangle, SelectObject, HGDIOBJ, PAINTSTRUCT,
+    BeginPaint, CreateSolidBrush, DeleteObject, Ellipse, EndPaint, FillRect, InvalidateRect,
+    Rectangle, SelectObject, HGDIOBJ, PAINTSTRUCT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -31,6 +31,9 @@ static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
 
 const WIDTH: i32 = 60; // 2ボタン分
 const TIMER_ID: usize = 1;
+/// 背景の透過色（クロマキー）。この色で塗った部分はタスクバーが透けて見える＝テーマ非依存。
+/// マゼンタはボタン色(赤/白/灰)と被らないため選択。COLORREF は 0x00BBGGRR。
+const CHROMA: u32 = 0x00FF_00FF;
 
 /// 診断ログを ドキュメント/QuickScribe/taskbar-diag.log に追記する。
 fn diag(msg: &str) {
@@ -118,9 +121,10 @@ unsafe fn create_widget() {
     WIDGET_HWND.store(hwnd.0 as isize, Ordering::Relaxed);
     diag(&format!("created widget hwnd = {:?}", hwnd.0));
 
-    // 不透明レイヤード（全面不透明・自前WM_PAINT描画。透明度はLWA未設定で完全不透明）。
-    use windows::Win32::UI::WindowsAndMessaging::{SetLayeredWindowAttributes, LWA_ALPHA};
-    let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA);
+    // クロマキー透過: 背景(CHROMA)で塗った部分を透明にし、タスクバーを透けさせる。
+    // ボタンだけが浮いて見えるためタスクバー色/テーマに依存しない。
+    use windows::Win32::UI::WindowsAndMessaging::{SetLayeredWindowAttributes, LWA_COLORKEY};
+    let _ = SetLayeredWindowAttributes(hwnd, COLORREF(CHROMA), 0, LWA_COLORKEY);
 
     reposition(hwnd);
     let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
@@ -196,8 +200,8 @@ unsafe fn paint(hwnd: HWND) {
     let mut rc = RECT::default();
     let _ = GetClientRect(hwnd, &mut rc);
 
-    // 背景（タスクバーに馴染むダーク）。
-    let bg = CreateSolidBrush(COLORREF(0x0020_2020));
+    // 背景はクロマキー色で塗る → 透過してタスクバーが見える（ボタンだけ浮く）。
+    let bg = CreateSolidBrush(COLORREF(CHROMA));
     FillRect(hdc, &rc, bg);
     let _ = DeleteObject(HGDIOBJ(bg.0));
 
@@ -221,17 +225,13 @@ unsafe fn paint(hwnd: HWND) {
         let _ = DeleteObject(HGDIOBJ(brush.0));
     }
 
-    // 右ボタン: ウィンドウを開く（枠だけ）。
+    // 右ボタン: ウィンドウを開く（塗りつぶしの四角＝クリック可能に。透過部分はクリック透過のため）。
     let ox = half + half / 2;
-    let frame = CreateSolidBrush(COLORREF(0x00CC_CCCC));
-    let fr = RECT {
-        left: ox - 7,
-        top: cy - 6,
-        right: ox + 7,
-        bottom: cy + 6,
-    };
-    FrameRect(hdc, &fr, frame);
-    let _ = DeleteObject(HGDIOBJ(frame.0));
+    let brush = CreateSolidBrush(COLORREF(0x00C8_C8C8)); // 薄いグレー
+    let old = SelectObject(hdc, HGDIOBJ(brush.0));
+    let _ = Rectangle(hdc, ox - 7, cy - 6, ox + 7, cy + 6);
+    SelectObject(hdc, old);
+    let _ = DeleteObject(HGDIOBJ(brush.0));
 
     let _ = EndPaint(hwnd, &ps);
 }
