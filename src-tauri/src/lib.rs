@@ -425,7 +425,7 @@ pub fn run() {
 
             TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("QuickScribe")
+                .tooltip("QuickScribe — クリックで録音 開始/停止")
                 .menu(&menu)
                 // 右クリックメニューのみで開閉しないよう、左クリックの既定メニュー表示は無効化
                 .show_menu_on_left_click(false)
@@ -438,7 +438,8 @@ pub fn run() {
                     "show" => show_main_window(app),
                     _ => {}
                 })
-                // トレイアイコン左クリックでウィンドウを表示
+                // トレイアイコン左クリックで録音トグル（最短操作で録音開始/停止）。
+                // ウィンドウ表示は右クリックメニューの「ウィンドウを表示」から行う。
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
@@ -446,7 +447,7 @@ pub fn run() {
                         ..
                     } = event
                     {
-                        show_main_window(tray.app_handle());
+                        let _ = tray.app_handle().emit("toggle-record", ());
                     }
                 })
                 .build(app)?;
