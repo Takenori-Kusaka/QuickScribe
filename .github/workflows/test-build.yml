@@ -1,0 +1,63 @@
+name: Test build (manual, no release)
+
+# 実機確認用の Windows インストーラを「公開リリースせず・updater(latest.json)も更新せず」
+# Actions の成果物としてだけ生成する。既存ユーザーへ自動配信されないため、未検証の変更を
+# 安全に実機で試せる（CIのコンパイル通過≠GUI動作、の検証ギャップを埋める手段）。
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "ビルド対象の branch / tag / SHA"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# release.yml と同じ CMake 回避策（古いlibopusの cmake_minimum_required<3.5 対策）。
+env:
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+
+jobs:
+  test-build:
+    name: test-build (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Set LIBCLANG_PATH (for whisper-rs bindgen)
+        run: echo "LIBCLANG_PATH=$((Get-Command clang).Source | Split-Path)" >> $env:GITHUB_ENV
+        shell: pwsh
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Generate icons
+        run: npm run icons
+
+      # 署名は不要（手動インストールの実機確認用。updater署名はリリース時のみ）。
+      - name: Build Windows installer (bundle)
+        run: npx tauri build
+
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickscribe-windows-test-build
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
+          retention-days: 14
