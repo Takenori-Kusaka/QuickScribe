@@ -17,3 +17,6 @@ __pycache__/
 .env
 .env.local
 *.local
+
+# 一時・引き継ぎ資料（コミットしない）
+tmp/

@@ -212,6 +212,7 @@
     try {
       await invoke("set_record_shortcut", { accelerator: recordShortcut });
       localStorage.setItem("recordShortcut", recordShortcut);
+      void invoke("set_taskbar_shortcut", { display: displayShortcut(recordShortcut) });
       shortcutMsg = `ホットキーを設定しました: ${displayShortcut(recordShortcut)}`;
     } catch (e) {
       shortcutMsg = String(e);

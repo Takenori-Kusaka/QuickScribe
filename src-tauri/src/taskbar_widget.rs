@@ -8,26 +8,37 @@
 // どこで失敗するか切り分けるため、各ステップを診断ログ(ドキュメント/QuickScribe/taskbar-diag.log)へ出力する。
 
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use tauri::{Emitter, Manager};
-use windows::core::{w, PCWSTR};
+use windows::core::{w, PCWSTR, PWSTR};
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreateSolidBrush, DeleteObject, Ellipse, EndPaint, FillRect, InvalidateRect,
     Rectangle, SelectObject, HGDIOBJ, PAINTSTRUCT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::Controls::{
+    InitCommonControlsEx, ICC_BAR_CLASSES, INITCOMMONCONTROLSEX, LPSTR_TEXTCALLBACKW,
+    NMTTDISPINFOW, TOOLTIPS_CLASSW, TTF_SUBCLASS, TTM_ADDTOOLW, TTN_GETDISPINFOW, TTS_ALWAYSTIP,
+    TTS_NOPREFIX, TTTOOLINFOW,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, FindWindowExW, FindWindowW, GetClientRect, GetWindowRect,
-    IsWindowVisible, LoadCursorW, RegisterClassW, SetTimer, SetWindowPos, ShowWindow, HWND_TOPMOST,
-    IDC_ARROW, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOWNOACTIVATE, WM_LBUTTONUP, WM_PAINT, WM_TIMER,
-    WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    IsWindowVisible, LoadCursorW, RegisterClassW, SendMessageW, SetTimer, SetWindowPos, ShowWindow,
+    CW_USEDEFAULT, HWND_TOPMOST, IDC_ARROW, NMHDR, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOWNOACTIVATE,
+    WINDOW_STYLE, WM_LBUTTONUP, WM_NOTIFY, WM_PAINT, WM_TIMER, WNDCLASSW, WS_EX_LAYERED,
+    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 
 static RECORDING: AtomicBool = AtomicBool::new(false);
 static WIDGET_HWND: AtomicIsize = AtomicIsize::new(0);
 static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
+/// ツールチップに表示する現在のショートカット（OS表記。フロントから set_shortcut で更新）。
+static SHORTCUT: Mutex<String> = Mutex::new(String::new());
+
+const TOOL_RECORD: usize = 1;
+const TOOL_OPEN: usize = 2;
 
 const WIDTH: i32 = 60; // 2ボタン分
 const TIMER_ID: usize = 1;
@@ -67,6 +78,60 @@ pub fn set_recording(recording: bool) {
             let _ = InvalidateRect(Some(HWND(h as *mut _)), None, true.into());
         }
     }
+}
+
+/// ツールチップに表示する現在のショートカット表記（例 "Ctrl+Shift+R"）を更新する。
+pub fn set_shortcut(display: String) {
+    if let Ok(mut s) = SHORTCUT.lock() {
+        *s = display;
+    }
+}
+
+/// ボタンごとのツールチップ文言（動作＋現在のショートカット＋アプリ名）。
+/// WCAG/Microsoft Fluent: アイコンのみボタンにはツールチップとショートカット併記が必要。
+fn tooltip_text(id: usize) -> String {
+    let sc = SHORTCUT
+        .lock()
+        .map(|s| s.clone())
+        .unwrap_or_default();
+    if id == TOOL_RECORD {
+        let action = if RECORDING.load(Ordering::Relaxed) {
+            "録音を停止"
+        } else {
+            "録音を開始"
+        };
+        if sc.is_empty() {
+            format!("{action} ・ QuickScribe")
+        } else {
+            format!("{action} ・ {sc} ・ QuickScribe")
+        }
+    } else {
+        "QuickScribe のウィンドウを開く".to_string()
+    }
+}
+
+/// ツールチップに1ボタン分の矩形ツールを登録する（テキストはコールバックで動的生成）。
+unsafe fn add_tool(tt: HWND, parent: HWND, id: usize, left: i32, right: i32) {
+    let mut ti = TTTOOLINFOW {
+        cbSize: std::mem::size_of::<TTTOOLINFOW>() as u32,
+        uFlags: TTF_SUBCLASS,
+        hwnd: parent,
+        uId: id,
+        rect: RECT {
+            left,
+            top: 0,
+            right,
+            bottom: 60,
+        },
+        lpszText: LPSTR_TEXTCALLBACKW,
+        ..Default::default()
+    };
+    let _ = SendMessageW(
+        tt,
+        TTM_ADDTOOLW,
+        None,
+        Some(LPARAM(&mut ti as *mut _ as isize)),
+    );
 }
 
 unsafe fn create_widget() {
@@ -126,6 +191,30 @@ unsafe fn create_widget() {
     use windows::Win32::UI::WindowsAndMessaging::{SetLayeredWindowAttributes, LWA_COLORKEY};
     let _ = SetLayeredWindowAttributes(hwnd, COLORREF(CHROMA), 0, LWA_COLORKEY);
 
+    // ツールチップ（アイコンのみボタンの説明＋現在ショートカット＋アプリ名 / WCAG・Fluent準拠）。
+    let icc = INITCOMMONCONTROLSEX {
+        dwSize: std::mem::size_of::<INITCOMMONCONTROLSEX>() as u32,
+        dwICC: ICC_BAR_CLASSES,
+    };
+    let _ = InitCommonControlsEx(&icc);
+    if let Ok(tt) = CreateWindowExW(
+        WS_EX_TOPMOST,
+        TOOLTIPS_CLASSW,
+        PCWSTR::null(),
+        WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        Some(hwnd),
+        None,
+        Some(hinstance),
+        None,
+    ) {
+        add_tool(tt, hwnd, TOOL_RECORD, 0, WIDTH / 2);
+        add_tool(tt, hwnd, TOOL_OPEN, WIDTH / 2, WIDTH);
+    }
+
     reposition(hwnd);
     let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
     SetTimer(Some(hwnd), TIMER_ID, 1000, None);
@@ -177,6 +266,21 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             reposition(hwnd);
             LRESULT(0)
         }
+        WM_NOTIFY => {
+            // ツールチップの表示テキスト要求に動的応答（動作＋ショートカット＋アプリ名）。
+            let nmhdr = lparam.0 as *const NMHDR;
+            if !nmhdr.is_null() && (*nmhdr).code == TTN_GETDISPINFOW as u32 {
+                let di = lparam.0 as *mut NMTTDISPINFOW;
+                let text = tooltip_text((*nmhdr).idFrom);
+                let mut buf: Vec<u16> = text.encode_utf16().collect();
+                buf.truncate(79);
+                buf.push(0);
+                let n = buf.len();
+                (*di).szText[..n].copy_from_slice(&buf);
+                (*di).lpszText = PWSTR((*di).szText.as_mut_ptr());
+            }
+            LRESULT(0)
+        }
         WM_LBUTTONUP => {
             let x = (lparam.0 & 0xFFFF) as i16 as i32;
             if let Some(app) = APP.get() {
@@ -225,13 +329,19 @@ unsafe fn paint(hwnd: HWND) {
         let _ = DeleteObject(HGDIOBJ(brush.0));
     }
 
-    // 右ボタン: ウィンドウを開く（塗りつぶしの四角＝クリック可能に。透過部分はクリック透過のため）。
+    // 右ボタン: ウィンドウを開く。停止(■)と区別するため「ウィンドウ風」グリフにする
+    // （明るい本体＋上部のタイトルバー帯）。塗りつぶしでクリック可能。
     let ox = half + half / 2;
-    let brush = CreateSolidBrush(COLORREF(0x00C8_C8C8)); // 薄いグレー
-    let old = SelectObject(hdc, HGDIOBJ(brush.0));
-    let _ = Rectangle(hdc, ox - 7, cy - 6, ox + 7, cy + 6);
+    let (l, t, r, b) = (ox - 7, cy - 6, ox + 7, cy + 6);
+    let body = CreateSolidBrush(COLORREF(0x00E0_E0E0)); // 本体: 明るいグレー
+    let old = SelectObject(hdc, HGDIOBJ(body.0));
+    let _ = Rectangle(hdc, l, t, r, b);
     SelectObject(hdc, old);
-    let _ = DeleteObject(HGDIOBJ(brush.0));
+    let _ = DeleteObject(HGDIOBJ(body.0));
+    let bar_rc = RECT { left: l, top: t, right: r, bottom: t + 3 };
+    let bar = CreateSolidBrush(COLORREF(0x0080_8080)); // タイトルバー帯: 濃いグレー
+    FillRect(hdc, &bar_rc, bar);
+    let _ = DeleteObject(HGDIOBJ(bar.0));
 
     let _ = EndPaint(hwnd, &ps);
 }
