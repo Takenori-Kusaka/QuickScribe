@@ -279,8 +279,11 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 buf.truncate(79);
                 buf.push(0);
                 let n = buf.len();
-                (*di).szText[..n].copy_from_slice(&buf);
-                (*di).lpszText = PWSTR((*di).szText.as_mut_ptr());
+                // di は system 提供の有効ポインタ。raw pointer 経由の暗黙 autoref
+                // (dangerous_implicit_autorefs)を避けるため &raw mut で生ポインタを得て書き込む。
+                let sz = (&raw mut (*di).szText) as *mut u16;
+                std::ptr::copy_nonoverlapping(buf.as_ptr(), sz, n);
+                (*di).lpszText = PWSTR(sz);
             }
             LRESULT(0)
         }
