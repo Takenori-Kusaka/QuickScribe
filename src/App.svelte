@@ -55,10 +55,40 @@
   let resolvingModel = $state(false);
   let updateMsg = $state<string>("");
 
-  // 録音トグルのグローバルホットキー（設定で変更可能 / Tauriアクセラレータ表記）。
+  // 録音トグルのグローバルホットキー。内部・保存・登録は Tauri アクセラレータ表記
+  // ("CommandOrControl+Shift+R")だが、表示は実行環境に合わせて Ctrl/Cmd に変換する。
   const DEFAULT_SHORTCUT = "CommandOrControl+Shift+R";
   let recordShortcut = $state<string>(DEFAULT_SHORTCUT);
   let shortcutMsg = $state<string>("");
+  // ホットキーのキャプチャモード（変更ボタン押下中＝キー入力待ち）。
+  let capturing = $state<boolean>(false);
+
+  // 実行環境(OS)を判定し、修飾キーを親しみやすい表記にする。
+  const IS_MAC =
+    typeof navigator !== "undefined" &&
+    /mac/i.test(`${navigator.userAgent} ${navigator.platform ?? ""}`);
+  function displayShortcut(accel: string): string {
+    return accel
+      .split("+")
+      .map((t) => {
+        switch (t) {
+          case "CommandOrControl":
+          case "CmdOrCtrl":
+            return IS_MAC ? "Cmd" : "Ctrl";
+          case "Control":
+            return "Ctrl";
+          case "Super":
+          case "Meta":
+          case "Command":
+            return IS_MAC ? "Cmd" : "Win";
+          case "Alt":
+            return IS_MAC ? "Option" : "Alt";
+          default:
+            return t;
+        }
+      })
+      .join("+");
+  }
 
   // 文字起こしメタデータ設定。タイムスタンプは既定ON（整形AIが時間関係を解釈できる）。
   let includeTimestamps = $state<boolean>(true);
@@ -144,14 +174,37 @@
     return parts.join("+");
   }
 
-  // ショートカット入力欄でのキー押下を捕捉して表記を更新する。
-  function onShortcutKeydown(e: KeyboardEvent) {
+  // ホットキー設定UX: 「変更」ボタンでキャプチャモードに入り、押したキーで登録する
+  // （VSCode/OBS/ゲーム等の定石。待機表示・Escキャンセル・修飾キー単体は待機継続）。
+  function startCapture() {
+    capturing = true;
+    shortcutMsg = "";
+  }
+  function cancelCapture() {
+    capturing = false;
+  }
+  function onCaptureKeydown(e: KeyboardEvent) {
+    if (!capturing) return;
     e.preventDefault();
-    const accel = accelFromEvent(e);
-    if (accel) {
-      recordShortcut = accel;
-      shortcutMsg = "";
+    if (e.key === "Escape") {
+      cancelCapture();
+      return;
     }
+    // 修飾キー単体は待機を継続（組合せの確定を待つ）。
+    if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) return;
+    const accel = accelFromEvent(e);
+    if (!accel) {
+      // 修飾キー無しは誤爆防止のため不可。ヒントを出して待機継続。
+      shortcutMsg = "修飾キー（Ctrl/Alt/Shift）と組み合わせて押してください";
+      return;
+    }
+    recordShortcut = accel;
+    capturing = false;
+    void applyShortcut();
+  }
+  function resetShortcut() {
+    recordShortcut = DEFAULT_SHORTCUT;
+    void applyShortcut();
   }
 
   // 現在の表記でグローバルホットキーを再登録する。
@@ -159,7 +212,7 @@
     try {
       await invoke("set_record_shortcut", { accelerator: recordShortcut });
       localStorage.setItem("recordShortcut", recordShortcut);
-      shortcutMsg = `ホットキーを設定しました: ${recordShortcut}`;
+      shortcutMsg = `ホットキーを設定しました: ${displayShortcut(recordShortcut)}`;
     } catch (e) {
       shortcutMsg = String(e);
     }
@@ -461,7 +514,7 @@
     </button>
   </div>
 
-  <p class="hint">録音ホットキー: <code>{recordShortcut}</code>（設定で変更可）</p>
+  <p class="hint">録音ホットキー: <code>{displayShortcut(recordShortcut)}</code>（設定で変更可）</p>
 
   {#if busy || transcribing || status}
     <div class="panel">
@@ -550,16 +603,25 @@
         モデル: <code>{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code>
         {#if resolvingModel}（取得中…）{:else if resolvedModel[provider]}（最新を自動取得）{:else}（最新ミドルレンジを自動選択）{/if}
       </p>
-      <label>
-        録音開始/停止のホットキー（入力欄を選んで押したいキーを押す）
-        <input
-          type="text"
-          readonly
-          value={recordShortcut}
-          onkeydown={onShortcutKeydown}
-          placeholder="例: CommandOrControl+Shift+R"
-        />
-      </label>
+      <span class="meta-title">録音開始/停止のホットキー</span>
+      <div class="hotkey-row">
+        <button
+          type="button"
+          class="hotkey-capture"
+          class:capturing
+          onclick={startCapture}
+          onkeydown={onCaptureKeydown}
+          onblur={cancelCapture}
+        >
+          {#if capturing}
+            キーを押してください…（Escでキャンセル）
+          {:else}
+            {displayShortcut(recordShortcut)}
+          {/if}
+        </button>
+        <button type="button" class="btn small ghost" onclick={resetShortcut}>既定に戻す</button>
+      </div>
+      <p class="tip">「{displayShortcut(recordShortcut)}」をクリックして、登録したいキーを押します。</p>
       {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
 
       <div class="meta-group">
@@ -749,6 +811,31 @@
     color: #4b5563;
     font-weight: 600;
     margin-bottom: 0.45rem;
+  }
+  .hotkey-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .hotkey-capture {
+    flex: 1;
+    text-align: left;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 0.85rem;
+    color: #1f2330;
+    cursor: pointer;
+  }
+  .hotkey-capture:hover {
+    border-color: #a5b4fc;
+  }
+  .hotkey-capture.capturing {
+    border-color: #4f46e5;
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 600;
   }
   .check {
     display: flex;
