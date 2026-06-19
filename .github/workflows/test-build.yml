@@ -48,8 +48,13 @@ jobs:
       - name: Generate icons
         run: npm run icons
 
-      # 署名は不要（手動インストールの実機確認用。updater署名はリリース時のみ）。
+      # updater が公開鍵設定済みのため tauri build は updater 成果物の署名を要求する。
+      # ここでは公開リリースも latest.json 発行もしない（成果物アップロードのみ）が、
+      # ビルドを完走させるため release.yml と同じ署名鍵を渡す。
       - name: Build Windows installer (bundle)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx tauri build
 
       - name: Upload installer artifacts
