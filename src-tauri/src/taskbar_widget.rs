@@ -7,15 +7,16 @@
 // 独立トップレベルウィンドウを座標計算で重ねる（プロセス境界/XAMLに非依存＝Win11で堅い）。
 // どこで失敗するか切り分けるため、各ステップを診断ログ(ドキュメント/QuickScribe/taskbar-diag.log)へ出力する。
 
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicIsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use tauri::{Emitter, Manager};
 use windows::core::{w, PCWSTR, PWSTR};
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreateSolidBrush, DeleteObject, Ellipse, EndPaint, FillRect, InvalidateRect,
-    Rectangle, SelectObject, HGDIOBJ, PAINTSTRUCT,
+    BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateSolidBrush, DeleteDC,
+    DeleteObject, Ellipse, EndPaint, FillRect, InvalidateRect, Rectangle, SelectObject, HGDIOBJ,
+    PAINTSTRUCT, SRCCOPY,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::{
@@ -23,12 +24,14 @@ use windows::Win32::UI::Controls::{
     TOOLTIPS_CLASSW, TTF_SUBCLASS, TTM_ADDTOOLW, TTN_GETDISPINFOW, TTS_ALWAYSTIP, TTS_NOPREFIX,
     TTTOOLINFOW,
 };
+use windows::Win32::UI::Shell::ExtractIconW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, FindWindowExW, FindWindowW, GetClientRect, GetWindowRect,
-    IsWindowVisible, LoadCursorW, RegisterClassW, SendMessageW, SetTimer, SetWindowPos, ShowWindow,
-    CW_USEDEFAULT, HWND_TOPMOST, IDC_ARROW, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOWNOACTIVATE,
-    WINDOW_STYLE, WM_LBUTTONUP, WM_NOTIFY, WM_PAINT, WM_TIMER, WNDCLASSW, WS_EX_LAYERED,
-    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    CreateWindowExW, DefWindowProcW, DrawIconEx, FindWindowExW, FindWindowW, GetClientRect,
+    GetWindowRect, IsWindowVisible, LoadCursorW, RegisterClassW, SendMessageW, SetTimer,
+    SetWindowPos, ShowWindow, CW_USEDEFAULT, DI_NORMAL, HICON, HWND_TOPMOST, IDC_ARROW,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_SHOWNOACTIVATE, WINDOW_STYLE, WM_ERASEBKGND,
+    WM_LBUTTONUP, WM_NOTIFY, WM_PAINT, WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 
 static RECORDING: AtomicBool = AtomicBool::new(false);
@@ -36,6 +39,12 @@ static WIDGET_HWND: AtomicIsize = AtomicIsize::new(0);
 static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
 /// ツールチップに表示する現在のショートカット（OS表記。フロントから set_shortcut で更新）。
 static SHORTCUT: Mutex<String> = Mutex::new(String::new());
+/// 右ボタンに描画する QuickScribe アプリアイコン（HICON を isize で保持。0=未取得）。
+static WIDGET_ICON: AtomicIsize = AtomicIsize::new(0);
+/// 直近に配置した座標・高さ（不要な SetWindowPos の移動＝ちらつきを避けるためのキャッシュ）。
+static LAST_X: AtomicI32 = AtomicI32::new(i32::MIN);
+static LAST_Y: AtomicI32 = AtomicI32::new(i32::MIN);
+static LAST_H: AtomicI32 = AtomicI32::new(i32::MIN);
 
 const TOOL_RECORD: usize = 1;
 const TOOL_OPEN: usize = 2;
@@ -75,8 +84,29 @@ pub fn set_recording(recording: bool) {
     let h = WIDGET_HWND.load(Ordering::Relaxed);
     if h != 0 {
         unsafe {
-            let _ = InvalidateRect(Some(HWND(h as *mut _)), None, true.into());
+            // erase=false: 背景消去によるちらつきを避ける（全面をダブルバッファで描き直す）。
+            let _ = InvalidateRect(Some(HWND(h as *mut _)), None, false.into());
         }
+    }
+}
+
+/// 実行ファイル(.exe)に埋め込まれた QuickScribe アイコンを取得してキャッシュする。
+/// 汎用の IDI_APPLICATION ではなくアプリ自身のアイコンを使い、右ボタンでアプリ帰属を一目で示す。
+unsafe fn load_app_icon(hinstance: HINSTANCE) {
+    use std::os::windows::ffi::OsStrExt;
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let wide: Vec<u16> = exe.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    // ExtractIconW: index 0 = exe の最初のアイコングループ（アプリアイコン）。
+    // 戻り値が null(0) / 1(無効) の場合は未取得扱いでフォールバックグリフを使う。
+    let icon = ExtractIconW(Some(hinstance), PCWSTR(wide.as_ptr()), 0);
+    let v = icon.0 as isize;
+    if v != 0 && v != 1 {
+        WIDGET_ICON.store(v, Ordering::Relaxed);
+        diag("load_app_icon: ok");
+    } else {
+        diag(&format!("load_app_icon: none (v={v})"));
     }
 }
 
@@ -218,9 +248,14 @@ unsafe fn create_widget() {
         add_tool(tt, hwnd, TOOL_OPEN, WIDTH / 2, WIDTH);
     }
 
+    // 右ボタン用にアプリアイコンを取得（失敗時はフォールバックグリフ）。
+    load_app_icon(hinstance);
+
     reposition(hwnd);
     let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-    SetTimer(Some(hwnd), TIMER_ID, 1000, None);
+    // 300ms間隔: タスクバー操作で z-order が落ちても素早く最前面へ復帰させる
+    // （ダブルバッファ描画なので頻繁な再描画でもちらつかない）。
+    SetTimer(Some(hwnd), TIMER_ID, 300, None);
     diag(&format!("after show: visible = {}", IsWindowVisible(hwnd).as_bool()));
 }
 
@@ -248,15 +283,38 @@ unsafe fn reposition(hwnd: HWND) {
         }
         Err(_) => tb.right - WIDTH - 200,
     };
-    let _ = SetWindowPos(
-        hwnd,
-        Some(HWND_TOPMOST),
-        x.max(tb.left),
-        tb.top,
-        WIDTH,
-        height,
-        SWP_NOACTIVATE | SWP_SHOWWINDOW,
-    );
+    let target_x = x.max(tb.left);
+    let target_y = tb.top;
+    let moved = target_x != LAST_X.load(Ordering::Relaxed)
+        || target_y != LAST_Y.load(Ordering::Relaxed)
+        || height != LAST_H.load(Ordering::Relaxed);
+    if moved {
+        // 位置・サイズが変わったときだけ実際に移動する（毎回移動すると再描画でちらつく）。
+        LAST_X.store(target_x, Ordering::Relaxed);
+        LAST_Y.store(target_y, Ordering::Relaxed);
+        LAST_H.store(height, Ordering::Relaxed);
+        let _ = SetWindowPos(
+            hwnd,
+            Some(HWND_TOPMOST),
+            target_x,
+            target_y,
+            WIDTH,
+            height,
+            SWP_NOACTIVATE,
+        );
+    } else {
+        // 位置不変でも最前面だけ維持する。タスクバー操作で z-order が落ち
+        // 一時的にボタンが隠れるのを素早く復帰させる（移動しないのでちらつかない）。
+        let _ = SetWindowPos(
+            hwnd,
+            Some(HWND_TOPMOST),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
+    }
 }
 
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
@@ -265,6 +323,8 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             paint(hwnd);
             LRESULT(0)
         }
+        // 背景消去はしない（全面をダブルバッファで描き直すため）。既定の消去によるちらつき防止。
+        WM_ERASEBKGND => LRESULT(1),
         WM_TIMER => {
             reposition(hwnd);
             LRESULT(0)
@@ -309,13 +369,22 @@ unsafe fn paint(hwnd: HWND) {
     let hdc = BeginPaint(hwnd, &mut ps);
     let mut rc = RECT::default();
     let _ = GetClientRect(hwnd, &mut rc);
+    let w = rc.right.max(1);
+    let h = rc.bottom.max(1);
+
+    // ダブルバッファ: いったんメモリDCに全部描いてから一括転送する。
+    // 「背景塗り→各ボタン描画」の途中状態が画面に出ないため、録音トグルや
+    // タスクバー操作に伴う再描画でちらつかない。
+    let mem = CreateCompatibleDC(Some(hdc));
+    let bmp = CreateCompatibleBitmap(hdc, w, h);
+    let old_bmp = SelectObject(mem, HGDIOBJ(bmp.0));
 
     // 背景はクロマキー色で塗る → 透過してタスクバーが見える（ボタンだけ浮く）。
     let bg = CreateSolidBrush(COLORREF(CHROMA));
-    FillRect(hdc, &rc, bg);
+    FillRect(mem, &rc, bg);
     let _ = DeleteObject(HGDIOBJ(bg.0));
 
-    let cy = rc.bottom / 2;
+    let cy = h / 2;
     let half = WIDTH / 2;
     let recording = RECORDING.load(Ordering::Relaxed);
 
@@ -323,31 +392,54 @@ unsafe fn paint(hwnd: HWND) {
     let bx = half / 2;
     if recording {
         let brush = CreateSolidBrush(COLORREF(0x00FF_FFFF));
-        let old = SelectObject(hdc, HGDIOBJ(brush.0));
-        let _ = Rectangle(hdc, bx - 6, cy - 6, bx + 6, cy + 6);
-        SelectObject(hdc, old);
+        let old = SelectObject(mem, HGDIOBJ(brush.0));
+        let _ = Rectangle(mem, bx - 6, cy - 6, bx + 6, cy + 6);
+        SelectObject(mem, old);
         let _ = DeleteObject(HGDIOBJ(brush.0));
     } else {
         let brush = CreateSolidBrush(COLORREF(0x0020_30E0)); // BGR=赤
-        let old = SelectObject(hdc, HGDIOBJ(brush.0));
-        let _ = Ellipse(hdc, bx - 7, cy - 7, bx + 7, cy + 7);
-        SelectObject(hdc, old);
+        let old = SelectObject(mem, HGDIOBJ(brush.0));
+        let _ = Ellipse(mem, bx - 7, cy - 7, bx + 7, cy + 7);
+        SelectObject(mem, old);
         let _ = DeleteObject(HGDIOBJ(brush.0));
     }
 
-    // 右ボタン: ウィンドウを開く。停止(■)と区別するため「ウィンドウ風」グリフにする
-    // （明るい本体＋上部のタイトルバー帯）。塗りつぶしでクリック可能。
+    // 右ボタン: QuickScribe のウィンドウを開く。アプリアイコンを描いてアプリ帰属を
+    // 一目で示し、左の停止(■)と確実に区別する。アイコン未取得時のみフォールバックで
+    // 「ウィンドウ風」グリフ（本体＋タイトルバー帯）を描く。
     let ox = half + half / 2;
-    let (l, t, r, b) = (ox - 7, cy - 6, ox + 7, cy + 6);
-    let body = CreateSolidBrush(COLORREF(0x00E0_E0E0)); // 本体: 明るいグレー
-    let old = SelectObject(hdc, HGDIOBJ(body.0));
-    let _ = Rectangle(hdc, l, t, r, b);
-    SelectObject(hdc, old);
-    let _ = DeleteObject(HGDIOBJ(body.0));
-    let bar_rc = RECT { left: l, top: t, right: r, bottom: t + 3 };
-    let bar = CreateSolidBrush(COLORREF(0x0080_8080)); // タイトルバー帯: 濃いグレー
-    FillRect(hdc, &bar_rc, bar);
-    let _ = DeleteObject(HGDIOBJ(bar.0));
+    let icon = WIDGET_ICON.load(Ordering::Relaxed);
+    if icon != 0 {
+        let sz = (h - 6).clamp(16, 24);
+        let _ = DrawIconEx(
+            mem,
+            ox - sz / 2,
+            (h - sz) / 2,
+            HICON(icon as *mut _),
+            sz,
+            sz,
+            0,
+            None,
+            DI_NORMAL,
+        );
+    } else {
+        let (l, t, r, b) = (ox - 7, cy - 6, ox + 7, cy + 6);
+        let body = CreateSolidBrush(COLORREF(0x00E0_E0E0)); // 本体: 明るいグレー
+        let old = SelectObject(mem, HGDIOBJ(body.0));
+        let _ = Rectangle(mem, l, t, r, b);
+        SelectObject(mem, old);
+        let _ = DeleteObject(HGDIOBJ(body.0));
+        let bar_rc = RECT { left: l, top: t, right: r, bottom: t + 3 };
+        let bar = CreateSolidBrush(COLORREF(0x0080_8080)); // タイトルバー帯: 濃いグレー
+        FillRect(mem, &bar_rc, bar);
+        let _ = DeleteObject(HGDIOBJ(bar.0));
+    }
 
+    // メモリDC → 画面へ一括転送。
+    let _ = BitBlt(hdc, 0, 0, w, h, Some(mem), 0, 0, SRCCOPY);
+
+    SelectObject(mem, old_bmp);
+    let _ = DeleteObject(HGDIOBJ(bmp.0));
+    let _ = DeleteDC(mem);
     let _ = EndPaint(hwnd, &ps);
 }
