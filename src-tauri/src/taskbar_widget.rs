@@ -19,14 +19,14 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::{
-    InitCommonControlsEx, ICC_BAR_CLASSES, INITCOMMONCONTROLSEX, LPSTR_TEXTCALLBACKW,
-    NMTTDISPINFOW, TOOLTIPS_CLASSW, TTF_SUBCLASS, TTM_ADDTOOLW, TTN_GETDISPINFOW, TTS_ALWAYSTIP,
-    TTS_NOPREFIX, TTTOOLINFOW,
+    InitCommonControlsEx, ICC_BAR_CLASSES, INITCOMMONCONTROLSEX, NMHDR, NMTTDISPINFOW,
+    TOOLTIPS_CLASSW, TTF_SUBCLASS, TTM_ADDTOOLW, TTN_GETDISPINFOW, TTS_ALWAYSTIP, TTS_NOPREFIX,
+    TTTOOLINFOW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, FindWindowExW, FindWindowW, GetClientRect, GetWindowRect,
     IsWindowVisible, LoadCursorW, RegisterClassW, SendMessageW, SetTimer, SetWindowPos, ShowWindow,
-    CW_USEDEFAULT, HWND_TOPMOST, IDC_ARROW, NMHDR, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOWNOACTIVATE,
+    CW_USEDEFAULT, HWND_TOPMOST, IDC_ARROW, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOWNOACTIVATE,
     WINDOW_STYLE, WM_LBUTTONUP, WM_NOTIFY, WM_PAINT, WM_TIMER, WNDCLASSW, WS_EX_LAYERED,
     WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
@@ -123,7 +123,9 @@ unsafe fn add_tool(tt: HWND, parent: HWND, id: usize, left: i32, right: i32) {
             right,
             bottom: 60,
         },
-        lpszText: LPSTR_TEXTCALLBACKW,
+        // LPSTR_TEXTCALLBACKW = ((LPWSTR)-1)。windows crate に定数が無いため値を直接構築する
+        // （TTN_GETDISPINFOW でテキストを動的供給する合図）。
+        lpszText: PWSTR(-1isize as *mut u16),
         ..Default::default()
     };
     let _ = SendMessageW(
@@ -201,7 +203,8 @@ unsafe fn create_widget() {
         WS_EX_TOPMOST,
         TOOLTIPS_CLASSW,
         PCWSTR::null(),
-        WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+        // TTS_* は u32、WS_POPUP は WINDOW_STYLE のため、ビット OR して WINDOW_STYLE で包む。
+        WINDOW_STYLE(WS_POPUP.0 | TTS_ALWAYSTIP | TTS_NOPREFIX),
         CW_USEDEFAULT,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
