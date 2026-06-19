@@ -398,6 +398,15 @@ fn set_record_shortcut(app: tauri::AppHandle, accelerator: String) -> Result<(),
     Ok(())
 }
 
+/// タスクバーウィジェットのツールチップに表示する現在のショートカット表記を更新する（Windowsのみ）。
+#[tauri::command]
+fn set_taskbar_shortcut(display: String) {
+    #[cfg(windows)]
+    taskbar_widget::set_shortcut(display);
+    #[cfg(not(windows))]
+    let _ = display;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -464,7 +473,8 @@ pub fn run() {
             read_text_file,
             set_record_shortcut,
             set_save_settings,
-            set_recording_overlay
+            set_recording_overlay,
+            set_taskbar_shortcut
         ])
         // ウィンドウを閉じてもアプリは終了せず、トレイに常駐する（タスクバー常駐の挙動）。
         // ただし E2E(QUICKSCRIBE_E2E=1)時はドライバが正常終了できるよう既定の閉じる挙動にする。
