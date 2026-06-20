@@ -20,8 +20,8 @@ use windows::core::{w, PCWSTR, PWSTR};
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, EndPaint,
-    SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, DIB_RGB_COLORS, HGDIOBJ,
-    PAINTSTRUCT,
+    GetMonitorInfoW, MonitorFromWindow, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+    BLENDFUNCTION, DIB_RGB_COLORS, HGDIOBJ, MONITORINFO, MONITOR_DEFAULTTONEAREST, PAINTSTRUCT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::{
@@ -31,12 +31,12 @@ use windows::Win32::UI::Controls::{
 };
 use windows::Win32::UI::Shell::ExtractIconW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DrawIconEx, FindWindowExW, FindWindowW, GetWindowRect,
-    IsWindowVisible, LoadCursorW, RegisterClassW, SendMessageW, SetTimer, SetWindowPos, ShowWindow,
-    UpdateLayeredWindow, CW_USEDEFAULT, DI_NORMAL, HICON, HWND_TOPMOST, IDC_ARROW, SWP_NOACTIVATE,
-    SWP_NOMOVE, SWP_NOSIZE, SW_SHOWNOACTIVATE, ULW_ALPHA, WINDOW_STYLE, WM_LBUTTONUP, WM_NOTIFY,
-    WM_PAINT, WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
-    WS_POPUP,
+    CreateWindowExW, DefWindowProcW, DrawIconEx, FindWindowExW, FindWindowW, GetClassNameW,
+    GetForegroundWindow, GetWindowRect, IsWindowVisible, LoadCursorW, RegisterClassW, SendMessageW,
+    SetTimer, SetWindowPos, ShowWindow, UpdateLayeredWindow, CW_USEDEFAULT, DI_NORMAL, HICON,
+    HWND_TOPMOST, IDC_ARROW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_HIDE, SW_SHOWNOACTIVATE,
+    ULW_ALPHA, WINDOW_STYLE, WM_LBUTTONUP, WM_NOTIFY, WM_PAINT, WM_TIMER, WNDCLASSW, WS_EX_LAYERED,
+    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 
 static RECORDING: AtomicBool = AtomicBool::new(false);
@@ -50,6 +50,8 @@ static WIDGET_ICON: AtomicIsize = AtomicIsize::new(0);
 static LAST_X: AtomicI32 = AtomicI32::new(i32::MIN);
 static LAST_Y: AtomicI32 = AtomicI32::new(i32::MIN);
 static LAST_H: AtomicI32 = AtomicI32::new(i32::MIN);
+/// フルスクリーンアプリ検出でウィジェットを隠している間 true（重複した Show/Hide 呼び出しを避ける）。
+static HIDDEN: AtomicBool = AtomicBool::new(false);
 
 const TOOL_RECORD: usize = 1;
 const TOOL_OPEN: usize = 2;
@@ -309,6 +311,48 @@ unsafe fn reposition(hwnd: HWND) {
     }
 }
 
+/// 前面ウィンドウがそのモニタを完全に覆う「フルスクリーン」かを判定する。
+/// 動画(YouTube全画面)/ゲーム/プレゼン等のフルスクリーンではタスクバー自体が隠れるため、
+/// 最前面オーバーレイを残すとコンテンツの上に被さる。これを検出してウィジェットを隠す。
+/// 通常の「最大化」ウィンドウはタスクバーを覆わない(矩形がモニタ全体に達しない)ため false。
+unsafe fn foreground_is_fullscreen() -> bool {
+    let fg = GetForegroundWindow();
+    if fg.0.is_null() {
+        return false;
+    }
+    // デスクトップ/シェル(タスクバー・Progman・WorkerW)やウィジェット自身は全画面扱いしない。
+    let mut cls = [0u16; 64];
+    let n = GetClassNameW(fg, &mut cls);
+    if n > 0 {
+        let name = String::from_utf16_lossy(&cls[..n as usize]);
+        if matches!(
+            name.as_str(),
+            "Shell_TrayWnd"
+                | "Shell_SecondaryTrayWnd"
+                | "Progman"
+                | "WorkerW"
+                | "QuickScribeTaskbarWidget"
+        ) {
+            return false;
+        }
+    }
+    let mut wr = RECT::default();
+    if GetWindowRect(fg, &mut wr).is_err() {
+        return false;
+    }
+    let mon = MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST);
+    let mut mi = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    if !GetMonitorInfoW(mon, &mut mi).as_bool() {
+        return false;
+    }
+    let m = mi.rcMonitor;
+    // 前面ウィンドウがモニタ矩形を完全に覆う = フルスクリーン。
+    wr.left <= m.left && wr.top <= m.top && wr.right >= m.right && wr.bottom >= m.bottom
+}
+
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
         WM_PAINT => {
@@ -319,7 +363,20 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             LRESULT(0)
         }
         WM_TIMER => {
-            reposition(hwnd);
+            // フルスクリーンアプリ(動画/ゲーム/プレゼン)の前面では、最前面オーバーレイを
+            // 隠してコンテンツを邪魔しない。解除されたら復帰させる。
+            if foreground_is_fullscreen() {
+                if !HIDDEN.swap(true, Ordering::Relaxed) {
+                    let _ = ShowWindow(hwnd, SW_HIDE);
+                    diag("hide: foreground is fullscreen");
+                }
+            } else {
+                if HIDDEN.swap(false, Ordering::Relaxed) {
+                    let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+                    diag("show: fullscreen ended");
+                }
+                reposition(hwnd);
+            }
             LRESULT(0)
         }
         WM_NOTIFY => {
