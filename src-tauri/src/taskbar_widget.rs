@@ -5,18 +5,23 @@
 // 再実装されており、SetParent による子ウィンドウ埋め込みは描画されないことがある。
 // そこで子埋め込みをやめ、Shell_TrayWnd の矩形上に WS_EX_TOPMOST|TOOLWINDOW|NOACTIVATE の
 // 独立トップレベルウィンドウを座標計算で重ねる（プロセス境界/XAMLに非依存＝Win11で堅い）。
+//
+// 透過方式: クロマキー(LWA_COLORKEY)はアイコンのアンチエイリアス縁がキー色(マゼンタ)と
+// 混ざり「色付きの縁(赤い背景)」が残るため廃止。UpdateLayeredWindow による per-pixel alpha
+// (32bpp プリマルチプライド ARGB)で合成し、アイコン本来の透過をそのまま反映する＝縁の滲み無し。
 // どこで失敗するか切り分けるため、各ステップを診断ログ(ドキュメント/QuickScribe/taskbar-diag.log)へ出力する。
 
+use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicIsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use tauri::{Emitter, Manager};
 use windows::core::{w, PCWSTR, PWSTR};
-use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateSolidBrush, DeleteDC,
-    DeleteObject, Ellipse, EndPaint, FillRect, InvalidateRect, Rectangle, SelectObject, HGDIOBJ,
-    PAINTSTRUCT, SRCCOPY,
+    BeginPaint, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, EndPaint,
+    SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, DIB_RGB_COLORS, HGDIOBJ,
+    PAINTSTRUCT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::{
@@ -26,12 +31,12 @@ use windows::Win32::UI::Controls::{
 };
 use windows::Win32::UI::Shell::ExtractIconW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DrawIconEx, FindWindowExW, FindWindowW, GetClientRect,
-    GetWindowRect, IsWindowVisible, LoadCursorW, RegisterClassW, SendMessageW, SetTimer,
-    SetWindowPos, ShowWindow, CW_USEDEFAULT, DI_NORMAL, HICON, HWND_TOPMOST, IDC_ARROW,
-    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_SHOWNOACTIVATE, WINDOW_STYLE, WM_ERASEBKGND,
-    WM_LBUTTONUP, WM_NOTIFY, WM_PAINT, WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    CreateWindowExW, DefWindowProcW, DrawIconEx, FindWindowExW, FindWindowW, GetWindowRect,
+    IsWindowVisible, LoadCursorW, RegisterClassW, SendMessageW, SetTimer, SetWindowPos, ShowWindow,
+    UpdateLayeredWindow, CW_USEDEFAULT, DI_NORMAL, HICON, HWND_TOPMOST, IDC_ARROW, SWP_NOACTIVATE,
+    SWP_NOMOVE, SWP_NOSIZE, SW_SHOWNOACTIVATE, ULW_ALPHA, WINDOW_STYLE, WM_LBUTTONUP, WM_NOTIFY,
+    WM_PAINT, WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    WS_POPUP,
 };
 
 static RECORDING: AtomicBool = AtomicBool::new(false);
@@ -51,9 +56,6 @@ const TOOL_OPEN: usize = 2;
 
 const WIDTH: i32 = 60; // 2ボタン分
 const TIMER_ID: usize = 1;
-/// 背景の透過色（クロマキー）。この色で塗った部分はタスクバーが透けて見える＝テーマ非依存。
-/// マゼンタはボタン色(赤/白/灰)と被らないため選択。COLORREF は 0x00BBGGRR。
-const CHROMA: u32 = 0x00FF_00FF;
 
 /// 診断ログを ドキュメント/QuickScribe/taskbar-diag.log に追記する。
 fn diag(msg: &str) {
@@ -83,10 +85,7 @@ pub fn set_recording(recording: bool) {
     RECORDING.store(recording, Ordering::Relaxed);
     let h = WIDGET_HWND.load(Ordering::Relaxed);
     if h != 0 {
-        unsafe {
-            // erase=false: 背景消去によるちらつきを避ける（全面をダブルバッファで描き直す）。
-            let _ = InvalidateRect(Some(HWND(h as *mut _)), None, false.into());
-        }
+        unsafe { render(HWND(h as *mut _)) };
     }
 }
 
@@ -120,10 +119,7 @@ pub fn set_shortcut(display: String) {
 /// ボタンごとのツールチップ文言（動作＋現在のショートカット＋アプリ名）。
 /// WCAG/Microsoft Fluent: アイコンのみボタンにはツールチップとショートカット併記が必要。
 fn tooltip_text(id: usize) -> String {
-    let sc = SHORTCUT
-        .lock()
-        .map(|s| s.clone())
-        .unwrap_or_default();
+    let sc = SHORTCUT.lock().map(|s| s.clone()).unwrap_or_default();
     if id == TOOL_RECORD {
         let action = if RECORDING.load(Ordering::Relaxed) {
             "録音を停止"
@@ -158,12 +154,7 @@ unsafe fn add_tool(tt: HWND, parent: HWND, id: usize, left: i32, right: i32) {
         lpszText: PWSTR(-1isize as *mut u16),
         ..Default::default()
     };
-    let _ = SendMessageW(
-        tt,
-        TTM_ADDTOOLW,
-        None,
-        Some(LPARAM(&mut ti as *mut _ as isize)),
-    );
+    let _ = SendMessageW(tt, TTM_ADDTOOLW, None, Some(LPARAM(&mut ti as *mut _ as isize)));
 }
 
 unsafe fn create_widget() {
@@ -194,7 +185,8 @@ unsafe fn create_widget() {
     };
     diag(&format!("Shell_TrayWnd hwnd = {:?}", taskbar.0));
 
-    // 独立トップレベルの最前面ツールウィンドウ（子ではない）。
+    // 独立トップレベルの最前面ツールウィンドウ（子ではない）。WS_EX_LAYERED は
+    // UpdateLayeredWindow による per-pixel alpha 合成に必須。
     let hwnd = match CreateWindowExW(
         WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED,
         class,
@@ -217,11 +209,6 @@ unsafe fn create_widget() {
     };
     WIDGET_HWND.store(hwnd.0 as isize, Ordering::Relaxed);
     diag(&format!("created widget hwnd = {:?}", hwnd.0));
-
-    // クロマキー透過: 背景(CHROMA)で塗った部分を透明にし、タスクバーを透けさせる。
-    // ボタンだけが浮いて見えるためタスクバー色/テーマに依存しない。
-    use windows::Win32::UI::WindowsAndMessaging::{SetLayeredWindowAttributes, LWA_COLORKEY};
-    let _ = SetLayeredWindowAttributes(hwnd, COLORREF(CHROMA), 0, LWA_COLORKEY);
 
     // ツールチップ（アイコンのみボタンの説明＋現在ショートカット＋アプリ名 / WCAG・Fluent準拠）。
     let icc = INITCOMMONCONTROLSEX {
@@ -252,9 +239,9 @@ unsafe fn create_widget() {
     load_app_icon(hinstance);
 
     reposition(hwnd);
+    render(hwnd); // 初回の中身を UpdateLayeredWindow で反映
     let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-    // 300ms間隔: タスクバー操作で z-order が落ちても素早く最前面へ復帰させる
-    // （ダブルバッファ描画なので頻繁な再描画でもちらつかない）。
+    // 300ms間隔: タスクバー操作で z-order が落ちても素早く最前面へ復帰させる。
     SetTimer(Some(hwnd), TIMER_ID, 300, None);
     diag(&format!("after show: visible = {}", IsWindowVisible(hwnd).as_bool()));
 }
@@ -289,7 +276,8 @@ unsafe fn reposition(hwnd: HWND) {
         || target_y != LAST_Y.load(Ordering::Relaxed)
         || height != LAST_H.load(Ordering::Relaxed);
     if moved {
-        // 位置・サイズが変わったときだけ実際に移動する（毎回移動すると再描画でちらつく）。
+        let size_changed = height != LAST_H.load(Ordering::Relaxed);
+        // 位置・サイズが変わったときだけ実際に移動する（毎回移動するとちらつく）。
         LAST_X.store(target_x, Ordering::Relaxed);
         LAST_Y.store(target_y, Ordering::Relaxed);
         LAST_H.store(height, Ordering::Relaxed);
@@ -302,6 +290,10 @@ unsafe fn reposition(hwnd: HWND) {
             height,
             SWP_NOACTIVATE,
         );
+        // 高さが変わると DIB のサイズも変える必要があるため再描画する。
+        if size_changed {
+            render(hwnd);
+        }
     } else {
         // 位置不変でも最前面だけ維持する。タスクバー操作で z-order が落ち
         // 一時的にボタンが隠れるのを素早く復帰させる（移動しないのでちらつかない）。
@@ -320,11 +312,12 @@ unsafe fn reposition(hwnd: HWND) {
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
         WM_PAINT => {
-            paint(hwnd);
+            // 内容は UpdateLayeredWindow(render) で合成するため、ここでは検証(validate)のみ。
+            let mut ps = PAINTSTRUCT::default();
+            let _ = BeginPaint(hwnd, &mut ps);
+            let _ = EndPaint(hwnd, &ps);
             LRESULT(0)
         }
-        // 背景消去はしない（全面をダブルバッファで描き直すため）。既定の消去によるちらつき防止。
-        WM_ERASEBKGND => LRESULT(1),
         WM_TIMER => {
             reposition(hwnd);
             LRESULT(0)
@@ -364,82 +357,174 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
     }
 }
 
-unsafe fn paint(hwnd: HWND) {
-    let mut ps = PAINTSTRUCT::default();
-    let hdc = BeginPaint(hwnd, &mut ps);
-    let mut rc = RECT::default();
-    let _ = GetClientRect(hwnd, &mut rc);
-    let w = rc.right.max(1);
-    let h = rc.bottom.max(1);
+/// プリマルチプライド BGRA を1画素書き込む（背景は完全透過なのでブレンドせず上書き）。
+/// buf はトップダウン 32bpp。色は素の (r,g,b)＋アルファ a を与えると内部でプリマルチプライドする。
+#[inline]
+unsafe fn put_px(buf: *mut u32, w: i32, h: i32, x: i32, y: i32, r: u8, g: u8, b: u8, a: u8) {
+    if x < 0 || y < 0 || x >= w || y >= h {
+        return;
+    }
+    let pr = (r as u32 * a as u32) / 255;
+    let pg = (g as u32 * a as u32) / 255;
+    let pb = (b as u32 * a as u32) / 255;
+    // メモリ上は B,G,R,A の順 → little-endian u32 では 0xAARRGGBB。
+    let val = ((a as u32) << 24) | (pr << 16) | (pg << 8) | pb;
+    *buf.add((y * w + x) as usize) = val;
+}
 
-    // ダブルバッファ: いったんメモリDCに全部描いてから一括転送する。
-    // 「背景塗り→各ボタン描画」の途中状態が画面に出ないため、録音トグルや
-    // タスクバー操作に伴う再描画でちらつかない。
-    let mem = CreateCompatibleDC(Some(hdc));
-    let bmp = CreateCompatibleBitmap(hdc, w, h);
-    let old_bmp = SelectObject(mem, HGDIOBJ(bmp.0));
-
-    // 背景はクロマキー色で塗る → 透過してタスクバーが見える（ボタンだけ浮く）。
-    let bg = CreateSolidBrush(COLORREF(CHROMA));
-    FillRect(mem, &rc, bg);
-    let _ = DeleteObject(HGDIOBJ(bg.0));
-
+/// 左ボタンを buf に直接描く（録音中=白い四角/停止中=赤い丸）。丸は3x3スーパサンプルでAA。
+unsafe fn draw_left_button(buf: *mut u32, w: i32, h: i32) {
     let cy = h / 2;
-    let half = WIDTH / 2;
-    let recording = RECORDING.load(Ordering::Relaxed);
-
-    // 左ボタン: 録音中=白い四角(停止)、停止中=赤い丸(録音開始)。
-    let bx = half / 2;
-    if recording {
-        let brush = CreateSolidBrush(COLORREF(0x00FF_FFFF));
-        let old = SelectObject(mem, HGDIOBJ(brush.0));
-        let _ = Rectangle(mem, bx - 6, cy - 6, bx + 6, cy + 6);
-        SelectObject(mem, old);
-        let _ = DeleteObject(HGDIOBJ(brush.0));
+    let bx = (WIDTH / 2) / 2;
+    if RECORDING.load(Ordering::Relaxed) {
+        // 白い四角（停止）。
+        for y in (cy - 6)..(cy + 6) {
+            for x in (bx - 6)..(bx + 6) {
+                put_px(buf, w, h, x, y, 0xFF, 0xFF, 0xFF, 0xFF);
+            }
+        }
     } else {
-        let brush = CreateSolidBrush(COLORREF(0x0020_30E0)); // BGR=赤
-        let old = SelectObject(mem, HGDIOBJ(brush.0));
-        let _ = Ellipse(mem, bx - 7, cy - 7, bx + 7, cy + 7);
-        SelectObject(mem, old);
-        let _ = DeleteObject(HGDIOBJ(brush.0));
+        // 赤い丸（録音開始）。R=0xE0,G=0x30,B=0x20。
+        let r = 7.0f32;
+        for y in (cy - 8)..=(cy + 8) {
+            for x in (bx - 8)..=(bx + 8) {
+                let mut cov = 0u32;
+                for sy in 0..3 {
+                    for sx in 0..3 {
+                        let fx = x as f32 + (sx as f32 + 0.5) / 3.0 - 0.5 - bx as f32;
+                        let fy = y as f32 + (sy as f32 + 0.5) / 3.0 - 0.5 - cy as f32;
+                        if fx * fx + fy * fy <= r * r {
+                            cov += 1;
+                        }
+                    }
+                }
+                if cov > 0 {
+                    let a = (cov * 255 / 9) as u8;
+                    put_px(buf, w, h, x, y, 0xE0, 0x30, 0x20, a);
+                }
+            }
+        }
     }
+}
 
-    // 右ボタン: QuickScribe のウィンドウを開く。アプリアイコンを描いてアプリ帰属を
-    // 一目で示し、左の停止(■)と確実に区別する。アイコン未取得時のみフォールバックで
-    // 「ウィンドウ風」グリフ（本体＋タイトルバー帯）を描く。
-    let ox = half + half / 2;
+/// 右ボタンのアプリアイコンを buf に描く。DrawIconEx でメモリDCへ描画後、アルファを整える。
+/// DrawIconEx がアルファチャネルを書く実装/書かない実装の双方に対応する適応処理:
+/// - 既にアルファが入っていれば(=最大alpha>0)そのまま使う（滑らかな縁）。
+/// - 全てalpha=0なら、RGBが非ゼロの画素を不透明(255)にする（クロマ無しなので赤縁は出ない）。
+unsafe fn draw_icon(mem_dc: windows::Win32::Graphics::Gdi::HDC, buf: *mut u32, w: i32, h: i32) -> bool {
     let icon = WIDGET_ICON.load(Ordering::Relaxed);
-    if icon != 0 {
-        let sz = (h - 6).clamp(16, 24);
-        let _ = DrawIconEx(
-            mem,
-            ox - sz / 2,
-            (h - sz) / 2,
-            HICON(icon as *mut _),
-            sz,
-            sz,
-            0,
-            None,
-            DI_NORMAL,
-        );
-    } else {
-        let (l, t, r, b) = (ox - 7, cy - 6, ox + 7, cy + 6);
-        let body = CreateSolidBrush(COLORREF(0x00E0_E0E0)); // 本体: 明るいグレー
-        let old = SelectObject(mem, HGDIOBJ(body.0));
-        let _ = Rectangle(mem, l, t, r, b);
-        SelectObject(mem, old);
-        let _ = DeleteObject(HGDIOBJ(body.0));
-        let bar_rc = RECT { left: l, top: t, right: r, bottom: t + 3 };
-        let bar = CreateSolidBrush(COLORREF(0x0080_8080)); // タイトルバー帯: 濃いグレー
-        FillRect(mem, &bar_rc, bar);
-        let _ = DeleteObject(HGDIOBJ(bar.0));
+    if icon == 0 {
+        return false;
+    }
+    let sz = (h - 6).clamp(16, 24);
+    let ox = (WIDTH / 2) + (WIDTH / 2) / 2;
+    let ix = ox - sz / 2;
+    let iy = (h - sz) / 2;
+    let _ = DrawIconEx(mem_dc, ix, iy, HICON(icon as *mut _), sz, sz, 0, None, DI_NORMAL);
+
+    // 描画領域のアルファ最大値を調べる。
+    let (x0, y0) = (ix.max(0), iy.max(0));
+    let (x1, y1) = ((ix + sz).min(w), (iy + sz).min(h));
+    let mut max_a = 0u32;
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let v = *buf.add((y * w + x) as usize);
+            max_a = max_a.max(v >> 24);
+        }
+    }
+    if max_a == 0 {
+        // DrawIconEx がアルファ未設定 → RGB非ゼロを不透明化（プリマルチプライド済み扱い）。
+        for y in y0..y1 {
+            for x in x0..x1 {
+                let p = buf.add((y * w + x) as usize);
+                let v = *p;
+                if v & 0x00FF_FFFF != 0 {
+                    *p = v | 0xFF00_0000;
+                }
+            }
+        }
+    }
+    true
+}
+
+/// フォールバック: アイコン未取得時の「ウィンドウ風」グリフ（本体＋タイトルバー帯）を buf に描く。
+unsafe fn draw_fallback_glyph(buf: *mut u32, w: i32, h: i32) {
+    let cy = h / 2;
+    let ox = (WIDTH / 2) + (WIDTH / 2) / 2;
+    let (l, t, r, b) = (ox - 7, cy - 6, ox + 7, cy + 6);
+    for y in t..b {
+        for x in l..r {
+            // 上3pxは濃いグレーのタイトルバー帯、以降は明るいグレー本体。
+            if y < t + 3 {
+                put_px(buf, w, h, x, y, 0x80, 0x80, 0x80, 0xFF);
+            } else {
+                put_px(buf, w, h, x, y, 0xE0, 0xE0, 0xE0, 0xFF);
+            }
+        }
+    }
+}
+
+/// per-pixel alpha でウィジェットの中身を合成し UpdateLayeredWindow で反映する。
+unsafe fn render(hwnd: HWND) {
+    let mut rc = RECT::default();
+    if GetWindowRect(hwnd, &mut rc).is_err() {
+        return;
+    }
+    let w = (rc.right - rc.left).max(1);
+    let h = (rc.bottom - rc.top).max(1);
+
+    let mem = CreateCompatibleDC(None);
+    if mem.0.is_null() {
+        return;
+    }
+    let mut bmi = BITMAPINFO::default();
+    bmi.bmiHeader = BITMAPINFOHEADER {
+        biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+        biWidth: w,
+        biHeight: -h, // 負=トップダウン
+        biPlanes: 1,
+        biBitCount: 32,
+        biCompression: BI_RGB.0 as u32,
+        ..Default::default()
+    };
+    let mut bits: *mut c_void = std::ptr::null_mut();
+    let dib = match CreateDIBSection(None, &bmi, DIB_RGB_COLORS, &mut bits, None, 0) {
+        Ok(d) if !bits.is_null() => d,
+        _ => {
+            let _ = DeleteDC(mem);
+            return;
+        }
+    };
+    let old = SelectObject(mem, HGDIOBJ(dib.0));
+    let buf = bits as *mut u32;
+    // CreateDIBSection はゼロ初期化済み（全画素 透過）。
+
+    draw_left_button(buf, w, h);
+    if !draw_icon(mem, buf, w, h) {
+        draw_fallback_glyph(buf, w, h);
     }
 
-    // メモリDC → 画面へ一括転送。
-    let _ = BitBlt(hdc, 0, 0, w, h, Some(mem), 0, 0, SRCCOPY);
+    let blend = BLENDFUNCTION {
+        BlendOp: 0,        // AC_SRC_OVER
+        BlendFlags: 0,
+        SourceConstantAlpha: 255,
+        AlphaFormat: 1,    // AC_SRC_ALPHA（ソースは per-pixel alpha）
+    };
+    let size = SIZE { cx: w, cy: h };
+    let src = POINT { x: 0, y: 0 };
+    let _ = UpdateLayeredWindow(
+        hwnd,
+        None,            // hdcDst: 画面DCは既定
+        None,            // pptDst: 現在位置を維持（移動は SetWindowPos が担当）
+        Some(&size),
+        Some(mem),
+        Some(&src),
+        COLORREF(0),
+        Some(&blend),
+        ULW_ALPHA,
+    );
 
-    SelectObject(mem, old_bmp);
-    let _ = DeleteObject(HGDIOBJ(bmp.0));
+    SelectObject(mem, old);
+    let _ = DeleteObject(HGDIOBJ(dib.0));
     let _ = DeleteDC(mem);
-    let _ = EndPaint(hwnd, &ps);
 }
