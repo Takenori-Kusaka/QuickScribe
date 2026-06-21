@@ -35,9 +35,14 @@ impl RefineStyle {
     }
 
     /// 全スタイル共通のシステム指示(捏造禁止・ニュアンス保持=コア価値)。
+    /// 「本文だけ」を XML タグ境界で囲ませる(前置き=AIの挨拶／後書き=補足 の3層を排す)。
+    /// ※本文をJSONに封入すると品質が劣化し壊れやすい(docs/research/sources/llm-output-control.md)。
+    ///   自由生成のまま `<journal>…</journal>` で囲ませ、コード側でタグ内を決定的に抽出する。
     fn system_prompt(&self) -> &'static str {
         "あなたは話者本人の思考整理を助けるアシスタントです。事実を捏造せず、\
-         書かれていないことは足さず、本人のニュアンス・迷い・語り口を残してください。"
+         書かれていないことは足さず、本人のニュアンス・迷い・語り口を残してください。\
+         整形後の本文だけを <journal> と </journal> で囲んで出力し、\
+         タグの外には前置き・挨拶・後書き・補足説明を一切書かないでください。"
     }
 
     /// スタイル別のユーザープロンプトを組み立てる(純粋関数・テスト対象)。
@@ -121,6 +126,57 @@ pub fn refine(
     engine_for(provider).refine(&req)
 }
 
+/// 本文を囲む XML タグ(自由生成のまま境界だけ作らせ、本文をJSONに入れない=品質劣化回避)。
+const BODY_OPEN: &str = "<journal>";
+const BODY_CLOSE: &str = "</journal>";
+
+/// モデル応答から整形本文だけを取り出す(docs/research/sources/llm-output-control.md の確定方針)。
+/// L1 : `<journal>…</journal>` のタグ内(最初の開始〜最後の終了=最外)を抽出。
+/// L1': 終了タグ欠落(truncation等)は開始タグ以降を本文として救済。
+/// L2 : タグ欠落時は定型前置きを保守的に1行だけ除去(過剰除去で本文を壊さない)。
+/// どの経路でも本文を失わない(コア価値: 整形は付加価値、原文喪失は事故)。
+fn extract_tagged_body(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if let Some(start) = trimmed.find(BODY_OPEN) {
+        let after = start + BODY_OPEN.len();
+        if let Some(end_rel) = trimmed[after..].rfind(BODY_CLOSE) {
+            let inner = trimmed[after..after + end_rel].trim();
+            if !inner.is_empty() {
+                return inner.to_string();
+            }
+        }
+        // L1': 終了タグが無い → 開始タグ以降を救済。
+        let inner = trimmed[after..].trim();
+        if !inner.is_empty() {
+            return inner.to_string();
+        }
+    }
+    strip_preamble(trimmed)
+}
+
+/// 先頭の定型前置き行(挨拶/「以下が…」等)を保守的に1行だけ除去する。
+/// タグ抽出が主軸なので稀なフォールバック。短い先頭行が前置き語で始まり、かつ
+/// 後続に本文がある場合のみ落とす(本文を誤って削らないため最小限)。
+fn strip_preamble(s: &str) -> String {
+    let trimmed = s.trim();
+    let first = trimmed.lines().next().unwrap_or("").trim();
+    const PREFIXES: [&str; 12] = [
+        "はい", "わかりました", "了解", "承知", "以下", "整形しました", "まとめると",
+        "Here is", "Here's", "Sure", "Certainly", "Below is",
+    ];
+    let looks_preamble =
+        first.len() < 60 && PREFIXES.iter().any(|p| first.starts_with(p));
+    if looks_preamble {
+        if let Some(rest) = trimmed.splitn(2, '\n').nth(1) {
+            let rest = rest.trim();
+            if !rest.is_empty() {
+                return rest.to_string();
+            }
+        }
+    }
+    trimmed.to_string()
+}
+
 struct GeminiEngine;
 struct AnthropicEngine;
 struct OpenAiEngine;
@@ -164,10 +220,11 @@ impl FormattingEngine for GeminiEngine {
                 }
             }
         }
-        if out.trim().is_empty() {
+        let body = extract_tagged_body(&out);
+        if body.is_empty() {
             return Err(format!("整形結果が空でした（Gemini応答: {}）", v));
         }
-        Ok(out.trim().to_string())
+        Ok(body)
     }
 }
 
@@ -206,10 +263,11 @@ impl FormattingEngine for AnthropicEngine {
                 }
             }
         }
-        if out.trim().is_empty() {
+        let body = extract_tagged_body(&out);
+        if body.is_empty() {
             return Err(format!("整形結果が空でした（Anthropic応答: {}）", v));
         }
-        Ok(out.trim().to_string())
+        Ok(body)
     }
 }
 
@@ -243,10 +301,11 @@ impl FormattingEngine for OpenAiEngine {
             .and_then(|t| t.as_str())
             .unwrap_or("")
             .to_string();
-        if out.trim().is_empty() {
+        let body = extract_tagged_body(&out);
+        if body.is_empty() {
             return Err(format!("整形結果が空でした（OpenAI応答: {}）", v));
         }
-        Ok(out.trim().to_string())
+        Ok(body)
     }
 }
 
@@ -283,10 +342,11 @@ impl FormattingEngine for OllamaEngine {
             .and_then(|t| t.as_str())
             .unwrap_or("")
             .to_string();
-        if out.trim().is_empty() {
+        let body = extract_tagged_body(&out);
+        if body.is_empty() {
             return Err(format!("整形結果が空でした（Ollama応答: {}）", v));
         }
-        Ok(out.trim().to_string())
+        Ok(body)
     }
 }
 
@@ -518,5 +578,47 @@ mod tests {
     fn openai_picks_latest_snapshot_when_no_alias() {
         let ids = ["gpt-4o-2024-05-13", "gpt-4o-2024-08-06"];
         assert_eq!(pick_openai_mid(&ids).as_deref(), Some("gpt-4o-2024-08-06"));
+    }
+
+    #[test]
+    fn extract_strips_journal_tags_and_surrounding_noise() {
+        // 前置き＋タグ本文＋後書き の3層から、タグ内本文だけを取り出す。
+        let raw = "はい、以下が整形結果です:\n<journal>## 見出し\n本文の中身</journal>\n何か補足";
+        assert_eq!(extract_tagged_body(raw), "## 見出し\n本文の中身");
+    }
+
+    #[test]
+    fn extract_preserves_markdown_inside_tags_unescaped() {
+        // markdown(改行/引用符/コードフェンス)を一切壊さない(JSON封入を捨てた理由)。
+        let raw = "<journal>- 「迷い」も残す\n```\ncode\n```</journal>";
+        assert_eq!(extract_tagged_body(raw), "- 「迷い」も残す\n```\ncode\n```");
+    }
+
+    #[test]
+    fn extract_rescues_when_close_tag_missing() {
+        // 終了タグ欠落(truncation等)でも開始タグ以降を救済する。
+        let raw = "<journal>途中で切れた本文";
+        assert_eq!(extract_tagged_body(raw), "途中で切れた本文");
+    }
+
+    #[test]
+    fn extract_strips_leading_preamble_when_no_tags() {
+        // タグ欠落時は定型前置きを1行だけ保守的に除去する。
+        let raw = "はい、整形しました。\n本文だけ残る";
+        assert_eq!(extract_tagged_body(raw), "本文だけ残る");
+    }
+
+    #[test]
+    fn extract_keeps_body_without_tags_or_preamble() {
+        // タグも前置きも無ければ本文をそのまま返す(本文を失わない)。
+        let raw = "ふつうの本文\n2行目";
+        assert_eq!(extract_tagged_body(raw), "ふつうの本文\n2行目");
+    }
+
+    #[test]
+    fn extract_takes_outermost_span_with_inner_tag_like_text() {
+        // 本文中にタグ様の語があっても最外(最初の開始〜最後の終了)で囲む。
+        let raw = "<journal>A <journal> B</journal>";
+        assert_eq!(extract_tagged_body(raw), "A <journal> B");
     }
 }
