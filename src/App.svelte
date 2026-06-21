@@ -24,34 +24,39 @@
 
   // 設定（localStorageに保存。秘密情報はローカル端末内のみ）。
   // 整形プロバイダは Gemini / Anthropic(Claude) / OpenAI の3種をサポート(BYO鍵 / ADR-0005)。
-  type Provider = "gemini" | "anthropic" | "openai";
+  type Provider = "gemini" | "anthropic" | "openai" | "ollama";
   const PROVIDER_LABELS: Record<Provider, string> = {
     gemini: "Gemini",
     anthropic: "Anthropic (Claude)",
     openai: "OpenAI",
+    ollama: "ローカル (Ollama)",
   };
+  // 鍵不要のローカルプロバイダ（端末内完結＝差別化「ローカルプライバシー」/ S3.4）。
+  const LOCAL_PROVIDERS: Provider[] = ["ollama"];
   // モデルは「実行時に各社のモデル一覧APIから最新ミドルレンジを解決」する（ビルド時固定にしない）。
   // 取得失敗時のフォールバック表示（ローリングlatestエイリアス優先 / ADR-0007 deep research）。
   const FALLBACK_MODELS: Record<Provider, string> = {
     gemini: "gemini-flash-latest",
     anthropic: "claude-sonnet-4-6",
     openai: "gpt-4o",
+    ollama: "llama3.1",
   };
   const KEY_PLACEHOLDERS: Record<Provider, string> = {
     gemini: "AIza...",
     anthropic: "sk-ant-...",
     openai: "sk-...",
+    ollama: "",
   };
-  const ALL_PROVIDERS: Provider[] = ["gemini", "anthropic", "openai"];
+  const ALL_PROVIDERS: Provider[] = ["gemini", "anthropic", "openai", "ollama"];
   // 解決済みモデルのキャッシュ寿命（24時間）。これを過ぎたら再取得する。
   const MODEL_TTL_MS = 24 * 60 * 60 * 1000;
 
   let showSettings = $state(false);
   let provider = $state<Provider>("gemini");
   // プロバイダごとに鍵を保持する（切替時に再入力不要）。
-  let apiKeys = $state<Record<Provider, string>>({ gemini: "", anthropic: "", openai: "" });
+  let apiKeys = $state<Record<Provider, string>>({ gemini: "", anthropic: "", openai: "", ollama: "" });
   // 実行時に解決した最新モデルID（表示・整形に使用）。
-  let resolvedModel = $state<Record<Provider, string>>({ gemini: "", anthropic: "", openai: "" });
+  let resolvedModel = $state<Record<Provider, string>>({ gemini: "", anthropic: "", openai: "", ollama: "" });
   let resolvingModel = $state(false);
   let updateMsg = $state<string>("");
 
@@ -326,7 +331,8 @@
   // 文字起こしを整形（思考整理・要約）する＝コア価値。選択中プロバイダの鍵が必要。
   async function refineNow() {
     if (!transcript) return;
-    if (!apiKeys[provider].trim()) {
+    // ローカルプロバイダ(Ollama)は鍵不要。クラウドのみ鍵を要求する。
+    if (!LOCAL_PROVIDERS.includes(provider) && !apiKeys[provider].trim()) {
       showSettings = true;
       error = `整形には ${PROVIDER_LABELS[provider]} のAPIキーが必要です。設定から入力してください。`;
       return;
@@ -437,8 +443,9 @@
       const text = e.payload;
       if (text) {
         transcript = text;
-        // 一気通貫: 自動で整形まで実行（鍵がある時のみ）。
-        if (autoPipeline && apiKeys[provider].trim()) void refineNow();
+        // 一気通貫: 自動で整形まで実行（クラウドは鍵がある時のみ・ローカルは常に可）。
+        if (autoPipeline && (LOCAL_PROVIDERS.includes(provider) || apiKeys[provider].trim()))
+          void refineNow();
       } else {
         error = "文字起こしできる音声が含まれていませんでした（音声は保存していません）。";
       }
@@ -613,17 +620,25 @@
           <option value="gemini">Gemini</option>
           <option value="anthropic">Anthropic (Claude)</option>
           <option value="openai">OpenAI</option>
+          <option value="ollama">ローカル (Ollama)</option>
         </select>
       </label>
-      <label>
-        {PROVIDER_LABELS[provider]} APIキー（整形に使用・端末内のみ保存）
-        <input
-          type="password"
-          bind:value={apiKeys[provider]}
-          placeholder={KEY_PLACEHOLDERS[provider]}
-          autocomplete="off"
-        />
-      </label>
+      {#if LOCAL_PROVIDERS.includes(provider)}
+        <p class="muted">
+          ローカル (Ollama) は鍵不要で端末内完結（思考の生データを外に出しません）。
+          事前に <code>ollama serve</code> の起動とモデル取得（例: <code>ollama pull llama3.1</code>）が必要です。
+        </p>
+      {:else}
+        <label>
+          {PROVIDER_LABELS[provider]} APIキー（整形に使用・端末内のみ保存）
+          <input
+            type="password"
+            bind:value={apiKeys[provider]}
+            placeholder={KEY_PLACEHOLDERS[provider]}
+            autocomplete="off"
+          />
+        </label>
+      {/if}
       <p class="muted model-hint">
         モデル: <code>{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code>
         {#if resolvingModel}（取得中…）{:else if resolvedModel[provider]}（最新を自動取得）{:else}（最新ミドルレンジを自動選択）{/if}
