@@ -95,6 +95,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          # 第三者NOTICE(法的MUST)を release/test-build でのみ bundle.resources に追加する
+          # 上書き config。base の tauri.conf.json には入れない(コンパイル時の存在検証で
+          # --no-bundle のci.ymlまで壊れるため)。
+          args: --config src-tauri/tauri.release.conf.json
           tagName: ${{ github.ref_name }}
           releaseName: "QuickScribe ${{ github.ref_name }}"
           releaseBody: "自動アップデート対応リリース。インストーラ/実行パッケージは下記アセット参照。未署名(SmartScreen警告が出る場合あり)。"
