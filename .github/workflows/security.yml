@@ -29,7 +29,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Install cargo-audit / cargo-deny / cargo-about
-        run: cargo install cargo-audit cargo-deny cargo-about --locked
+        run: |
+          cargo install cargo-audit cargo-deny --locked
+          # cargo-about のバイナリは cli フィーチャが必要(無いと `cargo about` が入らない)。
+          cargo install cargo-about --locked --features cli
       - name: cargo audit (脆弱性データベース照合)
         working-directory: src-tauri
         run: cargo audit

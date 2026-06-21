@@ -74,7 +74,7 @@ jobs:
       - name: Generate THIRD-PARTY-NOTICES (cargo-about / 法的MUST・ADR-0010)
         shell: bash
         run: |
-          cargo install cargo-about --locked
+          cargo install cargo-about --locked --features cli
           cd src-tauri
           cargo about generate about.hbs > THIRD-PARTY-NOTICES.txt
           wc -l THIRD-PARTY-NOTICES.txt
