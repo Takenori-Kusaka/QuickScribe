@@ -100,6 +100,14 @@
   let saveAudio = $state<boolean>(false);
   let audioFormat = $state<string>("opus");
   let saveDir = $state<string>(""); // 空=既定(ドキュメント/QuickScribe)
+  // 整形スタイル(コア価値: 逐語⇄要約⇄ブレストを行き来 / S3.3)。
+  let refineStyle = $state<string>("structured");
+  const REFINE_STYLES: { value: string; label: string }[] = [
+    { value: "structured", label: "構造化" },
+    { value: "verbatim", label: "逐語" },
+    { value: "summary", label: "要約" },
+    { value: "brainstorm", label: "ブレスト" },
+  ];
 
   function loadSettings() {
     provider = (localStorage.getItem("provider") as Provider) || "gemini";
@@ -118,6 +126,7 @@
     saveAudio = localStorage.getItem("saveAudio") === "true";
     audioFormat = localStorage.getItem("audioFormat") || "opus";
     saveDir = localStorage.getItem("saveDir") || "";
+    refineStyle = localStorage.getItem("refineStyle") || "structured";
   }
 
   // 保存設定をバックエンドへ反映する（保存系コマンドが参照）。
@@ -151,6 +160,7 @@
     localStorage.setItem("saveAudio", String(saveAudio));
     localStorage.setItem("audioFormat", audioFormat);
     localStorage.setItem("saveDir", saveDir);
+    localStorage.setItem("refineStyle", refineStyle);
     void syncSaveSettings();
     showSettings = false;
     // 鍵が入っていれば現在のプロバイダの最新モデルを取得（強制更新）。
@@ -333,6 +343,7 @@
         apiKey: apiKeys[provider],
         // 解決済みモデル（空ならバックエンドがフォールバック既定を補完）。
         model: resolvedModel[provider],
+        style: refineStyle,
       });
     } catch (e) {
       error = String(e);
@@ -544,9 +555,22 @@
     <section class="card">
       <div class="card-head">
         <h2>文字起こし</h2>
-        <button class="btn small" onclick={refineNow} disabled={refining}>
-          {refining ? "整形中…" : "✨ 整形する"}
-        </button>
+        <div class="refine-controls">
+          <select
+            class="style-select"
+            bind:value={refineStyle}
+            onchange={() => localStorage.setItem("refineStyle", refineStyle)}
+            title="整形スタイル"
+            aria-label="整形スタイル"
+          >
+            {#each REFINE_STYLES as s}
+              <option value={s.value}>{s.label}</option>
+            {/each}
+          </select>
+          <button class="btn small" onclick={refineNow} disabled={refining}>
+            {refining ? "整形中…" : "✨ 整形する"}
+          </button>
+        </div>
       </div>
       <div class="scroll">{transcript}</div>
     </section>
@@ -1063,6 +1087,19 @@
     align-items: center;
     justify-content: space-between;
     margin-bottom: 0.5rem;
+  }
+  .refine-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .style-select {
+    font-size: 0.78rem;
+    padding: 0.25rem 0.4rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #fff;
+    color: #374151;
   }
   .card h2 {
     margin: 0;

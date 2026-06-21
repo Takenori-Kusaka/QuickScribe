@@ -1,160 +1,239 @@
 // 整形の知性(FormattingEngine: BYO-Cloud / ADR-0005)。
 // 文字起こしテキストを、ニュアンスを残しつつ思考整理・構造化する(コア価値=ADR-0004)。
-// プロバイダは Gemini / Anthropic(Claude) / OpenAI の3種をサポート(BYO鍵)。
-// 鍵はフロントの設定から渡す(コードに埋め込まない)。
+//
+// 設計(S3.1/S3.3):
+// - 整形「スタイル」(構造化/逐語/要約/ブレスト)を `RefineStyle` で切り替え可能にする(S3.3)。
+//   逐語⇄要約⇄ブレストを行き来できるのがコア価値(ADR-0004)。
+// - プロバイダ(Gemini/Anthropic/OpenAI)は `FormattingEngine` trait の実装として差し替え可能にする
+//   (S3.1: 戦略の差し替え=DIP 境界。将来のローカルLLM=Ollama 等もこの trait を実装すれば載る/S3.4)。
+// - 鍵はフロントの設定から渡す(コードに埋め込まない/ADR-0005)。
 
 use serde_json::json;
 
-/// 整形用の共通プロンプト。話者本人の思考整理を助け、ニュアンスを残す(コア価値)。
-fn build_prompt(transcript: &str) -> String {
-    format!(
-        "以下は音声の文字起こしです。話者本人の思考を整理する手助けをしてください。\n\
-         - 要点を見出しと箇条書きで構造化する\n\
-         - 言い淀みや繰り返しは整理しつつ、本人のニュアンス・迷い・語り口は残す\n\
-         - 事実を捏造せず、書かれていないことは足さない\n\
-         - 最後に「ひとことまとめ」を1〜2文で添える\n\n\
-         ---\n{transcript}"
-    )
+/// 整形スタイル(コア価値「整形の知性」: 逐語⇄要約⇄ブレストを行き来する / ADR-0004, S3.3)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefineStyle {
+    /// 既定: 見出し+箇条書きで構造化し、ニュアンスを残す。
+    Structured,
+    /// 逐語: 言い淀み・繰り返しも極力残し、最小限の整形のみ。
+    Verbatim,
+    /// 要約: 全体を短く要約し要点を絞る。
+    Summary,
+    /// ブレスト: 内容から問い・観点・次の一歩を広げる。
+    Brainstorm,
 }
 
-/// プロバイダ名で整形APIを振り分ける。空/未知は Gemini にフォールバック。
+impl RefineStyle {
+    /// フロントから渡る文字列(英/日)を解釈する。未知・空は Structured(既定)。
+    pub fn parse(s: &str) -> RefineStyle {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "verbatim" | "逐語" => RefineStyle::Verbatim,
+            "summary" | "要約" => RefineStyle::Summary,
+            "brainstorm" | "ブレスト" => RefineStyle::Brainstorm,
+            _ => RefineStyle::Structured,
+        }
+    }
+
+    /// 全スタイル共通のシステム指示(捏造禁止・ニュアンス保持=コア価値)。
+    fn system_prompt(&self) -> &'static str {
+        "あなたは話者本人の思考整理を助けるアシスタントです。事実を捏造せず、\
+         書かれていないことは足さず、本人のニュアンス・迷い・語り口を残してください。"
+    }
+
+    /// スタイル別のユーザープロンプトを組み立てる(純粋関数・テスト対象)。
+    fn user_prompt(&self, transcript: &str) -> String {
+        let instruction = match self {
+            RefineStyle::Structured => "\
+                - 要点を見出しと箇条書きで構造化する\n\
+                - 言い淀みや繰り返しは整理しつつ、本人のニュアンス・迷い・語り口は残す\n\
+                - 最後に「ひとことまとめ」を1〜2文で添える",
+            RefineStyle::Verbatim => "\
+                - 逐語に近い形で、言い淀み・繰り返し・口癖も極力そのまま残す\n\
+                - 改行・句読点・段落分けなど最小限の読みやすさ調整のみ行う\n\
+                - 要約や再構成はしない",
+            RefineStyle::Summary => "\
+                - 全体を短く要約する\n\
+                - 重要な要点だけを3〜5個の箇条書きにする\n\
+                - 細部は削ぎ落としつつ、本人の結論・気持ちのニュアンスは残す",
+            RefineStyle::Brainstorm => "\
+                - 内容から派生する問い・観点・次の一歩をブレスト的に列挙して思考を広げる\n\
+                - 本人が気づいていない切り口や深掘りポイントを提案する\n\
+                - 元の発話の要点も簡潔に添える",
+        };
+        format!(
+            "以下は音声の文字起こしです。話者本人の思考整理を助けてください。\n\
+             {instruction}\n\
+             - 事実を捏造せず、書かれていないことは足さない\n\n\
+             ---\n{transcript}"
+        )
+    }
+}
+
+/// 整形リクエスト(スタイル・鍵・モデル・本文)。FormattingEngine に渡す。
+pub struct RefineRequest<'a> {
+    pub style: RefineStyle,
+    pub api_key: &'a str,
+    pub model: &'a str,
+    pub transcript: &'a str,
+}
+
+/// 整形エンジンの抽象(S3.1: プロバイダ/戦略を差し替え可能にする DIP 境界)。
+pub trait FormattingEngine {
+    fn refine(&self, req: &RefineRequest) -> Result<String, String>;
+}
+
+/// プロバイダ名から整形エンジンを解決する。空/未知は Gemini にフォールバック。
+pub fn engine_for(provider: &str) -> Box<dyn FormattingEngine> {
+    match provider.trim().to_ascii_lowercase().as_str() {
+        "anthropic" | "claude" => Box::new(AnthropicEngine),
+        "openai" | "gpt" => Box::new(OpenAiEngine),
+        _ => Box::new(GeminiEngine),
+    }
+}
+
+/// 整形のエントリポイント。プロバイダとスタイルを解決して整形する。
 pub fn refine(
     provider: &str,
     api_key: &str,
     model: &str,
+    style: &str,
     transcript: &str,
 ) -> Result<String, String> {
-    match provider.trim().to_ascii_lowercase().as_str() {
-        "anthropic" | "claude" => refine_with_anthropic(api_key, model, transcript),
-        "openai" | "gpt" => refine_with_openai(api_key, model, transcript),
-        _ => refine_with_gemini(api_key, model, transcript),
-    }
+    let req = RefineRequest {
+        style: RefineStyle::parse(style),
+        api_key,
+        model,
+        transcript,
+    };
+    engine_for(provider).refine(&req)
 }
 
-/// Gemini で文字起こしを整形する。
-pub fn refine_with_gemini(api_key: &str, model: &str, transcript: &str) -> Result<String, String> {
-    if api_key.trim().is_empty() {
-        return Err("Gemini APIキーが未設定です（設定から入力してください）".into());
-    }
-    let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-    );
+struct GeminiEngine;
+struct AnthropicEngine;
+struct OpenAiEngine;
 
-    let body = json!({
-        "contents": [{ "parts": [{ "text": build_prompt(transcript) }] }]
-    });
-
-    let resp = ureq::post(&url)
-        .set("Content-Type", "application/json")
-        .send_json(body)
-        .map_err(|e| format!("整形APIの呼び出しに失敗(Gemini): {e}"))?;
-
-    let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
-
-    let mut out = String::new();
-    if let Some(parts) = v
-        .get("candidates")
-        .and_then(|c| c.get(0))
-        .and_then(|c| c.get("content"))
-        .and_then(|c| c.get("parts"))
-        .and_then(|p| p.as_array())
-    {
-        for part in parts {
-            if let Some(t) = part.get("text").and_then(|t| t.as_str()) {
-                out.push_str(t);
-            }
+/// Gemini で整形する。
+impl FormattingEngine for GeminiEngine {
+    fn refine(&self, req: &RefineRequest) -> Result<String, String> {
+        if req.api_key.trim().is_empty() {
+            return Err("Gemini APIキーが未設定です（設定から入力してください）".into());
         }
-    }
-    if out.trim().is_empty() {
-        return Err(format!("整形結果が空でした（Gemini応答: {}）", v));
-    }
-    Ok(out.trim().to_string())
-}
+        let url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+            req.model, req.api_key
+        );
+        // Gemini はシステムロールを使わないため、システム指示をユーザーテキストに前置する。
+        let text = format!(
+            "{}\n\n{}",
+            req.style.system_prompt(),
+            req.style.user_prompt(req.transcript)
+        );
+        let body = json!({ "contents": [{ "parts": [{ "text": text }] }] });
 
-/// Anthropic(Claude) Messages API で文字起こしを整形する。
-/// エンドポイント: POST https://api.anthropic.com/v1/messages
-/// 必須ヘッダ: x-api-key, anthropic-version: 2023-06-01, content-type: application/json
-pub fn refine_with_anthropic(
-    api_key: &str,
-    model: &str,
-    transcript: &str,
-) -> Result<String, String> {
-    if api_key.trim().is_empty() {
-        return Err("Anthropic APIキーが未設定です（設定から入力してください）".into());
-    }
+        let resp = ureq::post(&url)
+            .set("Content-Type", "application/json")
+            .send_json(body)
+            .map_err(|e| format!("整形APIの呼び出しに失敗(Gemini): {e}"))?;
+        let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
 
-    let body = json!({
-        "model": model,
-        "max_tokens": 4096,
-        "system": "あなたは話者本人の思考整理を助けるアシスタントです。事実を捏造せず、本人のニュアンス・迷い・語り口を残してください。",
-        "messages": [
-            { "role": "user", "content": build_prompt(transcript) }
-        ]
-    });
-
-    let resp = ureq::post("https://api.anthropic.com/v1/messages")
-        .set("Content-Type", "application/json")
-        .set("x-api-key", api_key)
-        .set("anthropic-version", "2023-06-01")
-        .send_json(body)
-        .map_err(|e| format!("整形APIの呼び出しに失敗(Anthropic): {e}"))?;
-
-    let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
-
-    // 応答は content[] のブロック配列。type=="text" の text を連結する。
-    let mut out = String::new();
-    if let Some(blocks) = v.get("content").and_then(|c| c.as_array()) {
-        for block in blocks {
-            if block.get("type").and_then(|t| t.as_str()) == Some("text") {
-                if let Some(t) = block.get("text").and_then(|t| t.as_str()) {
+        let mut out = String::new();
+        if let Some(parts) = v
+            .get("candidates")
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.get("content"))
+            .and_then(|c| c.get("parts"))
+            .and_then(|p| p.as_array())
+        {
+            for part in parts {
+                if let Some(t) = part.get("text").and_then(|t| t.as_str()) {
                     out.push_str(t);
                 }
             }
         }
+        if out.trim().is_empty() {
+            return Err(format!("整形結果が空でした（Gemini応答: {}）", v));
+        }
+        Ok(out.trim().to_string())
     }
-    if out.trim().is_empty() {
-        return Err(format!("整形結果が空でした（Anthropic応答: {}）", v));
-    }
-    Ok(out.trim().to_string())
 }
 
-/// OpenAI Chat Completions API で文字起こしを整形する。
-/// エンドポイント: POST https://api.openai.com/v1/chat/completions
+/// Anthropic(Claude) Messages API で整形する。
+/// 必須ヘッダ: x-api-key, anthropic-version: 2023-06-01, content-type: application/json
+impl FormattingEngine for AnthropicEngine {
+    fn refine(&self, req: &RefineRequest) -> Result<String, String> {
+        if req.api_key.trim().is_empty() {
+            return Err("Anthropic APIキーが未設定です（設定から入力してください）".into());
+        }
+        let body = json!({
+            "model": req.model,
+            "max_tokens": 4096,
+            "system": req.style.system_prompt(),
+            "messages": [
+                { "role": "user", "content": req.style.user_prompt(req.transcript) }
+            ]
+        });
+
+        let resp = ureq::post("https://api.anthropic.com/v1/messages")
+            .set("Content-Type", "application/json")
+            .set("x-api-key", req.api_key)
+            .set("anthropic-version", "2023-06-01")
+            .send_json(body)
+            .map_err(|e| format!("整形APIの呼び出しに失敗(Anthropic): {e}"))?;
+        let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+
+        // 応答は content[] のブロック配列。type=="text" の text を連結する。
+        let mut out = String::new();
+        if let Some(blocks) = v.get("content").and_then(|c| c.as_array()) {
+            for block in blocks {
+                if block.get("type").and_then(|t| t.as_str()) == Some("text") {
+                    if let Some(t) = block.get("text").and_then(|t| t.as_str()) {
+                        out.push_str(t);
+                    }
+                }
+            }
+        }
+        if out.trim().is_empty() {
+            return Err(format!("整形結果が空でした（Anthropic応答: {}）", v));
+        }
+        Ok(out.trim().to_string())
+    }
+}
+
+/// OpenAI Chat Completions API で整形する。
 /// 必須ヘッダ: Authorization: Bearer <key>, content-type: application/json
-pub fn refine_with_openai(api_key: &str, model: &str, transcript: &str) -> Result<String, String> {
-    if api_key.trim().is_empty() {
-        return Err("OpenAI APIキーが未設定です（設定から入力してください）".into());
+impl FormattingEngine for OpenAiEngine {
+    fn refine(&self, req: &RefineRequest) -> Result<String, String> {
+        if req.api_key.trim().is_empty() {
+            return Err("OpenAI APIキーが未設定です（設定から入力してください）".into());
+        }
+        let body = json!({
+            "model": req.model,
+            "messages": [
+                { "role": "system", "content": req.style.system_prompt() },
+                { "role": "user", "content": req.style.user_prompt(req.transcript) }
+            ]
+        });
+
+        let resp = ureq::post("https://api.openai.com/v1/chat/completions")
+            .set("Content-Type", "application/json")
+            .set("Authorization", &format!("Bearer {}", req.api_key))
+            .send_json(body)
+            .map_err(|e| format!("整形APIの呼び出しに失敗(OpenAI): {e}"))?;
+        let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+
+        let out = v
+            .get("choices")
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.get("message"))
+            .and_then(|m| m.get("content"))
+            .and_then(|t| t.as_str())
+            .unwrap_or("")
+            .to_string();
+        if out.trim().is_empty() {
+            return Err(format!("整形結果が空でした（OpenAI応答: {}）", v));
+        }
+        Ok(out.trim().to_string())
     }
-
-    let body = json!({
-        "model": model,
-        "messages": [
-            { "role": "system", "content": "あなたは話者本人の思考整理を助けるアシスタントです。事実を捏造せず、本人のニュアンス・迷い・語り口を残してください。" },
-            { "role": "user", "content": build_prompt(transcript) }
-        ]
-    });
-
-    let resp = ureq::post("https://api.openai.com/v1/chat/completions")
-        .set("Content-Type", "application/json")
-        .set("Authorization", &format!("Bearer {api_key}"))
-        .send_json(body)
-        .map_err(|e| format!("整形APIの呼び出しに失敗(OpenAI): {e}"))?;
-
-    let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
-
-    let out = v
-        .get("choices")
-        .and_then(|c| c.get(0))
-        .and_then(|c| c.get("message"))
-        .and_then(|m| m.get("content"))
-        .and_then(|t| t.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    if out.trim().is_empty() {
-        return Err(format!("整形結果が空でした（OpenAI応答: {}）", v));
-    }
-    Ok(out.trim().to_string())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -308,6 +387,42 @@ fn latest_gemini(api_key: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn style_parse_maps_known_and_defaults_unknown() {
+        assert_eq!(RefineStyle::parse("verbatim"), RefineStyle::Verbatim);
+        assert_eq!(RefineStyle::parse("逐語"), RefineStyle::Verbatim);
+        assert_eq!(RefineStyle::parse("Summary"), RefineStyle::Summary);
+        assert_eq!(RefineStyle::parse("brainstorm"), RefineStyle::Brainstorm);
+        // 未知・空は既定(Structured)。
+        assert_eq!(RefineStyle::parse(""), RefineStyle::Structured);
+        assert_eq!(RefineStyle::parse("zzz"), RefineStyle::Structured);
+        assert_eq!(RefineStyle::parse("structured"), RefineStyle::Structured);
+    }
+
+    #[test]
+    fn user_prompt_contains_transcript_and_no_fabrication_rule() {
+        // どのスタイルでも本文と「捏造しない」制約を必ず含む(コア価値: ニュアンス保持/誠実)。
+        for style in [
+            RefineStyle::Structured,
+            RefineStyle::Verbatim,
+            RefineStyle::Summary,
+            RefineStyle::Brainstorm,
+        ] {
+            let p = style.user_prompt("テスト本文XYZ");
+            assert!(p.contains("テスト本文XYZ"), "{:?} は本文を含むべき", style);
+            assert!(p.contains("捏造"), "{:?} は捏造禁止を含むべき", style);
+        }
+    }
+
+    #[test]
+    fn user_prompt_is_style_specific() {
+        // スタイル固有の指示語が入っている(=スタイルが効いている)。
+        assert!(RefineStyle::Structured.user_prompt("x").contains("見出し"));
+        assert!(RefineStyle::Verbatim.user_prompt("x").contains("逐語"));
+        assert!(RefineStyle::Summary.user_prompt("x").contains("要約"));
+        assert!(RefineStyle::Brainstorm.user_prompt("x").contains("ブレスト"));
+    }
 
     #[test]
     fn openai_prefers_rolling_alias() {
