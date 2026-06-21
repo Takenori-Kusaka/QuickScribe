@@ -310,6 +310,7 @@ async fn refine_text(
     provider: String,
     api_key: String,
     model: String,
+    style: String,
 ) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let m = if model.trim().is_empty() {
@@ -317,7 +318,7 @@ async fn refine_text(
         } else {
             model
         };
-        let refined = refine::refine(&provider, &api_key, &m, &text)?;
+        let refined = refine::refine(&provider, &api_key, &m, &style, &text)?;
         // 整形結果（ジャーナルの成果物）は常に保存先へ書き出す。
         if let Ok(dir) = resolve_save_dir(&current_settings(&app)) {
             let _ = save_text_in(&dir, &refined);
