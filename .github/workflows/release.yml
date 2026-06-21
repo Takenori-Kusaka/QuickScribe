@@ -71,6 +71,14 @@ jobs:
       - name: Generate icons
         run: npm run icons
 
+      - name: Generate THIRD-PARTY-NOTICES (cargo-about / 法的MUST・ADR-0010)
+        shell: bash
+        run: |
+          cargo install cargo-about --locked
+          cd src-tauri
+          cargo about generate about.hbs > THIRD-PARTY-NOTICES.txt
+          wc -l THIRD-PARTY-NOTICES.txt
+
       - name: Set version from tag (Cargo.toml = 単一の版ソース)
         shell: bash
         run: |

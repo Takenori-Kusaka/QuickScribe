@@ -48,6 +48,14 @@ jobs:
       - name: Generate icons
         run: npm run icons
 
+      - name: Generate THIRD-PARTY-NOTICES (cargo-about / 法的MUST・ADR-0010)
+        shell: bash
+        run: |
+          cargo install cargo-about --locked
+          cd src-tauri
+          cargo about generate about.hbs > THIRD-PARTY-NOTICES.txt
+          wc -l THIRD-PARTY-NOTICES.txt
+
       # updater が公開鍵設定済みのため tauri build は updater 成果物の署名を要求する。
       # ここでは公開リリースも latest.json 発行もしない（成果物アップロードのみ）が、
       # ビルドを完走させるため release.yml と同じ署名鍵を渡す。

@@ -35,7 +35,8 @@
     ],
     "category": "Productivity",
     "shortDescription": "思考整理ボイスジャーナル",
-    "longDescription": "話した内容をローカルで保存し、思考整理・自己理解を助けるボイスジャーナル。"
+    "longDescription": "話した内容をローカルで保存し、思考整理・自己理解を助けるボイスジャーナル。",
+    "resources": ["THIRD-PARTY-NOTICES.txt"]
   },
   "plugins": {
     "updater": {

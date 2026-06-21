@@ -1,0 +1,34 @@
+# cargo-deny 設定 — ライセンス allowlist を強制し、非互換ライセンスの混入を CI で防ぐ。
+# 法的MUST(ADR-0010): 配布バイナリに含まれる依存のライセンスを許可リストに固定する。
+# 実行: cargo deny check licenses (CI security.yml)。新規依存で未許可ライセンスが入ると失敗する。
+
+[licenses]
+# OSI 承認のパーミッシブ系のみ許可（MIT 配布物に同梱可能なもの）。
+# コピーレフト(GPL/AGPL/LGPL等)は許可しない＝混入したら CI で検出して対処する。
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "MPL-2.0",
+    "BSL-1.0",
+    "CC0-1.0",
+    "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "OpenSSL",
+]
+# ライセンス検出の信頼度しきい値（テキスト一致率）。
+confidence-threshold = 0.8
+
+# 個別 crate のライセンス明示が必要な場合はここに exceptions/clarify を追記する（CI が示したら対応）。
+# 例: [[licenses.clarify]] name = "ring" ...
+
+[bans]
+# 重複/禁止クレートの検査は v1.0.0 の衛生課題。ここでは緩め（法的MUSTの範囲外）。
+multiple-versions = "allow"
+
+[advisories]
+# 脆弱性 advisories は cargo audit / security.yml 側で扱う。ここでは既定。

@@ -20,3 +20,6 @@ __pycache__/
 
 # 一時・引き継ぎ資料（コミットしない）
 tmp/
+
+# CI で cargo-about が生成する第三者ライセンス帰属（配布物にのみ同梱・非コミット）
+src-tauri/THIRD-PARTY-NOTICES.txt
