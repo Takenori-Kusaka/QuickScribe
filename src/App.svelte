@@ -643,6 +643,14 @@
         モデル: <code>{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code>
         {#if resolvingModel}（取得中…）{:else if resolvedModel[provider]}（最新を自動取得）{:else}（最新ミドルレンジを自動選択）{/if}
       </p>
+      <label>
+        整形スタイル（録音後の自動整形にも適用されます）
+        <select bind:value={refineStyle}>
+          {#each REFINE_STYLES as s}
+            <option value={s.value}>{s.label}</option>
+          {/each}
+        </select>
+      </label>
       <span class="meta-title">録音開始/停止のホットキー</span>
       <div class="hotkey-row">
         <button
