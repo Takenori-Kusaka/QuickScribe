@@ -353,6 +353,39 @@ unsafe fn foreground_is_fullscreen() -> bool {
     wr.left <= m.left && wr.top <= m.top && wr.right >= m.right && wr.bottom >= m.bottom
 }
 
+/// タスクバー(Shell_TrayWnd)が画面上に実際に見えているかを判定し、隠れていれば true。
+/// ウィジェットはタスクバー上に置く存在なので、タスクバーが見えない時は一緒に隠すべき。
+/// これは「自動的に隠す(auto-hide)設定の引っ込み時」や「最大化ウィンドウでタスクバーが
+/// 退避した時」もカバーする(フルスクリーン限定だった foreground_is_fullscreen の取りこぼし是正)。
+unsafe fn taskbar_offscreen() -> bool {
+    let taskbar = match FindWindowW(w!("Shell_TrayWnd"), PCWSTR::null()) {
+        Ok(h) => h,
+        Err(_) => return false,
+    };
+    if !IsWindowVisible(taskbar).as_bool() {
+        return true;
+    }
+    let mut tb = RECT::default();
+    if GetWindowRect(taskbar, &mut tb).is_err() {
+        return false;
+    }
+    let mon = MonitorFromWindow(taskbar, MONITOR_DEFAULTTONEAREST);
+    let mut mi = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    if !GetMonitorInfoW(mon, &mut mi).as_bool() {
+        return false;
+    }
+    let m = mi.rcMonitor;
+    // タスクバー矩形とモニタの交差(=画面に見えている部分)の短辺＝厚みを測る。
+    // 通常表示なら厚み≈40-48px。auto-hide の引っ込みやフルスクリーンでは画面外へ押し出され
+    // 厚みが数px以下になる。4px 未満を「隠れている」とみなす。
+    let ix = (tb.right.min(m.right) - tb.left.max(m.left)).max(0);
+    let iy = (tb.bottom.min(m.bottom) - tb.top.max(m.top)).max(0);
+    ix.min(iy) < 4
+}
+
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
         WM_PAINT => {
@@ -363,17 +396,17 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             LRESULT(0)
         }
         WM_TIMER => {
-            // フルスクリーンアプリ(動画/ゲーム/プレゼン)の前面では、最前面オーバーレイを
-            // 隠してコンテンツを邪魔しない。解除されたら復帰させる。
-            if foreground_is_fullscreen() {
+            // タスクバーが画面に見えていない時(フルスクリーン/auto-hide引っ込み/最大化での退避)は
+            // 最前面オーバーレイを隠してコンテンツを邪魔しない。タスクバーが戻れば復帰させる。
+            if taskbar_offscreen() || foreground_is_fullscreen() {
                 if !HIDDEN.swap(true, Ordering::Relaxed) {
                     let _ = ShowWindow(hwnd, SW_HIDE);
-                    diag("hide: foreground is fullscreen");
+                    diag("hide: taskbar not visible / fullscreen");
                 }
             } else {
                 if HIDDEN.swap(false, Ordering::Relaxed) {
                     let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-                    diag("show: fullscreen ended");
+                    diag("show: taskbar visible again");
                 }
                 reposition(hwnd);
             }
