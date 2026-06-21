@@ -28,14 +28,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install cargo-audit / cargo-deny
-        run: cargo install cargo-audit cargo-deny --locked
+      - name: Install cargo-audit / cargo-deny / cargo-about
+        run: |
+          cargo install cargo-audit cargo-deny --locked
+          # cargo-about のバイナリは cli フィーチャが必要(無いと `cargo about` が入らない)。
+          cargo install cargo-about --locked --features cli
       - name: cargo audit (脆弱性データベース照合)
         working-directory: src-tauri
         run: cargo audit
-      - name: cargo deny (ライセンス/脆弱性/重複)
+      - name: cargo deny advisories (脆弱性/重複 — 衛生課題は v1.0.0)
         working-directory: src-tauri
         run: cargo deny check advisories || true
+      - name: cargo deny licenses (ライセンス allowlist 強制 — 法的MUST/ADR-0010)
+        working-directory: src-tauri
+        run: cargo deny check licenses
+      - name: Verify THIRD-PARTY-NOTICES generation (cargo-about/法的MUST)
+        working-directory: src-tauri
+        run: cargo about generate about.hbs > /dev/null
 
   npm-audit:
     name: npm audit

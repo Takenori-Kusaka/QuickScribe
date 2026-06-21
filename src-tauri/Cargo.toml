@@ -4,6 +4,8 @@ version = "0.0.1"
 description = "思考整理・自己理解のためのローカル完結ボイスジャーナル"
 authors = ["Takenori Kusaka"]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/Takenori-Kusaka/QuickScribe"
 
 [lib]
 name = "quickscribe_lib"
