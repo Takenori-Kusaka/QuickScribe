@@ -282,6 +282,7 @@ fn default_model_for(provider: &str) -> &'static str {
     match provider.trim().to_ascii_lowercase().as_str() {
         "anthropic" | "claude" => "claude-sonnet-4-6",
         "openai" | "gpt" => "gpt-4o",
+        "ollama" | "local" => "llama3.1",
         _ => "gemini-flash-latest",
     }
 }

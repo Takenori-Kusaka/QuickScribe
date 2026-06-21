@@ -87,8 +87,21 @@ pub fn engine_for(provider: &str) -> Box<dyn FormattingEngine> {
     match provider.trim().to_ascii_lowercase().as_str() {
         "anthropic" | "claude" => Box::new(AnthropicEngine),
         "openai" | "gpt" => Box::new(OpenAiEngine),
+        "ollama" | "local" => Box::new(OllamaEngine),
         _ => Box::new(GeminiEngine),
     }
+}
+
+/// Ollama の既定エンドポイント(ローカル)。環境変数 OLLAMA_HOST があれば優先。
+fn ollama_base() -> String {
+    std::env::var("OLLAMA_HOST")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .map(|h| {
+            let h = h.trim().trim_end_matches('/').to_string();
+            if h.starts_with("http") { h } else { format!("http://{h}") }
+        })
+        .unwrap_or_else(|| "http://localhost:11434".to_string())
 }
 
 /// 整形のエントリポイント。プロバイダとスタイルを解決して整形する。
@@ -111,6 +124,7 @@ pub fn refine(
 struct GeminiEngine;
 struct AnthropicEngine;
 struct OpenAiEngine;
+struct OllamaEngine;
 
 /// Gemini で整形する。
 impl FormattingEngine for GeminiEngine {
@@ -236,6 +250,46 @@ impl FormattingEngine for OpenAiEngine {
     }
 }
 
+/// ローカル Ollama で整形する(S3.4)。鍵不要・端末内完結＝差別化「ローカルプライバシー」の核。
+/// API: POST {base}/api/chat {model, messages, stream:false} → {message:{content}}。
+impl FormattingEngine for OllamaEngine {
+    fn refine(&self, req: &RefineRequest) -> Result<String, String> {
+        let model = if req.model.trim().is_empty() {
+            "llama3.1"
+        } else {
+            req.model
+        };
+        let body = json!({
+            "model": model,
+            "stream": false,
+            "messages": [
+                { "role": "system", "content": req.style.system_prompt() },
+                { "role": "user", "content": req.style.user_prompt(req.transcript) }
+            ]
+        });
+
+        let url = format!("{}/api/chat", ollama_base());
+        let resp = ureq::post(&url)
+            .set("Content-Type", "application/json")
+            .send_json(body)
+            .map_err(|e| {
+                format!("ローカルOllamaへの接続に失敗しました（ollamaが起動し、モデルが取得済みか確認してください）: {e}")
+            })?;
+        let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+
+        let out = v
+            .get("message")
+            .and_then(|m| m.get("content"))
+            .and_then(|t| t.as_str())
+            .unwrap_or("")
+            .to_string();
+        if out.trim().is_empty() {
+            return Err(format!("整形結果が空でした（Ollama応答: {}）", v));
+        }
+        Ok(out.trim().to_string())
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 実行時のモデル解決（「最新」はビルド時固定でなく実行時に各社のモデル一覧APIから選ぶ）。
 // 各社APIに「ティア」表記は無いため、ミドルレンジは発見的に選択する。失敗時は呼び出し側が
@@ -247,8 +301,26 @@ pub fn resolve_latest_model(provider: &str, api_key: &str) -> Result<String, Str
     match provider.trim().to_ascii_lowercase().as_str() {
         "anthropic" | "claude" => latest_anthropic(api_key),
         "openai" | "gpt" => latest_openai(api_key),
+        "ollama" | "local" => latest_ollama(),
         _ => latest_gemini(api_key),
     }
+}
+
+/// Ollama: GET {base}/api/tags からインストール済みモデルの先頭を返す（鍵不要）。
+/// 取得不可（未起動/未取得）なら呼び出し側が既定モデルにフォールバックする。
+fn latest_ollama() -> Result<String, String> {
+    let url = format!("{}/api/tags", ollama_base());
+    let resp = ureq::get(&url)
+        .call()
+        .map_err(|e| format!("Ollamaモデル一覧の取得に失敗: {e}"))?;
+    let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+    v.get("models")
+        .and_then(|m| m.as_array())
+        .and_then(|a| a.first())
+        .and_then(|m| m.get("name"))
+        .and_then(|n| n.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| "インストール済みOllamaモデルが見つかりません".into())
 }
 
 /// Anthropic: GET /v1/models（新しい順）から最新の Sonnet(=ミドルレンジ) を選ぶ。
