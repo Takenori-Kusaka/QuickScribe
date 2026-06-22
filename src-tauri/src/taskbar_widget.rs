@@ -29,13 +29,16 @@ use windows::Win32::UI::Controls::{
     TOOLTIPS_CLASSW, TTF_SUBCLASS, TTM_ADDTOOLW, TTN_GETDISPINFOW, TTS_ALWAYSTIP, TTS_NOPREFIX,
     TTTOOLINFOW,
 };
-use windows::Win32::UI::Shell::ExtractIconW;
+use windows::Win32::UI::Shell::{
+    ExtractIconW, SHAppBarMessage, ABM_GETSTATE, ABS_AUTOHIDE, APPBARDATA,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DrawIconEx, FindWindowExW, FindWindowW, GetClassNameW,
-    GetForegroundWindow, GetWindowRect, IsWindowVisible, LoadCursorW, RegisterClassW, SendMessageW,
-    SetTimer, SetWindowPos, ShowWindow, UpdateLayeredWindow, CW_USEDEFAULT, DI_NORMAL, HICON,
-    HWND_TOPMOST, IDC_ARROW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_HIDE, SW_SHOWNOACTIVATE,
-    ULW_ALPHA, WINDOW_STYLE, WM_LBUTTONUP, WM_NOTIFY, WM_PAINT, WM_TIMER, WNDCLASSW, WS_EX_LAYERED,
+    GetForegroundWindow, GetWindowPlacement, GetWindowRect, IsWindowVisible, LoadCursorW,
+    RegisterClassW, SendMessageW, SetTimer, SetWindowPos, ShowWindow, UpdateLayeredWindow,
+    CW_USEDEFAULT, DI_NORMAL, HICON, HWND_TOPMOST, IDC_ARROW, SWP_NOACTIVATE, SWP_NOMOVE,
+    SWP_NOSIZE, SW_HIDE, SW_SHOWMAXIMIZED, SW_SHOWNOACTIVATE, ULW_ALPHA, WINDOWPLACEMENT,
+    WINDOW_STYLE, WM_LBUTTONUP, WM_NOTIFY, WM_PAINT, WM_TIMER, WNDCLASSW, WS_EX_LAYERED,
     WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 
@@ -386,6 +389,53 @@ unsafe fn taskbar_offscreen() -> bool {
     ix.min(iy) < 4
 }
 
+/// タスクバーが「自動的に隠す(auto-hide)」設定かを AppBar API で直接問い合わせる。
+/// 矩形の厚み閾値(taskbar_offscreen)に頼らず状態を読むため、最大化判定と組み合わせると
+/// フラッピングしない堅い検出になる(diag ログのhide/show頻発＝閾値ブレの是正)。
+unsafe fn taskbar_autohide() -> bool {
+    let mut abd = APPBARDATA {
+        cbSize: std::mem::size_of::<APPBARDATA>() as u32,
+        ..Default::default()
+    };
+    let state = SHAppBarMessage(ABM_GETSTATE, &mut abd) as u32;
+    state & ABS_AUTOHIDE != 0
+}
+
+/// 前面ウィンドウが「最大化」状態かを GetWindowPlacement で直接判定する。
+/// auto-hide タスクバー＋最大化のときタスクバーは退避するため、ウィジェットを隠すべき。
+/// (フルスクリーン判定 foreground_is_fullscreen は auto-hide が1px予約する関係で最大化窓を
+///  取りこぼすことがあるため、showCmd で確実に拾う。)
+unsafe fn foreground_is_maximized() -> bool {
+    let fg = GetForegroundWindow();
+    if fg.0.is_null() {
+        return false;
+    }
+    // デスクトップ/シェル/ウィジェット自身は対象外(フルスクリーン判定と同じガード)。
+    let mut cls = [0u16; 64];
+    let n = GetClassNameW(fg, &mut cls);
+    if n > 0 {
+        let name = String::from_utf16_lossy(&cls[..n as usize]);
+        if matches!(
+            name.as_str(),
+            "Shell_TrayWnd"
+                | "Shell_SecondaryTrayWnd"
+                | "Progman"
+                | "WorkerW"
+                | "QuickScribeTaskbarWidget"
+        ) {
+            return false;
+        }
+    }
+    let mut wp = WINDOWPLACEMENT {
+        length: std::mem::size_of::<WINDOWPLACEMENT>() as u32,
+        ..Default::default()
+    };
+    if GetWindowPlacement(fg, &mut wp).is_err() {
+        return false;
+    }
+    wp.showCmd == SW_SHOWMAXIMIZED
+}
+
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
         WM_PAINT => {
@@ -398,15 +448,27 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         WM_TIMER => {
             // タスクバーが画面に見えていない時(フルスクリーン/auto-hide引っ込み/最大化での退避)は
             // 最前面オーバーレイを隠してコンテンツを邪魔しない。タスクバーが戻れば復帰させる。
-            if taskbar_offscreen() || foreground_is_fullscreen() {
+            // 隠す条件(状態を直接読み、閾値ブレ＝フラッピングを避ける):
+            //   ・フルスクリーンアプリがモニタを覆う
+            //   ・タスクバーが画面外(auto-hide引っ込み/退避を矩形で検出)
+            //   ・auto-hide かつ 前面が最大化(矩形閾値を取りこぼす最大化窓を確実に拾う)
+            let fs = foreground_is_fullscreen();
+            let off = taskbar_offscreen();
+            let autohide = taskbar_autohide();
+            let maxd = autohide && foreground_is_maximized();
+            if fs || off || maxd {
                 if !HIDDEN.swap(true, Ordering::Relaxed) {
                     let _ = ShowWindow(hwnd, SW_HIDE);
-                    diag("hide: taskbar not visible / fullscreen");
+                    diag(&format!(
+                        "hide: fullscreen={fs} taskbar_offscreen={off} autohide={autohide} maximized={maxd}"
+                    ));
                 }
             } else {
                 if HIDDEN.swap(false, Ordering::Relaxed) {
                     let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-                    diag("show: taskbar visible again");
+                    diag(&format!(
+                        "show: fullscreen={fs} taskbar_offscreen={off} autohide={autohide}"
+                    ));
                 }
                 reposition(hwnd);
             }
