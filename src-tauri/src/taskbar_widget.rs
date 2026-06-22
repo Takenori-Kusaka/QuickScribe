@@ -433,7 +433,8 @@ unsafe fn foreground_is_maximized() -> bool {
     if GetWindowPlacement(fg, &mut wp).is_err() {
         return false;
     }
-    wp.showCmd == SW_SHOWMAXIMIZED
+    // WINDOWPLACEMENT.showCmd は u32。SW_SHOWMAXIMIZED は SHOW_WINDOW_CMD のため .0 を u32 で比較。
+    wp.showCmd == SW_SHOWMAXIMIZED.0 as u32
 }
 
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
