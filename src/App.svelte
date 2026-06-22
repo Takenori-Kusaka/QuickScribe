@@ -106,13 +106,18 @@
   let audioFormat = $state<string>("opus");
   let saveDir = $state<string>(""); // 空=既定(ドキュメント/QuickScribe)
   // 整形スタイル(コア価値: 逐語⇄要約⇄ブレストを行き来 / S3.3)。
+  // desc は各モードの短い解説(設定のtips・処理画面のツールチップに使う。refine.rs の指示と一致)。
   let refineStyle = $state<string>("structured");
-  const REFINE_STYLES: { value: string; label: string }[] = [
-    { value: "structured", label: "構造化" },
-    { value: "verbatim", label: "逐語" },
-    { value: "summary", label: "要約" },
-    { value: "brainstorm", label: "ブレスト" },
+  const REFINE_STYLES: { value: string; label: string; desc: string }[] = [
+    { value: "structured", label: "構造化", desc: "見出しと箇条書きで要点を整理。ニュアンスは残します（既定）。" },
+    { value: "verbatim", label: "逐語", desc: "言い淀みや繰り返しも極力そのまま。最小限の読みやすさ調整のみ。" },
+    { value: "summary", label: "要約", desc: "全体を短く要約し、重要な要点を3〜5個に絞ります。" },
+    { value: "brainstorm", label: "ブレスト", desc: "内容から問い・観点・次の一歩を広げ、発想を促します。" },
   ];
+  // 現在選択中のスタイル(処理画面の表示・解説に使う)。未知値は既定にフォールバック。
+  const currentStyle = $derived(
+    REFINE_STYLES.find((s) => s.value === refineStyle) ?? REFINE_STYLES[0],
+  );
 
   function loadSettings() {
     provider = (localStorage.getItem("provider") as Provider) || "gemini";
@@ -563,17 +568,11 @@
       <div class="card-head">
         <h2>文字起こし</h2>
         <div class="refine-controls">
-          <select
-            class="style-select"
-            bind:value={refineStyle}
-            onchange={() => localStorage.setItem("refineStyle", refineStyle)}
-            title="整形スタイル"
-            aria-label="整形スタイル"
-          >
-            {#each REFINE_STYLES as s}
-              <option value={s.value}>{s.label}</option>
-            {/each}
-          </select>
+          <!-- スタイルは設定画面で選ぶ。ここでは「どのスタイルで整形するか」の表示のみ
+               (マウスオーバーでモードの解説を表示)。 -->
+          <span class="style-indicator" title={currentStyle.desc}>
+            整形スタイル: <strong>{currentStyle.label}</strong>
+          </span>
           <button class="btn small" onclick={refineNow} disabled={refining}>
             {refining ? "整形中…" : "✨ 整形する"}
           </button>
@@ -647,10 +646,12 @@
         整形スタイル（録音後の自動整形にも適用されます）
         <select bind:value={refineStyle}>
           {#each REFINE_STYLES as s}
-            <option value={s.value}>{s.label}</option>
+            <option value={s.value} title={s.desc}>{s.label}</option>
           {/each}
         </select>
       </label>
+      <!-- 選択中スタイルの解説を常時表示(マウスオーバーに頼らず各モードの違いを示す)。 -->
+      <p class="style-desc">{currentStyle.desc}</p>
       <span class="meta-title">録音開始/停止のホットキー</span>
       <div class="hotkey-row">
         <button
@@ -1116,13 +1117,22 @@
     align-items: center;
     gap: 0.4rem;
   }
-  .style-select {
+  /* 処理画面: 整形スタイルは表示のみ(選択は設定画面)。ホバーで解説を出す。 */
+  .style-indicator {
     font-size: 0.78rem;
-    padding: 0.25rem 0.4rem;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    background: #fff;
+    color: #6b7280;
+    cursor: help;
+  }
+  .style-indicator strong {
     color: #374151;
+    font-weight: 600;
+  }
+  /* 設定画面: 選択中スタイルの解説。 */
+  .style-desc {
+    margin: 0.3rem 0 0;
+    font-size: 0.78rem;
+    color: #6b7280;
+    line-height: 1.5;
   }
   .card h2 {
     margin: 0;
