@@ -13,6 +13,12 @@ concurrency:
 # cmake_minimum_required < 3.5 を拒否するため、CMake公式の回避策で最低ポリシー版を指定。
 env:
   CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+  # whisper.cpp(ggml)の移植性: SOURCE_DATE_EPOCH 定義時 ggml は GGML_NATIVE_DEFAULT=OFF にする。
+  # これで -march=native を止め、ビルドマシンCPU依存(AVX512埋め込み→他CPUでSIGILL)を回避する。
+  # (whisper-rs-sys 0.13.1 の build.rs は GGML_* env を渡さないため、ggmlが直接読むこのenvが唯一のレバー)
+  SOURCE_DATE_EPOCH: "1700000000"
+  # [検証用・後で削除] cmakeに実コンパイルコマンドを出力させ -march/-mavx512 の有無を確認する。
+  CMAKE_VERBOSE_MAKEFILE: "ON"
 
 jobs:
   build:
@@ -35,6 +41,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          # whisper移植性修正で whisper.cpp を再ビルドさせるためキャッシュ世代を更新。
+          prefix-key: "v1-portable"
 
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-22.04'
@@ -59,8 +67,11 @@ jobs:
         run: echo "LIBCLANG_PATH=$((Get-Command clang).Source | Split-Path)" >> $env:GITHUB_ENV
         shell: pwsh
 
-      # 注: whisper.cppはGGML_CPU_ALL_VARIANTSで複数CPUバリアントを実行時選択する。
-      # グローバルCFLAGS=/arch:AVX2はバリアントの/arch指定と衝突しWindowsを壊すため不使用。
+      # 注: whisper-rs-sys 0.13.1 は GGML_NATIVE 既定ON(=-march=native)でビルドする(誤解訂正:
+      #     GGML_CPU_ALL_VARIANTSは使われていない)。AVX512搭載ランナーで -march=native すると
+      #     配布バイナリにAVX512が埋め込まれ、非対応CPU/CPUID誤申告環境でSIGILLする。
+      #     対策として top-level env の SOURCE_DATE_EPOCH で GGML_NATIVE を OFF にしている
+      #     (docs/research/sources/whisper-cpu-portability.md)。
 
       - name: Install npm dependencies
         run: npm ci
@@ -96,6 +107,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          # whisper移植性修正で whisper.cpp を再ビルドさせるためキャッシュ世代を更新。
+          prefix-key: "v1-portable"
 
       - name: Install Linux dependencies (+ WebKitWebDriver / xvfb)
         run: |
@@ -144,6 +157,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          # whisper移植性修正で whisper.cpp を再ビルドさせるためキャッシュ世代を更新。
+          prefix-key: "v1-portable"
 
       - name: Install dependencies (whisper build + espeak-ng)
         run: |
