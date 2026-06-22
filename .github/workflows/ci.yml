@@ -13,12 +13,9 @@ concurrency:
 # cmake_minimum_required < 3.5 を拒否するため、CMake公式の回避策で最低ポリシー版を指定。
 env:
   CMAKE_POLICY_VERSION_MINIMUM: "3.5"
-  # whisper.cpp(ggml)の移植性: GGML_NATIVE(=-march=native)を止め、ビルドマシンCPU依存
-  # (AVX512埋め込み→非対応CPU/CPUID誤申告でSIGILL)を回避する。
-  # whisper-rs-sys 0.13.1 の build.rs は WHISPER_*/CMAKE_* env のみ cmake に渡す(GGML_*不可)。
-  # whisper.cpp の WHISPER_NATIVE が GGML_NATIVE を制御するため、これをOFFにする(検証中)。
-  # (SOURCE_DATE_EPOCH は同梱ggmlが古く GGML_NATIVE=ON のままで無効だったため不採用)
-  WHISPER_NATIVE: "OFF"
+  # [検証中] whisper(ggml)の移植性。env系レバー(SOURCE_DATE_EPOCH/WHISPER_NATIVE)は
+  # GGML_NATIVE を倒せなかった(CMakeCacheで実証)。まず配布デフォルトで AVX512 が実際に
+  # 埋め込まれるかを objdump で確定させ、対処(build.rsパッチ)を決める。
 
 jobs:
   build:
@@ -42,7 +39,7 @@ jobs:
         with:
           workspaces: src-tauri
           # whisper移植性修正で whisper.cpp を再ビルドさせるためキャッシュ世代を更新。
-          prefix-key: "v2-portable"
+          prefix-key: "v3-portable"
 
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-22.04'
@@ -108,7 +105,7 @@ jobs:
         with:
           workspaces: src-tauri
           # whisper移植性修正で whisper.cpp を再ビルドさせるためキャッシュ世代を更新。
-          prefix-key: "v2-portable"
+          prefix-key: "v3-portable"
 
       - name: Install Linux dependencies (+ WebKitWebDriver / xvfb)
         run: |
@@ -158,7 +155,7 @@ jobs:
         with:
           workspaces: src-tauri
           # whisper移植性修正で whisper.cpp を再ビルドさせるためキャッシュ世代を更新。
-          prefix-key: "v2-portable"
+          prefix-key: "v3-portable"
 
       - name: Install dependencies (whisper build + espeak-ng)
         run: |
@@ -213,11 +210,20 @@ jobs:
           QS_AUDIO_PATH: ${{ github.workspace }}/test.wav
         run: cargo test --manifest-path src-tauri/Cargo.toml --test transcribe_integration -- --nocapture
 
-      # [検証用] ggmlのCMakeCache.txtから解決済みCPUオプションを確認する。
-      # SOURCE_DATE_EPOCH が効いていれば GGML_NATIVE:BOOL=OFF になっているはず。
-      - name: Verify ggml CPU options (GGML_NATIVE must be OFF)
+      # [検証用] 生成された ggml 静的ライブラリに AVX512(zmmレジスタ/EVEX) が埋め込まれて
+      # いないかを objdump で直接確認する。zmm が出れば配布バイナリは非AVX512 CPUでSIGILLする。
+      - name: Verify ggml binary has no AVX512 (objdump zmm check)
         run: |
           f=$(find src-tauri/target -name CMakeCache.txt -path '*whisper*' | head -1)
-          echo "CMakeCache: $f"
-          if [ -z "$f" ]; then echo "NOT FOUND (探索拡大)"; f=$(find src-tauri/target -name CMakeCache.txt | head -1); echo "fallback: $f"; fi
-          grep -iE "GGML_NATIVE|GGML_AVX|GGML_FMA|GGML_F16C|WHISPER_NATIVE|march" "$f" 2>/dev/null | sort -u || echo "(no GGML lines)"
+          echo "== CMakeCache GGML options =="; grep -iE "GGML_NATIVE|GGML_AVX|march" "$f" 2>/dev/null | sort -u
+          libs=$(find src-tauri/target -name 'libggml*.a' -o -name 'libwhisper*.a' | sort -u)
+          echo "== libs =="; echo "$libs"
+          zmm=0
+          for l in $libs; do
+            c=$(objdump -d "$l" 2>/dev/null | grep -coE '%zmm[0-9]+')
+            y=$(objdump -d "$l" 2>/dev/null | grep -coE '%ymm[0-9]+')
+            echo "$l : zmm(AVX512)=$c ymm(AVX/AVX2)=$y"
+            zmm=$((zmm + c))
+          done
+          echo "TOTAL_ZMM=$zmm"
+          if [ "$zmm" -gt 0 ]; then echo "❌ AVX512 命令が含まれる(配布リスク)"; else echo "✅ AVX512無し(移植性OK)"; fi
