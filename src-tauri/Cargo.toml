@@ -53,6 +53,12 @@ symphonia = { version = "0.5", default-features = false, features = [
     "wav",
     "pcm",
 ] }
+# AWSプロバイダ(Amazon Bedrock / Claude Platform on AWS)の SigV4署名 / ADR-0011。
+# 同期・tokio非依存(署名計算のみ)。aws-sdk-bedrockruntimeはasync専用のため使わない。
+# default-features=false で不要な SigV4A(ECDSA) を外し依存を最小化(通常SigV4は sha2/hmac で足りる)。
+aws-sigv4 = { version = "1.4", default-features = false, features = ["sign-http", "http1"] }
+aws-credential-types = "1.2"
+http = "1"
 
 # Windows タスクバーのサムネイルツールバー(ITaskbarList3)実装用。
 # tauri 2.11系の windows クレートと整合させる(HWNDの型不一致回避)。HWNDは生ポインタ経由で再ラップ。
