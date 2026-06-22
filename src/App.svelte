@@ -110,6 +110,21 @@
   const IS_MAC =
     typeof navigator !== "undefined" &&
     /mac/i.test(`${navigator.userAgent} ${navigator.platform ?? ""}`);
+  // タスクバーウィジェットは Windows 専用機能。設定UIの出し分けに使う。
+  const IS_WINDOWS =
+    typeof navigator !== "undefined" &&
+    /win/i.test(`${navigator.userAgent} ${navigator.platform ?? ""}`);
+  // タスクバー上のウィジェット表示（Windows）。既定ON。設定でON/OFF可能。
+  let taskbarWidget = $state<boolean>(true);
+
+  // タスクバーウィジェットの表示有効/無効をバックエンドへ反映する（Windowsのみ実体動作）。
+  async function applyTaskbarWidget() {
+    try {
+      await invoke("set_taskbar_widget", { enabled: taskbarWidget });
+    } catch (e) {
+      console.error("set_taskbar_widget failed", e);
+    }
+  }
   function displayShortcut(accel: string): string {
     return accel
       .split("+")
@@ -183,6 +198,7 @@
     awsSecretKey = localStorage.getItem("awsSecretKey") || "";
     awsSessionToken = localStorage.getItem("awsSessionToken") || "";
     bedrockModel = localStorage.getItem("bedrockModel") || "";
+    taskbarWidget = localStorage.getItem("taskbarWidget") !== "false";
   }
 
   // 保存設定をバックエンドへ反映する（保存系コマンドが参照）。
@@ -225,6 +241,8 @@
     localStorage.setItem("awsSecretKey", awsSecretKey);
     localStorage.setItem("awsSessionToken", awsSessionToken);
     localStorage.setItem("bedrockModel", bedrockModel);
+    localStorage.setItem("taskbarWidget", String(taskbarWidget));
+    void applyTaskbarWidget();
     void syncSaveSettings();
     showSettings = false;
     // 鍵が入っていれば現在のプロバイダの最新モデルを取得（強制更新）。
@@ -512,6 +530,7 @@
   onMount(() => {
     loadSettings();
     void applyShortcut();
+    void applyTaskbarWidget();
     void syncSaveSettings();
     void resolveCurrentModel();
     void checkForUpdate();
@@ -836,6 +855,15 @@
         <p class="tip">
           録音を止めると、文字起こし→AI整形まで一気に実行します（整形プロバイダの鍵が必要）。
         </p>
+        {#if IS_WINDOWS}
+          <label class="check">
+            <input type="checkbox" bind:checked={taskbarWidget} />
+            タスクバーに録音ウィジェットを表示する
+          </label>
+          <p class="tip">
+            タスクバー上の録音/停止・ウィンドウ表示ボタン（Windows）。OFFにすると非表示になります。
+          </p>
+        {/if}
       </div>
 
       <div class="meta-group">
