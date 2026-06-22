@@ -220,8 +220,8 @@ jobs:
           echo "== libs =="; echo "$libs"
           zmm=0
           for l in $libs; do
-            c=$(objdump -d "$l" 2>/dev/null | grep -coE '%zmm[0-9]+')
-            y=$(objdump -d "$l" 2>/dev/null | grep -coE '%ymm[0-9]+')
+            c=$(objdump -d "$l" 2>/dev/null | grep -coE '%zmm[0-9]+' || true)
+            y=$(objdump -d "$l" 2>/dev/null | grep -coE '%ymm[0-9]+' || true)
             echo "$l : zmm(AVX512)=$c ymm(AVX/AVX2)=$y"
             zmm=$((zmm + c))
           done
