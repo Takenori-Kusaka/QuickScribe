@@ -212,3 +212,12 @@ jobs:
           QS_MODEL_PATH: ${{ github.workspace }}/models/ggml-tiny.bin
           QS_AUDIO_PATH: ${{ github.workspace }}/test.wav
         run: cargo test --manifest-path src-tauri/Cargo.toml --test transcribe_integration -- --nocapture
+
+      # [検証用] ggmlのCMakeCache.txtから解決済みCPUオプションを確認する。
+      # SOURCE_DATE_EPOCH が効いていれば GGML_NATIVE:BOOL=OFF になっているはず。
+      - name: Verify ggml CPU options (GGML_NATIVE must be OFF)
+        run: |
+          f=$(find src-tauri/target -name CMakeCache.txt -path '*whisper*' | head -1)
+          echo "CMakeCache: $f"
+          if [ -z "$f" ]; then echo "NOT FOUND (探索拡大)"; f=$(find src-tauri/target -name CMakeCache.txt | head -1); echo "fallback: $f"; fi
+          grep -iE "GGML_NATIVE|GGML_AVX|GGML_FMA|GGML_F16C|march" "$f" 2>/dev/null | sort -u || echo "(no GGML lines)"
