@@ -13,12 +13,12 @@ concurrency:
 # cmake_minimum_required < 3.5 を拒否するため、CMake公式の回避策で最低ポリシー版を指定。
 env:
   CMAKE_POLICY_VERSION_MINIMUM: "3.5"
-  # whisper.cpp(ggml)の移植性: SOURCE_DATE_EPOCH 定義時 ggml は GGML_NATIVE_DEFAULT=OFF にする。
-  # これで -march=native を止め、ビルドマシンCPU依存(AVX512埋め込み→他CPUでSIGILL)を回避する。
-  # (whisper-rs-sys 0.13.1 の build.rs は GGML_* env を渡さないため、ggmlが直接読むこのenvが唯一のレバー)
-  SOURCE_DATE_EPOCH: "1700000000"
-  # [検証用・後で削除] cmakeに実コンパイルコマンドを出力させ -march/-mavx512 の有無を確認する。
-  CMAKE_VERBOSE_MAKEFILE: "ON"
+  # whisper.cpp(ggml)の移植性: GGML_NATIVE(=-march=native)を止め、ビルドマシンCPU依存
+  # (AVX512埋め込み→非対応CPU/CPUID誤申告でSIGILL)を回避する。
+  # whisper-rs-sys 0.13.1 の build.rs は WHISPER_*/CMAKE_* env のみ cmake に渡す(GGML_*不可)。
+  # whisper.cpp の WHISPER_NATIVE が GGML_NATIVE を制御するため、これをOFFにする(検証中)。
+  # (SOURCE_DATE_EPOCH は同梱ggmlが古く GGML_NATIVE=ON のままで無効だったため不採用)
+  WHISPER_NATIVE: "OFF"
 
 jobs:
   build:
@@ -42,7 +42,7 @@ jobs:
         with:
           workspaces: src-tauri
           # whisper移植性修正で whisper.cpp を再ビルドさせるためキャッシュ世代を更新。
-          prefix-key: "v1-portable"
+          prefix-key: "v2-portable"
 
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-22.04'
@@ -108,7 +108,7 @@ jobs:
         with:
           workspaces: src-tauri
           # whisper移植性修正で whisper.cpp を再ビルドさせるためキャッシュ世代を更新。
-          prefix-key: "v1-portable"
+          prefix-key: "v2-portable"
 
       - name: Install Linux dependencies (+ WebKitWebDriver / xvfb)
         run: |
@@ -158,7 +158,7 @@ jobs:
         with:
           workspaces: src-tauri
           # whisper移植性修正で whisper.cpp を再ビルドさせるためキャッシュ世代を更新。
-          prefix-key: "v1-portable"
+          prefix-key: "v2-portable"
 
       - name: Install dependencies (whisper build + espeak-ng)
         run: |
@@ -220,4 +220,4 @@ jobs:
           f=$(find src-tauri/target -name CMakeCache.txt -path '*whisper*' | head -1)
           echo "CMakeCache: $f"
           if [ -z "$f" ]; then echo "NOT FOUND (探索拡大)"; f=$(find src-tauri/target -name CMakeCache.txt | head -1); echo "fallback: $f"; fi
-          grep -iE "GGML_NATIVE|GGML_AVX|GGML_FMA|GGML_F16C|march" "$f" 2>/dev/null | sort -u || echo "(no GGML lines)"
+          grep -iE "GGML_NATIVE|GGML_AVX|GGML_FMA|GGML_F16C|WHISPER_NATIVE|march" "$f" 2>/dev/null | sort -u || echo "(no GGML lines)"
