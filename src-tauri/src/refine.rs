@@ -10,6 +10,28 @@
 
 use serde_json::json;
 
+use crate::aws_sign::{sign_post, AwsCreds};
+
+/// AWSプロバイダ(Bedrock / Claude Platform on AWS)の認証方式(両対応 / ADR-0011)。
+pub enum AwsAuth {
+    /// APIキー認証(Claude Platform=x-api-key / Bedrock=Authorization Bearer)。
+    ApiKey,
+    /// AWS IAM(SigV4署名)。一時credのときのみ session_token を Some。
+    SigV4 {
+        access_key: String,
+        secret_key: String,
+        session_token: Option<String>,
+    },
+}
+
+/// AWSプロバイダ固有の設定(region / Claude Platform の workspace_id / 認証)。
+pub struct AwsConfig {
+    pub region: String,
+    /// Claude Platform on AWS で必須(anthropic-workspace-id ヘッダ)。Bedrock では未使用。
+    pub workspace_id: String,
+    pub auth: AwsAuth,
+}
+
 /// 整形スタイル(コア価値「整形の知性」: 逐語⇄要約⇄ブレストを行き来する / ADR-0004, S3.3)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefineStyle {
@@ -80,6 +102,8 @@ pub struct RefineRequest<'a> {
     pub api_key: &'a str,
     pub model: &'a str,
     pub transcript: &'a str,
+    /// AWSプロバイダのときのみ Some(region/workspace_id/認証)。それ以外は None。
+    pub aws: Option<&'a AwsConfig>,
 }
 
 /// 整形エンジンの抽象(S3.1: プロバイダ/戦略を差し替え可能にする DIP 境界)。
@@ -93,6 +117,8 @@ pub fn engine_for(provider: &str) -> Box<dyn FormattingEngine> {
         "anthropic" | "claude" => Box::new(AnthropicEngine),
         "openai" | "gpt" => Box::new(OpenAiEngine),
         "ollama" | "local" => Box::new(OllamaEngine),
+        "bedrock" | "aws-bedrock" => Box::new(BedrockEngine),
+        "claude-aws" | "claude-platform-aws" | "anthropic-aws" => Box::new(ClaudePlatformAwsEngine),
         _ => Box::new(GeminiEngine),
     }
 }
@@ -116,12 +142,14 @@ pub fn refine(
     model: &str,
     style: &str,
     transcript: &str,
+    aws: Option<AwsConfig>,
 ) -> Result<String, String> {
     let req = RefineRequest {
         style: RefineStyle::parse(style),
         api_key,
         model,
         transcript,
+        aws: aws.as_ref(),
     };
     engine_for(provider).refine(&req)
 }
@@ -181,6 +209,25 @@ struct GeminiEngine;
 struct AnthropicEngine;
 struct OpenAiEngine;
 struct OllamaEngine;
+/// AWS Bedrock(InvokeModel)。APIキー(Bearer)/SigV4両対応 / ADR-0011。
+struct BedrockEngine;
+/// Claude Platform on AWS(aws-external-anthropic / Messages API互換)。x-api-key/SigV4両対応。
+struct ClaudePlatformAwsEngine;
+
+/// Anthropic Messages 互換応答(content[] の type=="text" を連結)から本文を取り出す。
+fn anthropic_text(v: &serde_json::Value) -> String {
+    let mut out = String::new();
+    if let Some(blocks) = v.get("content").and_then(|c| c.as_array()) {
+        for block in blocks {
+            if block.get("type").and_then(|t| t.as_str()) == Some("text") {
+                if let Some(t) = block.get("text").and_then(|t| t.as_str()) {
+                    out.push_str(t);
+                }
+            }
+        }
+    }
+    out
+}
 
 /// Gemini で整形する。
 impl FormattingEngine for GeminiEngine {
@@ -345,6 +392,149 @@ impl FormattingEngine for OllamaEngine {
         let body = extract_tagged_body(&out);
         if body.is_empty() {
             return Err(format!("整形結果が空でした（Ollama応答: {}）", v));
+        }
+        Ok(body)
+    }
+}
+
+/// AWSプロバイダのリクエストに認証ヘッダを付与する(APIキー or SigV4署名)。
+/// SigV4 は body_bytes を署名するため、呼び出し側は同一バイト列を send_bytes すること。
+/// service: Bedrock="bedrock" / Claude Platform="aws-external-anthropic"。
+fn apply_aws_auth(
+    mut request: ureq::Request,
+    url: &str,
+    body_bytes: &[u8],
+    service: &str,
+    aws: &AwsConfig,
+    api_key: &str,
+    bearer: bool,
+) -> Result<ureq::Request, String> {
+    match &aws.auth {
+        AwsAuth::ApiKey => {
+            if api_key.trim().is_empty() {
+                return Err("APIキーが未設定です（設定から入力してください）".into());
+            }
+            if bearer {
+                request = request.set("Authorization", &format!("Bearer {}", api_key.trim()));
+            } else {
+                request = request.set("x-api-key", api_key.trim());
+            }
+        }
+        AwsAuth::SigV4 {
+            access_key,
+            secret_key,
+            session_token,
+        } => {
+            if access_key.trim().is_empty() || secret_key.trim().is_empty() {
+                return Err("AWSアクセスキー/シークレットが未設定です".into());
+            }
+            let creds = AwsCreds {
+                access_key: access_key.clone(),
+                secret_key: secret_key.clone(),
+                session_token: session_token.clone().filter(|s| !s.trim().is_empty()),
+                region: aws.region.clone(),
+            };
+            for (k, v) in sign_post(url, body_bytes, service, &creds)? {
+                request = request.set(&k, &v);
+            }
+        }
+    }
+    Ok(request)
+}
+
+/// AWS Bedrock(InvokeModel)で整形する / ADR-0011。
+/// エンドポイント: bedrock-runtime.{region}.amazonaws.com/model/{modelId}/invoke。
+/// body は Anthropic on Bedrock 形式(model不要・anthropic_version必須)。署名名は "bedrock"。
+impl FormattingEngine for BedrockEngine {
+    fn refine(&self, req: &RefineRequest) -> Result<String, String> {
+        let aws = req
+            .aws
+            .ok_or("AWS Bedrock の設定(リージョン/認証)が未指定です")?;
+        if aws.region.trim().is_empty() {
+            return Err("AWSリージョンが未設定です".into());
+        }
+        // Bedrock のモデルIDはリージョン/アカウント依存。未指定時は anthropic. プレフィックス既定。
+        let model = if req.model.trim().is_empty() {
+            "anthropic.claude-sonnet-4-6"
+        } else {
+            req.model.trim()
+        };
+        let url = format!(
+            "https://bedrock-runtime.{}.amazonaws.com/model/{}/invoke",
+            aws.region.trim(),
+            model
+        );
+        let body = json!({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 4096,
+            "system": req.style.system_prompt(),
+            "messages": [
+                { "role": "user", "content": req.style.user_prompt(req.transcript) }
+            ]
+        });
+        let body_bytes = serde_json::to_vec(&body).map_err(|e| e.to_string())?;
+
+        let request = ureq::post(&url).set("Content-Type", "application/json");
+        let request = apply_aws_auth(request, &url, &body_bytes, "bedrock", aws, req.api_key, true)?;
+        let resp = request
+            .send_bytes(&body_bytes)
+            .map_err(|e| format!("整形APIの呼び出しに失敗(Bedrock): {e}"))?;
+        let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+
+        let out = anthropic_text(&v);
+        let body = extract_tagged_body(&out);
+        if body.is_empty() {
+            return Err(format!("整形結果が空でした（Bedrock応答: {}）", v));
+        }
+        Ok(body)
+    }
+}
+
+/// Claude Platform on AWS(aws-external-anthropic)で整形する / ADR-0011。
+/// 実体は Anthropic Messages API。差分は base_url と anthropic-workspace-id ヘッダ。
+/// 署名名は "aws-external-anthropic"。APIキー時は x-api-key。
+impl FormattingEngine for ClaudePlatformAwsEngine {
+    fn refine(&self, req: &RefineRequest) -> Result<String, String> {
+        let aws = req
+            .aws
+            .ok_or("Claude Platform on AWS の設定(リージョン/認証)が未指定です")?;
+        if aws.region.trim().is_empty() {
+            return Err("AWSリージョンが未設定です".into());
+        }
+        let url = format!(
+            "https://aws-external-anthropic.{}.api.aws/v1/messages",
+            aws.region.trim()
+        );
+        let body = json!({
+            "model": req.model,
+            "max_tokens": 4096,
+            "system": req.style.system_prompt(),
+            "messages": [
+                { "role": "user", "content": req.style.user_prompt(req.transcript) }
+            ]
+        });
+        let body_bytes = serde_json::to_vec(&body).map_err(|e| e.to_string())?;
+
+        let mut request = ureq::post(&url)
+            .set("Content-Type", "application/json")
+            .set("anthropic-version", "2023-06-01");
+        if !aws.workspace_id.trim().is_empty() {
+            request = request.set("anthropic-workspace-id", aws.workspace_id.trim());
+        }
+        let request =
+            apply_aws_auth(request, &url, &body_bytes, "aws-external-anthropic", aws, req.api_key, false)?;
+        let resp = request
+            .send_bytes(&body_bytes)
+            .map_err(|e| format!("整形APIの呼び出しに失敗(Claude Platform on AWS): {e}"))?;
+        let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+
+        let out = anthropic_text(&v);
+        let body = extract_tagged_body(&out);
+        if body.is_empty() {
+            return Err(format!(
+                "整形結果が空でした（Claude Platform on AWS応答: {}）",
+                v
+            ));
         }
         Ok(body)
     }

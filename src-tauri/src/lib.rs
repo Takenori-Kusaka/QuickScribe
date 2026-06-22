@@ -6,6 +6,8 @@
 // (ADR-0006 によりスコープからは外さない)。
 
 pub mod audio_save;
+// AWS SigV4署名(Bedrock / Claude Platform on AWS の整形プロバイダ用 / ADR-0011)。
+pub mod aws_sign;
 pub mod model;
 pub mod record;
 pub mod refine;
@@ -283,8 +285,20 @@ fn default_model_for(provider: &str) -> &'static str {
         "anthropic" | "claude" => "claude-sonnet-4-6",
         "openai" | "gpt" => "gpt-4o",
         "ollama" | "local" => "llama3.1",
+        // AWS Bedrock のモデルIDは anthropic. プレフィックス(リージョン/アカウント依存。UIで上書き可)。
+        "bedrock" | "aws-bedrock" => "anthropic.claude-sonnet-4-6",
+        // Claude Platform on AWS は第一者と同じ bare ID。
+        "claude-aws" | "claude-platform-aws" | "anthropic-aws" => "claude-sonnet-4-6",
         _ => "gemini-flash-latest",
     }
+}
+
+/// AWS系プロバイダ(Bedrock / Claude Platform on AWS)か。AwsConfig 組み立ての要否判定 / ADR-0011。
+fn is_aws_provider(provider: &str) -> bool {
+    matches!(
+        provider.trim().to_ascii_lowercase().as_str(),
+        "bedrock" | "aws-bedrock" | "claude-aws" | "claude-platform-aws" | "anthropic-aws"
+    )
 }
 
 /// 実行時に各プロバイダのモデル一覧APIから「最新ミドルレンジ」モデルIDを解決する。
@@ -305,6 +319,7 @@ async fn resolve_model(provider: String, api_key: String) -> Result<String, Stri
 /// 非同期＋別スレッドでUIをブロックしない。プロバイダ(Gemini/Anthropic/OpenAI)と
 /// APIキー・モデルはフロントの設定から渡す（コードに鍵を埋め込まない / ADR-0005）。
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn refine_text(
     app: tauri::AppHandle,
     text: String,
@@ -312,6 +327,13 @@ async fn refine_text(
     api_key: String,
     model: String,
     style: String,
+    // AWSプロバイダ(Bedrock / Claude Platform on AWS)用 / ADR-0011。非AWS時は未指定(None)。
+    region: Option<String>,
+    workspace_id: Option<String>,
+    auth_mode: Option<String>, // "sigv4" | "apikey"(既定)
+    aws_access_key: Option<String>,
+    aws_secret_key: Option<String>,
+    aws_session_token: Option<String>,
 ) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let m = if model.trim().is_empty() {
@@ -319,7 +341,26 @@ async fn refine_text(
         } else {
             model
         };
-        let refined = refine::refine(&provider, &api_key, &m, &style, &text)?;
+        // AWSプロバイダのときだけ AwsConfig を組み立てる。
+        let aws_cfg = if is_aws_provider(&provider) {
+            let auth = if auth_mode.as_deref() == Some("sigv4") {
+                refine::AwsAuth::SigV4 {
+                    access_key: aws_access_key.unwrap_or_default(),
+                    secret_key: aws_secret_key.unwrap_or_default(),
+                    session_token: aws_session_token,
+                }
+            } else {
+                refine::AwsAuth::ApiKey
+            };
+            Some(refine::AwsConfig {
+                region: region.unwrap_or_default(),
+                workspace_id: workspace_id.unwrap_or_default(),
+                auth,
+            })
+        } else {
+            None
+        };
+        let refined = refine::refine(&provider, &api_key, &m, &style, &text, aws_cfg)?;
         // 整形結果（ジャーナルの成果物）は常に保存先へ書き出す。
         if let Ok(dir) = resolve_save_dir(&current_settings(&app)) {
             let _ = save_text_in(&dir, &refined);
