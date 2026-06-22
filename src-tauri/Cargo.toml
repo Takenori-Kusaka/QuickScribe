@@ -30,6 +30,8 @@ chrono = "0.4"
 dirs = "5"
 # 物理コア数の取得（whisperスレッド数の最適化。論理コア全指定は逆効果）。
 num_cpus = "1"
+# [切り分け用・後で戻す] lock変更でwhisper新規ビルドを誘発する無害な純Rust依存。
+cfg-if = "1"
 # whisperモデルの初回自動取得(HTTPダウンロード)+整形APIのJSON送受信。
 ureq = { version = "2", features = ["json"] }
 # マイク録音(S1.1)。既定入力デバイスからのキャプチャ(Win:WASAPI / Linux:ALSA)。
