@@ -450,6 +450,15 @@ fn set_taskbar_shortcut(display: String) {
     let _ = display;
 }
 
+/// タスクバー上のウィジェット表示の有効/無効を切り替える（設定のトグル / Windowsのみ）。
+#[tauri::command]
+fn set_taskbar_widget(enabled: bool) {
+    #[cfg(windows)]
+    taskbar_widget::set_enabled(enabled);
+    #[cfg(not(windows))]
+    let _ = enabled;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -517,7 +526,8 @@ pub fn run() {
             set_record_shortcut,
             set_save_settings,
             set_recording_overlay,
-            set_taskbar_shortcut
+            set_taskbar_shortcut,
+            set_taskbar_widget
         ])
         // ウィンドウを閉じてもアプリは終了せず、トレイに常駐する（タスクバー常駐の挙動）。
         // ただし E2E(QUICKSCRIBE_E2E=1)時はドライバが正常終了できるよう既定の閉じる挙動にする。

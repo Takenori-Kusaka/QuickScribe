@@ -55,6 +55,8 @@ static LAST_Y: AtomicI32 = AtomicI32::new(i32::MIN);
 static LAST_H: AtomicI32 = AtomicI32::new(i32::MIN);
 /// フルスクリーンアプリ検出でウィジェットを隠している間 true（重複した Show/Hide 呼び出しを避ける）。
 static HIDDEN: AtomicBool = AtomicBool::new(false);
+/// ユーザー設定でウィジェット表示が有効か（既定 true。設定でOFFにすると常に隠す）。
+static ENABLED: AtomicBool = AtomicBool::new(true);
 
 const TOOL_RECORD: usize = 1;
 const TOOL_OPEN: usize = 2;
@@ -91,6 +93,27 @@ pub fn set_recording(recording: bool) {
     let h = WIDGET_HWND.load(Ordering::Relaxed);
     if h != 0 {
         unsafe { render(HWND(h as *mut _)) };
+    }
+}
+
+/// ウィジェット表示の有効/無効を設定する（設定のトグルから。即時に表示/非表示を反映）。
+/// 無効中は WM_TIMER が常に隠す。有効化時は次のタイマーで条件に応じ復帰する。
+pub fn set_enabled(enabled: bool) {
+    ENABLED.store(enabled, Ordering::Relaxed);
+    let h = WIDGET_HWND.load(Ordering::Relaxed);
+    if h == 0 {
+        return;
+    }
+    let hwnd = HWND(h as *mut _);
+    unsafe {
+        if enabled {
+            // 即時表示（その後はタイマーがフルスクリーン等で適宜隠す）。
+            HIDDEN.store(false, Ordering::Relaxed);
+            let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        } else {
+            HIDDEN.store(true, Ordering::Relaxed);
+            let _ = ShowWindow(hwnd, SW_HIDE);
+        }
     }
 }
 
@@ -447,6 +470,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             LRESULT(0)
         }
         WM_TIMER => {
+            // ユーザー設定でOFFなら検出より優先して常に隠す（設定で表示/非表示を切替）。
+            if !ENABLED.load(Ordering::Relaxed) {
+                if !HIDDEN.swap(true, Ordering::Relaxed) {
+                    let _ = ShowWindow(hwnd, SW_HIDE);
+                    diag("hide: widget disabled by setting");
+                }
+                return LRESULT(0);
+            }
             // タスクバーが画面に見えていない時(フルスクリーン/auto-hide引っ込み/最大化での退避)は
             // 最前面オーバーレイを隠してコンテンツを邪魔しない。タスクバーが戻れば復帰させる。
             // 隠す条件(状態を直接読み、閾値ブレ＝フラッピングを避ける):
