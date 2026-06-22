@@ -23,42 +23,80 @@
   let transcribing = $state(false);
 
   // 設定（localStorageに保存。秘密情報はローカル端末内のみ）。
-  // 整形プロバイダは Gemini / Anthropic(Claude) / OpenAI の3種をサポート(BYO鍵 / ADR-0005)。
-  type Provider = "gemini" | "anthropic" | "openai" | "ollama";
+  // 整形プロバイダ: Gemini / Anthropic / OpenAI / ローカル(Ollama) ＋
+  // AWS Bedrock / Claude Platform on AWS(ADR-0011)。BYO鍵/資格情報 / ADR-0005。
+  type Provider =
+    | "gemini"
+    | "anthropic"
+    | "openai"
+    | "ollama"
+    | "bedrock"
+    | "claude-aws";
   const PROVIDER_LABELS: Record<Provider, string> = {
     gemini: "Gemini",
     anthropic: "Anthropic (Claude)",
     openai: "OpenAI",
     ollama: "ローカル (Ollama)",
+    bedrock: "AWS Bedrock",
+    "claude-aws": "Claude Platform on AWS",
   };
   // 鍵不要のローカルプロバイダ（端末内完結＝差別化「ローカルプライバシー」/ S3.4）。
   const LOCAL_PROVIDERS: Provider[] = ["ollama"];
+  // AWS系(region＋認証が必要。SigV4 or APIキー / ADR-0011)。
+  const AWS_PROVIDERS: Provider[] = ["bedrock", "claude-aws"];
   // モデルは「実行時に各社のモデル一覧APIから最新ミドルレンジを解決」する（ビルド時固定にしない）。
   // 取得失敗時のフォールバック表示（ローリングlatestエイリアス優先 / ADR-0007 deep research）。
+  // AWSはモデル一覧APIが別系統のため自動解決せず、フォールバック/手入力を使う。
   const FALLBACK_MODELS: Record<Provider, string> = {
     gemini: "gemini-flash-latest",
     anthropic: "claude-sonnet-4-6",
     openai: "gpt-4o",
     ollama: "llama3.1",
+    bedrock: "anthropic.claude-sonnet-4-6",
+    "claude-aws": "claude-sonnet-4-6",
   };
   const KEY_PLACEHOLDERS: Record<Provider, string> = {
     gemini: "AIza...",
     anthropic: "sk-ant-...",
     openai: "sk-...",
     ollama: "",
+    bedrock: "Bedrock APIキー(Bearer) ※SigV4時は不要",
+    "claude-aws": "Anthropic APIキー ※SigV4時は不要",
   };
-  const ALL_PROVIDERS: Provider[] = ["gemini", "anthropic", "openai", "ollama"];
+  const ALL_PROVIDERS: Provider[] = [
+    "gemini",
+    "anthropic",
+    "openai",
+    "ollama",
+    "bedrock",
+    "claude-aws",
+  ];
   // 解決済みモデルのキャッシュ寿命（24時間）。これを過ぎたら再取得する。
   const MODEL_TTL_MS = 24 * 60 * 60 * 1000;
 
   let showSettings = $state(false);
   let provider = $state<Provider>("gemini");
   // プロバイダごとに鍵を保持する（切替時に再入力不要）。
-  let apiKeys = $state<Record<Provider, string>>({ gemini: "", anthropic: "", openai: "", ollama: "" });
+  let apiKeys = $state<Record<Provider, string>>({
+    gemini: "", anthropic: "", openai: "", ollama: "", bedrock: "", "claude-aws": "",
+  });
   // 実行時に解決した最新モデルID（表示・整形に使用）。
-  let resolvedModel = $state<Record<Provider, string>>({ gemini: "", anthropic: "", openai: "", ollama: "" });
+  let resolvedModel = $state<Record<Provider, string>>({
+    gemini: "", anthropic: "", openai: "", ollama: "", bedrock: "", "claude-aws": "",
+  });
   let resolvingModel = $state(false);
   let updateMsg = $state<string>("");
+
+  // AWS資格情報(Bedrock / Claude Platform on AWS 共通 / ADR-0011)。
+  // ※localStorage平文保存は当面。秘密情報のkeyring化は S3.2 で対応(優先度を上げる)。
+  let awsRegion = $state<string>("us-east-1");
+  let awsWorkspaceId = $state<string>(""); // Claude Platform on AWS で必須
+  let awsAuthMode = $state<"sigv4" | "apikey">("sigv4");
+  let awsAccessKey = $state<string>("");
+  let awsSecretKey = $state<string>("");
+  let awsSessionToken = $state<string>(""); // 一時credのときのみ
+  // AWS Bedrock のモデルID(リージョン/アカウント依存のため手入力可)。
+  let bedrockModel = $state<string>("");
 
   // 録音トグルのグローバルホットキー。内部・保存・登録は Tauri アクセラレータ表記
   // ("CommandOrControl+Shift+R")だが、表示は実行環境に合わせて Ctrl/Cmd に変換する。
@@ -137,6 +175,14 @@
     audioFormat = localStorage.getItem("audioFormat") || "opus";
     saveDir = localStorage.getItem("saveDir") || "";
     refineStyle = localStorage.getItem("refineStyle") || "structured";
+    // AWS資格情報(ADR-0011)。
+    awsRegion = localStorage.getItem("awsRegion") || "us-east-1";
+    awsWorkspaceId = localStorage.getItem("awsWorkspaceId") || "";
+    awsAuthMode = (localStorage.getItem("awsAuthMode") as "sigv4" | "apikey") || "sigv4";
+    awsAccessKey = localStorage.getItem("awsAccessKey") || "";
+    awsSecretKey = localStorage.getItem("awsSecretKey") || "";
+    awsSessionToken = localStorage.getItem("awsSessionToken") || "";
+    bedrockModel = localStorage.getItem("bedrockModel") || "";
   }
 
   // 保存設定をバックエンドへ反映する（保存系コマンドが参照）。
@@ -171,6 +217,14 @@
     localStorage.setItem("audioFormat", audioFormat);
     localStorage.setItem("saveDir", saveDir);
     localStorage.setItem("refineStyle", refineStyle);
+    // AWS資格情報(ADR-0011)。秘密情報の平文保存は当面。keyring化は S3.2。
+    localStorage.setItem("awsRegion", awsRegion);
+    localStorage.setItem("awsWorkspaceId", awsWorkspaceId);
+    localStorage.setItem("awsAuthMode", awsAuthMode);
+    localStorage.setItem("awsAccessKey", awsAccessKey);
+    localStorage.setItem("awsSecretKey", awsSecretKey);
+    localStorage.setItem("awsSessionToken", awsSessionToken);
+    localStorage.setItem("bedrockModel", bedrockModel);
     void syncSaveSettings();
     showSettings = false;
     // 鍵が入っていれば現在のプロバイダの最新モデルを取得（強制更新）。
@@ -243,6 +297,8 @@
   // force=false かつキャッシュが新しければ何もしない。鍵未入力なら何もしない。
   async function resolveCurrentModel(force = false) {
     const p = provider;
+    // AWS系はモデル一覧APIが別系統のため自動解決しない(フォールバック/手入力)。
+    if (AWS_PROVIDERS.includes(p)) return;
     if (!apiKeys[p].trim()) return;
     const at = Number(localStorage.getItem(`resolvedModelAt:${p}`) || 0);
     if (!force && resolvedModel[p] && Date.now() - at < MODEL_TTL_MS) return;
@@ -334,28 +390,62 @@
   }
 
   // 文字起こしを整形（思考整理・要約）する＝コア価値。選択中プロバイダの鍵が必要。
+  // プロバイダが整形可能な設定になっているか（鍵/AWS資格情報）。未設定なら理由文を返す。
+  function refineConfigError(): string | null {
+    if (LOCAL_PROVIDERS.includes(provider)) return null; // Ollamaは鍵不要
+    if (AWS_PROVIDERS.includes(provider)) {
+      if (!awsRegion.trim()) return "AWSリージョンを設定してください。";
+      if (provider === "claude-aws" && !awsWorkspaceId.trim())
+        return "Claude Platform on AWS には workspace_id が必要です。";
+      if (awsAuthMode === "sigv4") {
+        if (!awsAccessKey.trim() || !awsSecretKey.trim())
+          return "AWSアクセスキー/シークレットを設定してください。";
+      } else if (!apiKeys[provider].trim()) {
+        return `${PROVIDER_LABELS[provider]} のAPIキーが必要です。`;
+      }
+      return null;
+    }
+    return apiKeys[provider].trim() ? null : `整形には ${PROVIDER_LABELS[provider]} のAPIキーが必要です。`;
+  }
+
+  // refine_text に渡す追加引数（AWS時のみ資格情報。非AWSは undefined＝後方互換）。
+  function refineArgs() {
+    const base: Record<string, unknown> = {
+      text: transcript,
+      provider,
+      apiKey: apiKeys[provider],
+      // 解決済みモデル（空ならバックエンドがフォールバック既定を補完）。Bedrockは手入力モデル。
+      model: provider === "bedrock" ? bedrockModel : resolvedModel[provider],
+      style: refineStyle,
+    };
+    if (AWS_PROVIDERS.includes(provider)) {
+      base.region = awsRegion.trim();
+      base.workspaceId = awsWorkspaceId.trim();
+      base.authMode = awsAuthMode;
+      if (awsAuthMode === "sigv4") {
+        base.awsAccessKey = awsAccessKey.trim();
+        base.awsSecretKey = awsSecretKey.trim();
+        base.awsSessionToken = awsSessionToken.trim() || null;
+      }
+    }
+    return base;
+  }
+
   async function refineNow() {
     if (!transcript) return;
-    // ローカルプロバイダ(Ollama)は鍵不要。クラウドのみ鍵を要求する。
-    if (!LOCAL_PROVIDERS.includes(provider) && !apiKeys[provider].trim()) {
+    const cfgErr = refineConfigError();
+    if (cfgErr) {
       showSettings = true;
-      error = `整形には ${PROVIDER_LABELS[provider]} のAPIキーが必要です。設定から入力してください。`;
+      error = `${cfgErr}設定から入力してください。`;
       return;
     }
     error = null;
     refining = true;
     refined = null;
     try {
-      // 整形直前に最新モデルを確保（キャッシュが新しければ即返る）。
+      // 整形直前に最新モデルを確保（キャッシュが新しければ即返る。AWSはスキップ）。
       await resolveCurrentModel();
-      refined = await invoke<string>("refine_text", {
-        text: transcript,
-        provider,
-        apiKey: apiKeys[provider],
-        // 解決済みモデル（空ならバックエンドがフォールバック既定を補完）。
-        model: resolvedModel[provider],
-        style: refineStyle,
-      });
+      refined = await invoke<string>("refine_text", refineArgs());
     } catch (e) {
       error = String(e);
     } finally {
@@ -448,9 +538,8 @@
       const text = e.payload;
       if (text) {
         transcript = text;
-        // 一気通貫: 自動で整形まで実行（クラウドは鍵がある時のみ・ローカルは常に可）。
-        if (autoPipeline && (LOCAL_PROVIDERS.includes(provider) || apiKeys[provider].trim()))
-          void refineNow();
+        // 一気通貫: 自動で整形まで実行（プロバイダが設定済みのときのみ）。
+        if (autoPipeline && refineConfigError() === null) void refineNow();
       } else {
         error = "文字起こしできる音声が含まれていませんでした（音声は保存していません）。";
       }
@@ -620,6 +709,8 @@
           <option value="anthropic">Anthropic (Claude)</option>
           <option value="openai">OpenAI</option>
           <option value="ollama">ローカル (Ollama)</option>
+          <option value="bedrock">AWS Bedrock</option>
+          <option value="claude-aws">Claude Platform on AWS</option>
         </select>
       </label>
       {#if LOCAL_PROVIDERS.includes(provider)}
@@ -627,6 +718,56 @@
           ローカル (Ollama) は鍵不要で端末内完結（思考の生データを外に出しません）。
           事前に <code>ollama serve</code> の起動とモデル取得（例: <code>ollama pull llama3.1</code>）が必要です。
         </p>
+      {:else if AWS_PROVIDERS.includes(provider)}
+        <!-- AWSプロバイダ(Bedrock / Claude Platform on AWS) / ADR-0011。SigV4 or APIキー。 -->
+        <label>
+          AWSリージョン
+          <input type="text" bind:value={awsRegion} placeholder="us-east-1" autocomplete="off" />
+        </label>
+        {#if provider === "claude-aws"}
+          <label>
+            workspace_id（Claude Platform on AWS で必須）
+            <input type="text" bind:value={awsWorkspaceId} placeholder="wrkspc_..." autocomplete="off" />
+          </label>
+        {/if}
+        {#if provider === "bedrock"}
+          <label>
+            BedrockモデルID（リージョン/アカウント依存・空で既定）
+            <input type="text" bind:value={bedrockModel} placeholder="anthropic.claude-sonnet-4-6" autocomplete="off" />
+          </label>
+        {/if}
+        <label>
+          認証方式
+          <select bind:value={awsAuthMode}>
+            <option value="sigv4">AWS IAMキー (SigV4)</option>
+            <option value="apikey">APIキー</option>
+          </select>
+        </label>
+        {#if awsAuthMode === "sigv4"}
+          <label>
+            AWSアクセスキーID
+            <input type="password" bind:value={awsAccessKey} placeholder="AKIA..." autocomplete="off" />
+          </label>
+          <label>
+            AWSシークレットアクセスキー
+            <input type="password" bind:value={awsSecretKey} placeholder="..." autocomplete="off" />
+          </label>
+          <label>
+            セッショントークン（一時credのときのみ・任意）
+            <input type="password" bind:value={awsSessionToken} placeholder="（任意）" autocomplete="off" />
+          </label>
+        {:else}
+          <label>
+            {PROVIDER_LABELS[provider]} APIキー（端末内のみ保存）
+            <input
+              type="password"
+              bind:value={apiKeys[provider]}
+              placeholder={KEY_PLACEHOLDERS[provider]}
+              autocomplete="off"
+            />
+          </label>
+        {/if}
+        <p class="muted">秘密情報は端末内に保存します（思考の生データを外に出しません）。</p>
       {:else}
         <label>
           {PROVIDER_LABELS[provider]} APIキー（整形に使用・端末内のみ保存）
@@ -639,8 +780,14 @@
         </label>
       {/if}
       <p class="muted model-hint">
-        モデル: <code>{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code>
-        {#if resolvingModel}（取得中…）{:else if resolvedModel[provider]}（最新を自動取得）{:else}（最新ミドルレンジを自動選択）{/if}
+        {#if provider === "bedrock"}
+          モデル: <code>{bedrockModel || FALLBACK_MODELS[provider]}</code>（Bedrockは手入力/既定）
+        {:else if provider === "claude-aws"}
+          モデル: <code>{FALLBACK_MODELS[provider]}</code>（Claude Platform on AWS）
+        {:else}
+          モデル: <code>{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code>
+          {#if resolvingModel}（取得中…）{:else if resolvedModel[provider]}（最新を自動取得）{:else}（最新ミドルレンジを自動選択）{/if}
+        {/if}
       </p>
       <label>
         整形スタイル（録音後の自動整形にも適用されます）
