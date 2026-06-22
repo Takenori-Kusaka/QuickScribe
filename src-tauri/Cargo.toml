@@ -55,9 +55,7 @@ symphonia = { version = "0.5", default-features = false, features = [
 ] }
 # AWSプロバイダ(Amazon Bedrock / Claude Platform on AWS)の SigV4署名 / ADR-0011。
 # 同期・tokio非依存(署名計算のみ)。aws-sdk-bedrockruntimeはasync専用のため使わない。
-# default-features=false で SigV4A(ECDSA) を外す＝ネイティブcrate `ring` を引き込まない。
-# (ring の cc ビルドスクリプトが共有 cc をバンプし whisper.cpp を非対応SIMDで再ビルド→SIGILL
-#  していたのを回避。通常SigV4は sha2/hmac の純Rustで足りる / 切り分けは PR#350 で実証。)
+# default-features=false で不要な SigV4A(ECDSA) を外し依存を最小化(通常SigV4は sha2/hmac で足りる)。
 aws-sigv4 = { version = "1.4", default-features = false, features = ["sign-http", "http1"] }
 aws-credential-types = "1.2"
 http = "1"
