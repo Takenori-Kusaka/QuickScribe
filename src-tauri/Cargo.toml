@@ -68,6 +68,7 @@ keyring = { version = "3", default-features = false, features = [
     "crypto-rust",
 ] }
 
+[target."cfg(windows)".dependencies]
 # Windows タスクバーのサムネイルツールバー(ITaskbarList3)実装用。
 # tauri 2.11系の windows クレートと整合させる(HWNDの型不一致回避)。HWNDは生ポインタ経由で再ラップ。
 windows = { version = "0.61", features = [
