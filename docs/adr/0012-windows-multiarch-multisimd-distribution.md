@@ -31,7 +31,11 @@
 - `vendor/whisper-rs-sys-0.13.1`（7.1MB・自己完結）をリポジトリに取り込む（外部fork不要・0.13.1を正確再現・上流archivedで変更追従ほぼ不要）。ライセンスは Unlicense+MIT で不変（deny.toml許可リスト変更なし）。NOTICE/透明性として「whisper-rs-sysのbuild.rsを改変」明記が望ましい。
 - ARM64/AVX512は実験ゲートで投資前に検証＝無駄打ち回避。
 
+## 実施記録（2026-06-23）
+- **Phase 0 完了 → v0.2.3**。決定的AVX2（CMakeCacheで `GGML_NATIVE:BOOL=OFF`、objdumpで zmm=0 / ymm有効を実測）。
+- **Phase 1 完了 → v0.2.4**。ARM64スパイクで「whisper-rsのブロッカーはC1001 ICEでなく『ggmlはARMでMSVC不可・Clang必須』」と判明し、`ilammy/msvc-dev-cmd(amd64_arm64)＋ninja＋clang-cl` で whisper.cpp をビルド→アプリ全体クロスビルド＋NSISインストーラ(`*_arm64-setup.exe`)生成を確認。release.ymlを x64/ARM64 マトリクス化（`max-parallel:1`で latest.json統合の競合回避）。`latest.json` に `windows-x86_64`/`windows-aarch64` 両キー統合を実リリースで実証。
+- **Phase 2（AVX512版）は見送り（VOIゲート不成立）**。AVX2 vs AVX512 ベンチを試みたが、**GitHubのubuntuランナーは AMD EPYC 9V74 で AVX512を露出しておらず（複数回引いて全てAMD）CIで計測不能**。AVX512のwhisper高速化は一般に小幅・downclockで相殺もあり、Phase2の実装/保守コスト（複数SIMDビルド＋NSIS CPUガード＋custom-target updater）に見合う根拠を得られなかった。x64=AVX2/ARM64=NEONで全実機カバー済み＝配布堅牢性は達成。**`QS_SIMD=avx512` 切替口とCPUガード設計は温存**し、実機での明確な高速化実証 or 要望が出た時点で着手する。
+
 ## 反証条件
 - 上流whisper-rs後継が `GGML_*` env転送/SIMD featureを実装したら自前patchを破棄して乗り換え。
-- ARM64クロスビルドのICEが現行VS2022ツールで解消していればPhase 1は即実装可。
-- AVX512実測ゲインが無ければPhase 2のAVX512版は作らない（CPUガード機構はARM64/将来用に温存）。
+- AVX512を実機(対応CPU)で計測し有意な高速化が実証されたらPhase 2に着手（CPUガード機構は設計済み）。
