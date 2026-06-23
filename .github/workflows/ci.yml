@@ -84,14 +84,6 @@ jobs:
       - name: Build (compile, no bundle)
         run: npx tauri build --no-bundle
 
-      # [一時] [patch]適用後の Cargo.lock を取得してコミットするため出力する。
-      - name: Upload Cargo.lock (for committing)
-        if: matrix.os == 'ubuntu-22.04'
-        uses: actions/upload-artifact@v4
-        with:
-          name: cargo-lock
-          path: src-tauri/Cargo.lock
-
   e2e:
     name: e2e (実起動 / Linux)
     runs-on: ubuntu-22.04
@@ -216,16 +208,26 @@ jobs:
       # (Phase2でAVX512最適化版を作る際は QS_SIMD=avx512 でビルドし、そのジョブはこのゲート対象外にする)
       - name: AVX512 regression gate (objdump zmm check)
         run: |
+          # 1) patchが効いて GGML_NATIVE=OFF か(=決定的AVX2)。patchが外れると ON に戻りSIGILLリスク。
+          f=$(find src-tauri/target -name CMakeCache.txt -path '*whisper*' | head -1)
+          nat=$(grep -E '^GGML_NATIVE:BOOL=' "$f" 2>/dev/null | head -1)
+          echo "CMakeCache: $nat"
+          if ! echo "$nat" | grep -q 'GGML_NATIVE:BOOL=OFF'; then
+            echo "::error::GGML_NATIVE が OFF でない($nat)。vendor patchが効いていない(決定的AVX2でない)。"
+            exit 1
+          fi
+          # 2) 成果物に AVX512(zmm) が無いか(回帰検出)。
           libs=$(find src-tauri/target -name 'libggml*.a' -o -name 'libwhisper*.a' | sort -u)
-          zmm=0
+          zmm=0; ymm=0
           for l in $libs; do
             c=$(objdump -d "$l" 2>/dev/null | grep -coE '%zmm[0-9]+' || true)
-            echo "$l : zmm(AVX512)=$c"
-            zmm=$((zmm + c))
+            y=$(objdump -d "$l" 2>/dev/null | grep -coE '%ymm[0-9]+' || true)
+            echo "$l : zmm(AVX512)=$c ymm(AVX2)=$y"
+            zmm=$((zmm + c)); ymm=$((ymm + y))
           done
-          echo "TOTAL_ZMM=$zmm"
+          echo "TOTAL_ZMM=$zmm TOTAL_YMM=$ymm"
           if [ "$zmm" -gt 0 ]; then
             echo "::error::ggmlにAVX512命令が混入(zmm=$zmm)。非AVX512 CPUでSIGILLするため配布不可。"
             exit 1
           fi
-          echo "✅ AVX512無し(AVX2ベースライン=移植性OK)"
+          echo "✅ GGML_NATIVE=OFF / AVX512無し / AVX2有効(ymm=$ymm) = 決定的AVX2ベースライン"
