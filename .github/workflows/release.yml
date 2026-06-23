@@ -15,13 +15,26 @@ env:
 
 jobs:
   release:
-    name: release (${{ matrix.os }})
+    name: release (${{ matrix.label }})
     strategy:
       fail-fast: false
+      # tauri-action は各ジョブが latest.json を読み足し再アップロードする(複数アーキを1つに統合)。
+      # 並行だと read-modify-write が競合するため直列化する。
+      max-parallel: 1
       matrix:
         include:
           - os: ubuntu-22.04
+            label: linux-x64
+            rust_target: ""
+            tauri_args: "--config src-tauri/tauri.release.conf.json"
           - os: windows-latest
+            label: windows-x64
+            rust_target: x86_64-pc-windows-msvc
+            tauri_args: "--config src-tauri/tauri.release.conf.json --target x86_64-pc-windows-msvc"
+          - os: windows-latest
+            label: windows-arm64
+            rust_target: aarch64-pc-windows-msvc
+            tauri_args: "--config src-tauri/tauri.release.conf.json --target aarch64-pc-windows-msvc"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -32,10 +45,13 @@ jobs:
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          key: ${{ matrix.label }}
 
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-22.04'
@@ -60,10 +76,7 @@ jobs:
         run: echo "LIBCLANG_PATH=$((Get-Command clang).Source | Split-Path)" >> $env:GITHUB_ENV
         shell: pwsh
 
-      # 注: whisper-rs-sys が同梱する whisper.cpp は GGML_CPU_ALL_VARIANTS
-      # (AVX/AVX2/AVX512等の複数CPUバリアントを実行時選択)でビルドされる。
-      # グローバルな CFLAGS=/arch:AVX2 は各バリアントの /arch 指定と衝突し
-      # Windowsビルドを壊すため設定しない。高速化は別途モデル選択/dispatch検証で対応。
+      # 注: whisper(ggml)は vendor patch で GGML_NATIVE=OFF=決定的AVX2(x64)/NEON(ARM64) / ADR-0012。
 
       - name: Install npm dependencies
         run: npm ci
@@ -88,6 +101,25 @@ jobs:
           perl -0pi -e 's/^version = "[^"]*"/version = "'"$VERSION"'"/m if !$done++' src-tauri/Cargo.toml
           head -5 src-tauri/Cargo.toml
 
+      # Windows ARM64 のみ: ggml は ARM で MSVC不可・Clang必須(ggml-cpu/CMakeLists.txt)。
+      # x64ホスト→ARM64の MSVCクロス環境(INCLUDE/LIB)を整え、whisper.cppを ninja+clang-cl でビルドする。
+      - name: Setup MSVC ARM64 cross env (x64 host -> ARM64)
+        if: matrix.rust_target == 'aarch64-pc-windows-msvc'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64_arm64
+      - name: Set ARM64 whisper build env (clang-cl)
+        if: matrix.rust_target == 'aarch64-pc-windows-msvc'
+        shell: bash
+        run: |
+          {
+            echo "CMAKE_GENERATOR=Ninja"
+            echo "CMAKE_C_COMPILER=clang-cl"
+            echo "CMAKE_CXX_COMPILER=clang-cl"
+            echo "CMAKE_C_FLAGS=--target=arm64-pc-windows-msvc"
+            echo "CMAKE_CXX_FLAGS=--target=arm64-pc-windows-msvc"
+          } >> "$GITHUB_ENV"
+
       - name: Build and publish release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -97,11 +129,13 @@ jobs:
         with:
           # 第三者NOTICE(法的MUST)を release/test-build でのみ bundle.resources に追加する
           # 上書き config。base の tauri.conf.json には入れない(コンパイル時の存在検証で
-          # --no-bundle のci.ymlまで壊れるため)。
-          args: --config src-tauri/tauri.release.conf.json
+          # --no-bundle のci.ymlまで壊れるため)。x64/ARM64で --target を付与(matrix)。
+          args: ${{ matrix.tauri_args }}
           tagName: ${{ github.ref_name }}
           releaseName: "QuickScribe ${{ github.ref_name }}"
-          releaseBody: "自動アップデート対応リリース。インストーラ/実行パッケージは下記アセット参照。未署名(SmartScreen警告が出る場合あり)。"
+          releaseBody: "自動アップデート対応リリース。Windowsはx64/ARM64別アセット。インストーラ/実行パッケージは下記参照。未署名(SmartScreen警告が出る場合あり)。"
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
+          # NSISのみのため updater は setup.exe を指す(msi誤参照を防ぐ)。
+          updaterJsonPreferNsis: true
