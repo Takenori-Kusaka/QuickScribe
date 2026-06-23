@@ -119,18 +119,29 @@
   // タスクバー上のウィジェット表示（Windows）。既定ON。設定でON/OFF可能。
   let taskbarWidget = $state<boolean>(true);
 
-  // 入力デバイス選択（S1.2 / #18）。空文字=OS既定。録音開始時にバックエンドへ渡す。
+  // 録音ソース選択（S1.2/S1.3 / #18 #19）。マイク入力＋出力デバイスのループバックを統一。
+  // inputDevice: 入力=デバイス名 / ループバック=レンダーデバイスID（空=OS既定）。
+  type AudioSource = { id: string; label: string; kind: string };
   let inputDevice = $state<string>("");
-  let inputDevices = $state<string[]>([]);
+  let inputDeviceKind = $state<string>("input");
+  let audioSources = $state<AudioSource[]>([]);
 
-  // 利用可能な入力デバイスを列挙する（設定UIのプルダウン用）。失敗時は空のまま既定運用。
-  async function loadInputDevices() {
+  // 利用可能な録音ソースを列挙する（設定UIのプルダウン用）。失敗時は空のまま既定運用。
+  async function loadAudioSources() {
     try {
-      inputDevices = await invoke<string[]>("list_input_devices");
+      audioSources = await invoke<AudioSource[]>("list_audio_sources");
     } catch (e) {
-      console.error("list_input_devices failed", e);
-      inputDevices = [];
+      console.error("list_audio_sources failed", e);
+      audioSources = [];
     }
+  }
+
+  // プルダウンは "kind|id" を値に使う（id がレンダーデバイスIDでも安全に分解できる）。
+  function onSourceChange(e: Event) {
+    const v = (e.currentTarget as HTMLSelectElement).value;
+    const sep = v.indexOf("|");
+    inputDeviceKind = v.slice(0, sep);
+    inputDevice = v.slice(sep + 1);
   }
 
   // タスクバーウィジェットの表示有効/無効をバックエンドへ反映する（Windowsのみ実体動作）。
@@ -210,6 +221,7 @@
     bedrockModel = localStorage.getItem("bedrockModel") || "";
     taskbarWidget = localStorage.getItem("taskbarWidget") !== "false";
     inputDevice = localStorage.getItem("inputDevice") || "";
+    inputDeviceKind = localStorage.getItem("inputDeviceKind") || "input";
     // 秘密情報(API鍵/AWS鍵)は keyring から非同期で読む(S3.2)。
     void loadSecrets();
   }
@@ -311,6 +323,7 @@
     localStorage.setItem("bedrockModel", bedrockModel);
     localStorage.setItem("taskbarWidget", String(taskbarWidget));
     localStorage.setItem("inputDevice", inputDevice);
+    localStorage.setItem("inputDeviceKind", inputDeviceKind);
     void applyTaskbarWidget();
     void syncSaveSettings();
     showSettings = false;
@@ -579,7 +592,10 @@
     error = null;
     if (!recording) {
       try {
-        await invoke("start_recording", { device: inputDevice || null });
+        await invoke("start_recording", {
+          device: inputDevice || null,
+          kind: inputDeviceKind || null,
+        });
         recording = true;
         startedAt = Date.now();
         // タスクバーボタンに録音中バッジを表示（状態の可視化）。
@@ -615,7 +631,7 @@
     loadSettings();
     void applyShortcut();
     void applyTaskbarWidget();
-    void loadInputDevices();
+    void loadAudioSources();
     void syncSaveSettings();
     void resolveCurrentModel();
     void checkForUpdate();
@@ -941,20 +957,20 @@
       {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
 
       <div class="meta-group">
-        <span class="meta-title">入力デバイス（マイク）</span>
+        <span class="meta-title">録音ソース（マイク / システム音）</span>
         <div class="device-row">
-          <select bind:value={inputDevice}>
-            <option value="">OS既定のマイク</option>
-            {#each inputDevices as dev}
-              <option value={dev}>{dev}</option>
+          <select value={`${inputDeviceKind}|${inputDevice}`} onchange={onSourceChange}>
+            <option value="input|">OS既定のマイク</option>
+            {#each audioSources as s}
+              <option value={`${s.kind}|${s.id}`}>{s.label}</option>
             {/each}
           </select>
-          <button type="button" class="btn small ghost" onclick={() => void loadInputDevices()}>
+          <button type="button" class="btn small ghost" onclick={() => void loadAudioSources()}>
             再読込
           </button>
         </div>
         <p class="tip">
-          録音に使うマイクを選びます。次回の録音開始から反映されます（録音中は変わりません）。
+          録音元を選びます。マイクのほか「システム音: …」を選ぶと、その出力デバイスで再生中の音（会議の相手の声・再生音）を録音します。次回の録音開始から反映されます。
         </p>
       </div>
 

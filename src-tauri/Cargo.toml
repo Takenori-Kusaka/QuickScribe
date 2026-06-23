@@ -68,9 +68,9 @@ keyring = { version = "3", default-features = false, features = [
     "crypto-rust",
 ] }
 
+[target."cfg(windows)".dependencies]
 # Windows タスクバーのサムネイルツールバー(ITaskbarList3)実装用。
 # tauri 2.11系の windows クレートと整合させる(HWNDの型不一致回避)。HWNDは生ポインタ経由で再ラップ。
-[target."cfg(windows)".dependencies]
 windows = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
@@ -80,6 +80,10 @@ windows = { version = "0.61", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
+# システム音声ループバック(S1.3 / ADR-0013)。任意の出力デバイスを選んでループバック録音。
+# cpalは任意出力デバイス選択ループバック非対応(cpal#476/#251)のためwasapi(MIT・active)を使う。
+# レンダーデバイス + Direction::Capture でクレートが AUDCLNT_STREAMFLAGS_LOOPBACK を設定する。
+wasapi = "0.23"
 
 [profile.release]
 panic = "abort"
