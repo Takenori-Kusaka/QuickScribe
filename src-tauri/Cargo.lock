@@ -5547,8 +5547,6 @@ dependencies = [
 [[package]]
 name = "whisper-rs-sys"
 version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c86f1b993f216594b1ad9a9bb00a26014fb7c512e12664a2d401c7897d2ef7d"
 dependencies = [
  "bindgen 0.71.1",
  "cfg-if",

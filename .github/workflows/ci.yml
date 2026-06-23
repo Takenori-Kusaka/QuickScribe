@@ -13,6 +13,9 @@ concurrency:
 # cmake_minimum_required < 3.5 を拒否するため、CMake公式の回避策で最低ポリシー版を指定。
 env:
   CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+  # whisper(ggml)のCPU移植性は AVX512安全ゲート(後述の objdump zmm チェック)で担保する。
+  # env系(SOURCE_DATE_EPOCH/WHISPER_NATIVE)では GGML_NATIVE を倒せないため
+  # (docs/research/sources/whisper-cpu-portability.md)、成果物にAVX512が入ったらビルドを失敗させる。
 
 jobs:
   build:
@@ -59,8 +62,9 @@ jobs:
         run: echo "LIBCLANG_PATH=$((Get-Command clang).Source | Split-Path)" >> $env:GITHUB_ENV
         shell: pwsh
 
-      # 注: whisper.cppはGGML_CPU_ALL_VARIANTSで複数CPUバリアントを実行時選択する。
-      # グローバルCFLAGS=/arch:AVX2はバリアントの/arch指定と衝突しWindowsを壊すため不使用。
+      # 注: whisper-rs-sys 0.13.1 は GGML_NATIVE 既定ON(=-march=native)でビルドする(誤解訂正:
+      #     GGML_CPU_ALL_VARIANTSは使われていない)。命令セットがビルドランナーのCPU依存で非決定的。
+      #     AVX512混入は transcribe ジョブの「AVX512 safety gate」で検出し失敗させる(配布事故防止)。
 
       - name: Install npm dependencies
         run: npm ci
@@ -197,3 +201,33 @@ jobs:
           QS_MODEL_PATH: ${{ github.workspace }}/models/ggml-tiny.bin
           QS_AUDIO_PATH: ${{ github.workspace }}/test.wav
         run: cargo test --manifest-path src-tauri/Cargo.toml --test transcribe_integration -- --nocapture
+
+      # AVX512回帰ゲート: [patch]で GGML_NATIVE=OFF を注入し決定的な AVX2 ベースラインに固定した
+      # (vendor/whisper-rs-sys-0.13.1 / ADR-0012)。本ゲートはその回帰検出 — 成果物に AVX512(zmm)が
+      # 混入したらCIを失敗させ、非対応CPUの実ユーザーでSIGILLする配布事故を防ぐ。
+      # (Phase2でAVX512最適化版を作る際は QS_SIMD=avx512 でビルドし、そのジョブはこのゲート対象外にする)
+      - name: AVX512 regression gate (objdump zmm check)
+        run: |
+          # 1) patchが効いて GGML_NATIVE=OFF か(=決定的AVX2)。patchが外れると ON に戻りSIGILLリスク。
+          f=$(find src-tauri/target -name CMakeCache.txt -path '*whisper*' | head -1)
+          nat=$(grep -E '^GGML_NATIVE:BOOL=' "$f" 2>/dev/null | head -1)
+          echo "CMakeCache: $nat"
+          if ! echo "$nat" | grep -q 'GGML_NATIVE:BOOL=OFF'; then
+            echo "::error::GGML_NATIVE が OFF でない($nat)。vendor patchが効いていない(決定的AVX2でない)。"
+            exit 1
+          fi
+          # 2) 成果物に AVX512(zmm) が無いか(回帰検出)。
+          libs=$(find src-tauri/target -name 'libggml*.a' -o -name 'libwhisper*.a' | sort -u)
+          zmm=0; ymm=0
+          for l in $libs; do
+            c=$(objdump -d "$l" 2>/dev/null | grep -coE '%zmm[0-9]+' || true)
+            y=$(objdump -d "$l" 2>/dev/null | grep -coE '%ymm[0-9]+' || true)
+            echo "$l : zmm(AVX512)=$c ymm(AVX2)=$y"
+            zmm=$((zmm + c)); ymm=$((ymm + y))
+          done
+          echo "TOTAL_ZMM=$zmm TOTAL_YMM=$ymm"
+          if [ "$zmm" -gt 0 ]; then
+            echo "::error::ggmlにAVX512命令が混入(zmm=$zmm)。非AVX512 CPUでSIGILLするため配布不可。"
+            exit 1
+          fi
+          echo "✅ GGML_NATIVE=OFF / AVX512無し / AVX2有効(ymm=$ymm) = 決定的AVX2ベースライン"

@@ -79,3 +79,10 @@ codegen-units = 1
 lto = true
 opt-level = "s"
 strip = true
+
+# CPU移植性(ADR-0012): whisper-rs-sys を vendoring(published 0.13.1を正確再現)し、build.rs に
+# GGML_NATIVE=OFF を注入して決定的な AVX2 ベースラインにする。env では GGML_* を cmake に渡せず
+# (whisper-rs-sys 0.13.1 build.rs は WHISPER_*/CMAKE_* のみ転送)、これが唯一の確実手段。
+# QS_SIMD=avx512 環境変数で GGML_AVX512=ON のSIMD最適化版もこの1箇所で切替可能(Phase2)。
+[patch.crates-io]
+whisper-rs-sys = { path = "../vendor/whisper-rs-sys-0.13.1" }
