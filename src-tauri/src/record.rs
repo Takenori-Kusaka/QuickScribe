@@ -57,21 +57,102 @@ impl Recording {
     }
 }
 
-/// 既定の入力デバイスから録音を開始する。
-/// デバイス/設定の取得・ストリーム生成に失敗した場合はエラーを返す。
-/// 利用可能な入力デバイス名を列挙する(S1.2 デバイス選択UI用)。失敗時は空でなくErr。
-pub fn list_input_devices() -> Result<Vec<String>, String> {
-    let host = cpal::default_host();
-    let devices = host
-        .input_devices()
-        .map_err(|e| format!("入力デバイスの列挙に失敗: {e}"))?;
-    let mut names: Vec<String> = devices.filter_map(|d| d.name().ok()).collect();
-    names.dedup();
-    Ok(names)
+/// 録音ソース(マイク入力 / 出力デバイスのループバック)の記述子(S1.3 / ADR-0013)。
+/// フロントの統一デバイス選択UIへ種別ラベル付きで一列に並べる。
+#[derive(serde::Serialize, Clone)]
+pub struct AudioSource {
+    /// 入力=デバイス名、ループバック=レンダーデバイスID。空文字は「OS既定」を意味する。
+    pub id: String,
+    /// 表示名。
+    pub label: String,
+    /// "input"(マイク) | "loopback"(システム音)。
+    pub kind: String,
 }
 
-/// 録音を開始する。device_name 指定時はその入力デバイスを使う(無ければ既定にフォールバック)。
-pub fn start(device_name: Option<String>) -> Result<Recording, String> {
+/// 録音ソースを列挙する(S1.2/S1.3)。マイク入力＋(Windowsのみ)出力デバイスのループバック。
+pub fn list_audio_sources() -> Result<Vec<AudioSource>, String> {
+    let mut out: Vec<AudioSource> = Vec::new();
+    let host = cpal::default_host();
+    if let Ok(devices) = host.input_devices() {
+        let mut seen: Vec<String> = Vec::new();
+        for d in devices {
+            if let Ok(name) = d.name() {
+                if seen.contains(&name) {
+                    continue;
+                }
+                seen.push(name.clone());
+                out.push(AudioSource {
+                    id: name.clone(),
+                    label: name,
+                    kind: "input".into(),
+                });
+            }
+        }
+    }
+    #[cfg(windows)]
+    out.extend(list_loopback_sources());
+    Ok(out)
+}
+
+/// Windows: 出力(レンダー)デバイスをループバック録音ソースとして列挙する。
+/// COMアパートメントを確定させるため専用スレッド(MTA)で実行する
+/// (Tauriワーカースレッドはアパートメント未確定のことがあるため)。
+#[cfg(windows)]
+fn list_loopback_sources() -> Vec<AudioSource> {
+    std::thread::spawn(|| {
+        use wasapi::{Direction, DeviceEnumerator};
+        let mut out = Vec::new();
+        let _ = wasapi::initialize_mta().ok();
+        let enumerator = match DeviceEnumerator::new() {
+            Ok(e) => e,
+            Err(_) => return out,
+        };
+        let collection = match enumerator.get_device_collection(&Direction::Render) {
+            Ok(c) => c,
+            Err(_) => return out,
+        };
+        let n = collection.get_nbr_devices().unwrap_or(0);
+        for i in 0..n {
+            if let Ok(dev) = collection.get_device_at_index(i) {
+                let id = dev.get_id().unwrap_or_default();
+                if id.is_empty() {
+                    continue;
+                }
+                let name = dev
+                    .get_friendlyname()
+                    .unwrap_or_else(|_| "出力デバイス".into());
+                out.push(AudioSource {
+                    id,
+                    label: format!("システム音: {name}"),
+                    kind: "loopback".into(),
+                });
+            }
+        }
+        out
+    })
+    .join()
+    .unwrap_or_default()
+}
+
+/// 録音を開始する。kind="loopback" なら出力デバイスのループバック(Windowsのみ)、
+/// それ以外はマイク入力。device は入力=デバイス名 / ループバック=レンダーデバイスID。
+pub fn start(device: Option<String>, kind: Option<String>) -> Result<Recording, String> {
+    if kind.as_deref() == Some("loopback") {
+        #[cfg(windows)]
+        {
+            return start_loopback(device);
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = device;
+            return Err("システム音(ループバック)はこのプラットフォームでは未対応です".into());
+        }
+    }
+    start_input(device)
+}
+
+/// マイク入力から録音を開始する。device_name 指定時はその入力デバイス(無ければ既定にフォールバック)。
+fn start_input(device_name: Option<String>) -> Result<Recording, String> {
     let stop = Arc::new(AtomicBool::new(false));
     let samples = Arc::new(Mutex::new(Vec::<f32>::new()));
 
@@ -187,6 +268,155 @@ pub fn start(device_name: Option<String>) -> Result<Recording, String> {
             Err(e)
         }
         Err(_) => Err("録音スレッドの初期化に失敗しました".into()),
+    }
+}
+
+/// Windows: 選択した出力デバイスをループバック録音する(S1.3 / ADR-0013)。
+/// レンダーデバイス + Direction::Capture で wasapi が AUDCLNT_STREAMFLAGS_LOOPBACK を設定する。
+/// 無音時はパケットが来ないため、wait_for_event をタイムアウト付きにして stop を監視する。
+#[cfg(windows)]
+fn start_loopback(device_id: Option<String>) -> Result<Recording, String> {
+    use std::collections::VecDeque;
+    use wasapi::{Direction, DeviceEnumerator, StreamMode};
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let samples = Arc::new(Mutex::new(Vec::<f32>::new()));
+    let (cfg_tx, cfg_rx) = mpsc::channel::<Result<(u32, u16), String>>();
+    let stop_t = stop.clone();
+    let samples_t = samples.clone();
+
+    let join = std::thread::spawn(move || {
+        if let Err(e) = wasapi::initialize_mta().ok() {
+            let _ = cfg_tx.send(Err(format!("COM初期化に失敗: {e}")));
+            return;
+        }
+        let enumerator = match DeviceEnumerator::new() {
+            Ok(e) => e,
+            Err(e) => {
+                let _ = cfg_tx.send(Err(format!("オーディオ列挙の初期化に失敗: {e}")));
+                return;
+            }
+        };
+        // 指定IDのレンダーデバイス、無ければ既定の出力にフォールバック。
+        let device = match device_id.filter(|s| !s.trim().is_empty()) {
+            Some(id) => enumerator
+                .get_device(&id)
+                .or_else(|_| enumerator.get_default_device(&Direction::Render)),
+            None => enumerator.get_default_device(&Direction::Render),
+        };
+        let device = match device {
+            Ok(d) => d,
+            Err(e) => {
+                let _ = cfg_tx.send(Err(format!("出力デバイスの取得に失敗: {e}")));
+                return;
+            }
+        };
+        let mut audio_client = match device.get_iaudioclient() {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = cfg_tx.send(Err(format!("オーディオクライアント取得に失敗: {e}")));
+                return;
+            }
+        };
+        let format = match audio_client.get_mixformat() {
+            Ok(f) => f,
+            Err(e) => {
+                let _ = cfg_tx.send(Err(format!("ミックスフォーマット取得に失敗: {e}")));
+                return;
+            }
+        };
+        let sample_rate = format.get_samplespersec();
+        let channels = format.get_nchannels();
+        let bits = format.get_bitspersample();
+        let (def_time, _min_time) = match audio_client.get_device_period() {
+            Ok(t) => t,
+            Err(e) => {
+                let _ = cfg_tx.send(Err(format!("デバイス周期の取得に失敗: {e}")));
+                return;
+            }
+        };
+        // レンダーデバイスを Capture 方向で初期化 → ループバック。共有モード必須。
+        let mode = StreamMode::EventsShared {
+            autoconvert: true,
+            buffer_duration_hns: def_time,
+        };
+        if let Err(e) = audio_client.initialize_client(&format, &Direction::Capture, &mode) {
+            let _ = cfg_tx.send(Err(format!("ループバック初期化に失敗: {e}")));
+            return;
+        }
+        let h_event = match audio_client.set_get_eventhandle() {
+            Ok(h) => h,
+            Err(e) => {
+                let _ = cfg_tx.send(Err(format!("イベントハンドル取得に失敗: {e}")));
+                return;
+            }
+        };
+        let capture_client = match audio_client.get_audiocaptureclient() {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = cfg_tx.send(Err(format!("キャプチャクライアント取得に失敗: {e}")));
+                return;
+            }
+        };
+        if let Err(e) = audio_client.start_stream() {
+            let _ = cfg_tx.send(Err(format!("ループバック録音開始に失敗: {e}")));
+            return;
+        }
+
+        // 設定通知に成功 → 停止フラグが立つまでキャプチャ。
+        let _ = cfg_tx.send(Ok((sample_rate, channels)));
+        let mut queue: VecDeque<u8> = VecDeque::new();
+        while !stop_t.load(Ordering::Relaxed) {
+            // 無音時はイベントが来ないので200msでタイムアウトして stop を再評価。
+            if h_event.wait_for_event(200).is_err() {
+                continue;
+            }
+            if capture_client.read_from_device_to_deque(&mut queue).is_err() {
+                continue;
+            }
+            if let Ok(mut buf) = samples_t.lock() {
+                push_pcm_bytes_as_f32(&mut queue, bits, &mut buf);
+            }
+        }
+        let _ = audio_client.stop_stream();
+    });
+
+    match cfg_rx.recv() {
+        Ok(Ok((sample_rate, channels))) => Ok(Recording {
+            stop,
+            samples,
+            sample_rate,
+            channels,
+            join,
+        }),
+        Ok(Err(e)) => {
+            let _ = join.join();
+            Err(e)
+        }
+        Err(_) => Err("ループバック録音スレッドの初期化に失敗しました".into()),
+    }
+}
+
+/// WASAPIキャプチャの生バイト列を f32 サンプルへ変換して追記する。
+/// 共有モードのミックスフォーマットは通常 32bit float。16bit PCM もフォールバック対応。
+#[cfg(windows)]
+fn push_pcm_bytes_as_f32(queue: &mut std::collections::VecDeque<u8>, bits: u16, out: &mut Vec<f32>) {
+    if bits == 16 {
+        while queue.len() >= 2 {
+            let lo = queue.pop_front().unwrap();
+            let hi = queue.pop_front().unwrap();
+            let s = i16::from_le_bytes([lo, hi]);
+            out.push(s as f32 / i16::MAX as f32);
+        }
+    } else {
+        // 既定: 32bit float little-endian。
+        while queue.len() >= 4 {
+            let b0 = queue.pop_front().unwrap();
+            let b1 = queue.pop_front().unwrap();
+            let b2 = queue.pop_front().unwrap();
+            let b3 = queue.pop_front().unwrap();
+            out.push(f32::from_le_bytes([b0, b1, b2, b3]));
+        }
     }
 }
 
