@@ -84,14 +84,6 @@ jobs:
       - name: Build (compile, no bundle)
         run: npx tauri build --no-bundle
 
-      # [一時] keyring依存追加後の Cargo.lock を取得してコミットするため出力する。
-      - name: Upload Cargo.lock (for committing)
-        if: matrix.os == 'ubuntu-22.04'
-        uses: actions/upload-artifact@v4
-        with:
-          name: cargo-lock
-          path: src-tauri/Cargo.lock
-
   e2e:
     name: e2e (実起動 / Linux)
     runs-on: ubuntu-22.04
