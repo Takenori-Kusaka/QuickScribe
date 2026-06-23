@@ -59,7 +59,19 @@ impl Recording {
 
 /// 既定の入力デバイスから録音を開始する。
 /// デバイス/設定の取得・ストリーム生成に失敗した場合はエラーを返す。
-pub fn start() -> Result<Recording, String> {
+/// 利用可能な入力デバイス名を列挙する(S1.2 デバイス選択UI用)。失敗時は空でなくErr。
+pub fn list_input_devices() -> Result<Vec<String>, String> {
+    let host = cpal::default_host();
+    let devices = host
+        .input_devices()
+        .map_err(|e| format!("入力デバイスの列挙に失敗: {e}"))?;
+    let mut names: Vec<String> = devices.filter_map(|d| d.name().ok()).collect();
+    names.dedup();
+    Ok(names)
+}
+
+/// 録音を開始する。device_name 指定時はその入力デバイスを使う(無ければ既定にフォールバック)。
+pub fn start(device_name: Option<String>) -> Result<Recording, String> {
     let stop = Arc::new(AtomicBool::new(false));
     let samples = Arc::new(Mutex::new(Vec::<f32>::new()));
 
@@ -70,7 +82,16 @@ pub fn start() -> Result<Recording, String> {
 
     let join = std::thread::spawn(move || {
         let host = cpal::default_host();
-        let device = match host.default_input_device() {
+        // 指定デバイスを名前で探す。未指定/見つからない場合は既定にフォールバック(実行時切替)。
+        let picked = device_name
+            .filter(|n| !n.trim().is_empty())
+            .and_then(|name| {
+                host.input_devices()
+                    .ok()
+                    .and_then(|mut it| it.find(|d| d.name().map(|n| n == name).unwrap_or(false)))
+            })
+            .or_else(|| host.default_input_device());
+        let device = match picked {
             Some(d) => d,
             None => {
                 let _ = cfg_tx.send(Err("マイク(入力デバイス)が見つかりません".into()));
