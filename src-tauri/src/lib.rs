@@ -459,6 +459,40 @@ fn set_taskbar_widget(enabled: bool) {
     let _ = enabled;
 }
 
+/// 秘密情報(API鍵/AWSクレデンシャル)を OSセキュアストレージ(keyring)に保存する(S3.2)。
+/// 空文字は「削除」扱い。サービス名 "QuickScribe"、user=key。
+#[tauri::command]
+fn set_secret(key: String, value: String) -> Result<(), String> {
+    let entry =
+        keyring::Entry::new("QuickScribe", &key).map_err(|e| format!("keyring初期化に失敗: {e}"))?;
+    if value.is_empty() {
+        let _ = entry.delete_credential();
+        return Ok(());
+    }
+    entry
+        .set_password(&value)
+        .map_err(|e| format!("秘密情報の保存に失敗: {e}"))
+}
+
+/// OSセキュアストレージから秘密情報を取得する。未設定/取得不可(サービス無し等)は None。
+#[tauri::command]
+fn get_secret(key: String) -> Option<String> {
+    keyring::Entry::new("QuickScribe", &key)
+        .ok()
+        .and_then(|e| e.get_password().ok())
+}
+
+/// OSセキュアストレージから秘密情報を削除する(未設定はOK扱い)。
+#[tauri::command]
+fn delete_secret(key: String) -> Result<(), String> {
+    let entry =
+        keyring::Entry::new("QuickScribe", &key).map_err(|e| format!("keyring初期化に失敗: {e}"))?;
+    match entry.delete_credential() {
+        Ok(_) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(format!("秘密情報の削除に失敗: {e}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -527,7 +561,10 @@ pub fn run() {
             set_save_settings,
             set_recording_overlay,
             set_taskbar_shortcut,
-            set_taskbar_widget
+            set_taskbar_widget,
+            set_secret,
+            get_secret,
+            delete_secret
         ])
         // ウィンドウを閉じてもアプリは終了せず、トレイに常駐する（タスクバー常駐の挙動）。
         // ただし E2E(QUICKSCRIBE_E2E=1)時はドライバが正常終了できるよう既定の閉じる挙動にする。

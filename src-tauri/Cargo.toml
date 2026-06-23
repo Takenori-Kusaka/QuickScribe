@@ -59,6 +59,14 @@ symphonia = { version = "0.5", default-features = false, features = [
 aws-sigv4 = { version = "1.4", default-features = false, features = ["sign-http", "http1"] }
 aws-credential-types = "1.2"
 http = "1"
+# API鍵・AWS秘密情報をOSセキュアストレージに保管(S3.2 / 平文localStorage廃止)。
+# Win=Credential Manager / macOS=Keychain / Linux=Secret Service(zbus・純Rust crypto)。
+keyring = { version = "3", default-features = false, features = [
+    "windows-native",
+    "apple-native",
+    "sync-secret-service",
+    "crypto-rust",
+] }
 
 # Windows タスクバーのサムネイルツールバー(ITaskbarList3)実装用。
 # tauri 2.11系の windows クレートと整合させる(HWNDの型不一致回避)。HWNDは生ポインタ経由で再ラップ。
