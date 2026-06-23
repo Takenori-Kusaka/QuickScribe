@@ -84,6 +84,14 @@ jobs:
       - name: Build (compile, no bundle)
         run: npx tauri build --no-bundle
 
+      # [一時] [patch]適用後の Cargo.lock を取得してコミットするため出力する。
+      - name: Upload Cargo.lock (for committing)
+        if: matrix.os == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-lock
+          path: src-tauri/Cargo.lock
+
   e2e:
     name: e2e (実起動 / Linux)
     runs-on: ubuntu-22.04
@@ -202,13 +210,11 @@ jobs:
           QS_AUDIO_PATH: ${{ github.workspace }}/test.wav
         run: cargo test --manifest-path src-tauri/Cargo.toml --test transcribe_integration -- --nocapture
 
-      # AVX512安全ゲート: whisper-rs-sys は GGML_NATIVE=ON でビルドし、命令セットがビルド
-      # ランナーのCPUに依存する(非決定的)。AVX512搭載/CPUID誤申告ランナーでビルドされると
-      # 配布バイナリにAVX512(zmm)が混入し、非対応CPUの実ユーザーでSIGILLする
-      # (docs/research/sources/whisper-cpu-portability.md)。env系では GGML_NATIVE を倒せない
-      # ため、せめて成果物に AVX512 が入ったら CI/release を失敗させ「壊れた配布物が黙って出る」
-      # のを防ぐ。zmm(EVEX/AVX512レジスタ)が1つでもあれば失敗。
-      - name: AVX512 safety gate (objdump zmm check)
+      # AVX512回帰ゲート: [patch]で GGML_NATIVE=OFF を注入し決定的な AVX2 ベースラインに固定した
+      # (vendor/whisper-rs-sys-0.13.1 / ADR-0012)。本ゲートはその回帰検出 — 成果物に AVX512(zmm)が
+      # 混入したらCIを失敗させ、非対応CPUの実ユーザーでSIGILLする配布事故を防ぐ。
+      # (Phase2でAVX512最適化版を作る際は QS_SIMD=avx512 でビルドし、そのジョブはこのゲート対象外にする)
+      - name: AVX512 regression gate (objdump zmm check)
         run: |
           libs=$(find src-tauri/target -name 'libggml*.a' -o -name 'libwhisper*.a' | sort -u)
           zmm=0
