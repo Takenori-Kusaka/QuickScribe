@@ -208,22 +208,27 @@
       return "";
     }
   }
-  async function setSecret(key: string, value: string): Promise<void> {
+  // 成功時 true。keyring書き込みが失敗したら false(呼び出し側は平文を消さない=鍵を失わない)。
+  async function setSecret(key: string, value: string): Promise<boolean> {
     try {
       await invoke("set_secret", { key, value });
+      return true;
     } catch (e) {
       console.error("set_secret failed", key, e);
+      return false;
     }
   }
-  // keyringに無ければ旧localStorage(平文)から移行し、平文は消す。
+  // keyringに無ければ旧localStorage(平文)から移行する。
+  // ★移行は keyring書き込みが成功した時だけ平文を削除する(失敗時は保持＝データ損失防止)。
   async function loadSecretMigrating(key: string, legacyLsKey: string): Promise<string> {
     let v = await getSecret(key);
     if (!v) {
       const legacy = localStorage.getItem(legacyLsKey);
       if (legacy) {
         v = legacy;
-        await setSecret(key, legacy);
-        localStorage.removeItem(legacyLsKey);
+        if (await setSecret(key, legacy)) {
+          localStorage.removeItem(legacyLsKey);
+        }
       }
     }
     return v;
@@ -232,13 +237,14 @@
     for (const p of ALL_PROVIDERS) {
       apiKeys[p] = await loadSecretMigrating(`apiKey:${p}`, `apiKey:${p}`);
     }
-    // 旧バージョン(geminiKey 平文)からの移行。
+    // 旧バージョン(geminiKey 平文)からの移行(同様に成功時のみ削除)。
     if (!apiKeys.gemini) {
       const legacy = localStorage.getItem("geminiKey");
       if (legacy) {
         apiKeys.gemini = legacy;
-        await setSecret("apiKey:gemini", legacy);
-        localStorage.removeItem("geminiKey");
+        if (await setSecret("apiKey:gemini", legacy)) {
+          localStorage.removeItem("geminiKey");
+        }
       }
     }
     awsAccessKey = await loadSecretMigrating("awsAccessKey", "awsAccessKey");
