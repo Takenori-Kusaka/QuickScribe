@@ -17,6 +17,8 @@
   let segments = $state<string[]>([]);
   let transcript = $state<string | null>(null);
   let refined = $state<string | null>(null);
+  // 現在の整形結果がどのスタイルで作られたか(結果からの再整形チップの強調 / S3.5)。
+  let refinedStyle = $state<string>("structured");
   let refining = $state(false);
   let busy = $state(false);
   // バックグラウンド文字起こし中（録音ボタンはブロックしない＝録音の非同期化）。
@@ -472,14 +474,15 @@
   }
 
   // refine_text に渡す追加引数（AWS時のみ資格情報。非AWSは undefined＝後方互換）。
-  function refineArgs() {
+  // styleOverride: 結果から別スタイルで整形し直す時に既定スタイルを上書きする(S3.5・行き来)。
+  function refineArgs(styleOverride?: string) {
     const base: Record<string, unknown> = {
       text: transcript,
       provider,
       apiKey: apiKeys[provider],
       // 解決済みモデル（空ならバックエンドがフォールバック既定を補完）。Bedrockは手入力モデル。
       model: provider === "bedrock" ? bedrockModel : resolvedModel[provider],
-      style: refineStyle,
+      style: styleOverride ?? refineStyle,
     };
     if (AWS_PROVIDERS.includes(provider)) {
       base.region = awsRegion.trim();
@@ -494,7 +497,7 @@
     return base;
   }
 
-  async function refineNow() {
+  async function refineNow(styleOverride?: string) {
     if (!transcript) return;
     const cfgErr = refineConfigError();
     if (cfgErr) {
@@ -508,11 +511,25 @@
     try {
       // 整形直前に最新モデルを確保（キャッシュが新しければ即返る。AWSはスキップ）。
       await resolveCurrentModel();
-      refined = await invoke<string>("refine_text", refineArgs());
+      refined = await invoke<string>("refine_text", refineArgs(styleOverride));
+      refinedStyle = styleOverride ?? refineStyle; // どのスタイルで整形したか(再整形チップの強調用)。
     } catch (e) {
       error = String(e);
     } finally {
       refining = false;
+    }
+  }
+
+  // 整形結果をクリップボードへコピー(S3.5・最小操作の利便)。
+  let copyMsg = $state<string>("");
+  async function copyRefined() {
+    if (!refined) return;
+    try {
+      await navigator.clipboard.writeText(refined);
+      copyMsg = "コピーしました";
+      setTimeout(() => (copyMsg = ""), 1500);
+    } catch (e) {
+      console.error("copy failed", e);
     }
   }
 
@@ -726,7 +743,7 @@
           <span class="style-indicator" title={currentStyle.desc}>
             整形スタイル: <strong>{currentStyle.label}</strong>
           </span>
-          <button class="btn small" onclick={refineNow} disabled={refining}>
+          <button class="btn small" onclick={() => refineNow()} disabled={refining}>
             {refining ? "整形中…" : "✨ 整形する"}
           </button>
         </div>
@@ -742,6 +759,22 @@
     <section class="card refined">
       <h2>整形（思考整理）</h2>
       <div class="scroll">{refined}</div>
+      <!-- 段階的深掘り(S3.5): 結果から別スタイルで整形し直す(再文字起こし不要＝逐語⇄要約⇄ブレストを行き来)。 -->
+      <div class="restyle-row">
+        <span class="restyle-label">別のスタイルで整形し直す:</span>
+        {#each REFINE_STYLES as s}
+          <button
+            type="button"
+            class="chip"
+            class:active={refinedStyle === s.value}
+            title={s.desc}
+            disabled={refining}
+            onclick={() => refineNow(s.value)}>{s.label}</button>
+        {/each}
+        <button type="button" class="chip copy" onclick={copyRefined} disabled={refining}>
+          {copyMsg || "コピー"}
+        </button>
+      </div>
     </section>
   {/if}
 
@@ -1325,6 +1358,46 @@
   .card.refined {
     border-color: #c7d2fe;
     background: #fbfbff;
+  }
+  /* 段階的深掘り(S3.5): 結果から別スタイルで整形し直すチップ列。控えめに。 */
+  .restyle-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.6rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #eef2ff;
+  }
+  .restyle-label {
+    font-size: 0.74rem;
+    color: #9ca3af;
+  }
+  .chip {
+    font-size: 0.76rem;
+    padding: 0.2rem 0.55rem;
+    border: 1px solid #d1d5db;
+    border-radius: 999px;
+    background: #fff;
+    color: #4b5563;
+    cursor: pointer;
+  }
+  .chip:hover:not(:disabled) {
+    border-color: #a5b4fc;
+    color: #4338ca;
+  }
+  .chip.active {
+    border-color: #6366f1;
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 600;
+  }
+  .chip:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .chip.copy {
+    margin-left: auto;
   }
   .card-head {
     display: flex;
