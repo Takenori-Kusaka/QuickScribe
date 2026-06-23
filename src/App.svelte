@@ -175,13 +175,10 @@
   function loadSettings() {
     provider = (localStorage.getItem("provider") as Provider) || "gemini";
     if (!(provider in PROVIDER_LABELS)) provider = "gemini";
+    // 解決済みモデルは秘密でないため localStorage。鍵は keyring(loadSecrets)で別途読む(S3.2)。
     for (const p of ALL_PROVIDERS) {
-      apiKeys[p] = localStorage.getItem(`apiKey:${p}`) ?? "";
       resolvedModel[p] = localStorage.getItem(`resolvedModel:${p}`) ?? "";
     }
-    // 旧バージョン(geminiKey)からの移行。
-    const legacyKey = localStorage.getItem("geminiKey");
-    if (legacyKey && !apiKeys.gemini) apiKeys.gemini = legacyKey;
     recordShortcut = localStorage.getItem("recordShortcut") || DEFAULT_SHORTCUT;
     includeTimestamps = localStorage.getItem("includeTimestamps") !== "false";
     autoPipeline = localStorage.getItem("autoPipeline") === "true";
@@ -190,15 +187,67 @@
     audioFormat = localStorage.getItem("audioFormat") || "opus";
     saveDir = localStorage.getItem("saveDir") || "";
     refineStyle = localStorage.getItem("refineStyle") || "structured";
-    // AWS資格情報(ADR-0011)。
+    // AWS設定(秘密でないもの)。region/workspace_id/認証方式/モデルは localStorage。
     awsRegion = localStorage.getItem("awsRegion") || "us-east-1";
     awsWorkspaceId = localStorage.getItem("awsWorkspaceId") || "";
     awsAuthMode = (localStorage.getItem("awsAuthMode") as "sigv4" | "apikey") || "sigv4";
-    awsAccessKey = localStorage.getItem("awsAccessKey") || "";
-    awsSecretKey = localStorage.getItem("awsSecretKey") || "";
-    awsSessionToken = localStorage.getItem("awsSessionToken") || "";
     bedrockModel = localStorage.getItem("bedrockModel") || "";
     taskbarWidget = localStorage.getItem("taskbarWidget") !== "false";
+    // 秘密情報(API鍵/AWS鍵)は keyring から非同期で読む(S3.2)。
+    void loadSecrets();
+  }
+
+  // OSセキュアストレージ(keyring)との橋渡し(S3.2)。鍵は localStorage に置かない。
+  async function getSecret(key: string): Promise<string> {
+    try {
+      return (await invoke<string | null>("get_secret", { key })) ?? "";
+    } catch (e) {
+      console.error("get_secret failed", key, e);
+      return "";
+    }
+  }
+  async function setSecret(key: string, value: string): Promise<void> {
+    try {
+      await invoke("set_secret", { key, value });
+    } catch (e) {
+      console.error("set_secret failed", key, e);
+    }
+  }
+  // keyringに無ければ旧localStorage(平文)から移行し、平文は消す。
+  async function loadSecretMigrating(key: string, legacyLsKey: string): Promise<string> {
+    let v = await getSecret(key);
+    if (!v) {
+      const legacy = localStorage.getItem(legacyLsKey);
+      if (legacy) {
+        v = legacy;
+        await setSecret(key, legacy);
+        localStorage.removeItem(legacyLsKey);
+      }
+    }
+    return v;
+  }
+  async function loadSecrets() {
+    for (const p of ALL_PROVIDERS) {
+      apiKeys[p] = await loadSecretMigrating(`apiKey:${p}`, `apiKey:${p}`);
+    }
+    // 旧バージョン(geminiKey 平文)からの移行。
+    if (!apiKeys.gemini) {
+      const legacy = localStorage.getItem("geminiKey");
+      if (legacy) {
+        apiKeys.gemini = legacy;
+        await setSecret("apiKey:gemini", legacy);
+        localStorage.removeItem("geminiKey");
+      }
+    }
+    awsAccessKey = await loadSecretMigrating("awsAccessKey", "awsAccessKey");
+    awsSecretKey = await loadSecretMigrating("awsSecretKey", "awsSecretKey");
+    awsSessionToken = await loadSecretMigrating("awsSessionToken", "awsSessionToken");
+  }
+  async function saveSecrets() {
+    for (const p of ALL_PROVIDERS) await setSecret(`apiKey:${p}`, apiKeys[p]);
+    await setSecret("awsAccessKey", awsAccessKey);
+    await setSecret("awsSecretKey", awsSecretKey);
+    await setSecret("awsSessionToken", awsSessionToken);
   }
 
   // 保存設定をバックエンドへ反映する（保存系コマンドが参照）。
@@ -222,9 +271,8 @@
   }
   function saveSettings() {
     localStorage.setItem("provider", provider);
-    for (const p of ALL_PROVIDERS) {
-      localStorage.setItem(`apiKey:${p}`, apiKeys[p]);
-    }
+    // 鍵(API鍵/AWS鍵)は keyring に保存する(localStorageには置かない / S3.2)。
+    void saveSecrets();
     void applyShortcut();
     localStorage.setItem("includeTimestamps", String(includeTimestamps));
     localStorage.setItem("autoPipeline", String(autoPipeline));
@@ -233,13 +281,10 @@
     localStorage.setItem("audioFormat", audioFormat);
     localStorage.setItem("saveDir", saveDir);
     localStorage.setItem("refineStyle", refineStyle);
-    // AWS資格情報(ADR-0011)。秘密情報の平文保存は当面。keyring化は S3.2。
+    // AWS設定(秘密でないもの)のみ localStorage。
     localStorage.setItem("awsRegion", awsRegion);
     localStorage.setItem("awsWorkspaceId", awsWorkspaceId);
     localStorage.setItem("awsAuthMode", awsAuthMode);
-    localStorage.setItem("awsAccessKey", awsAccessKey);
-    localStorage.setItem("awsSecretKey", awsSecretKey);
-    localStorage.setItem("awsSessionToken", awsSessionToken);
     localStorage.setItem("bedrockModel", bedrockModel);
     localStorage.setItem("taskbarWidget", String(taskbarWidget));
     void applyTaskbarWidget();
