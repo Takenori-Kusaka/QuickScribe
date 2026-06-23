@@ -182,10 +182,19 @@ async fn transcribe_file(
     .map_err(|e| e.to_string())?
 }
 
-/// マイク録音を開始する（S1.1）。既定の入力デバイスから収集を始める。
+/// 利用可能な入力デバイス名を列挙する（S1.2 デバイス選択UI）。
+#[tauri::command]
+fn list_input_devices() -> Result<Vec<String>, String> {
+    record::list_input_devices()
+}
+
+/// マイク録音を開始する（S1.1/S1.2）。device 指定時はその入力デバイスを使う（無ければ既定）。
 /// E2E(QUICKSCRIBE_E2E=1)時は実マイク無しでもUIトグルを成立させるため何もしない。
 #[tauri::command]
-fn start_recording(state: tauri::State<'_, record::RecorderState>) -> Result<(), String> {
+fn start_recording(
+    state: tauri::State<'_, record::RecorderState>,
+    device: Option<String>,
+) -> Result<(), String> {
     if std::env::var("QUICKSCRIBE_E2E").is_ok() {
         return Ok(());
     }
@@ -196,7 +205,7 @@ fn start_recording(state: tauri::State<'_, record::RecorderState>) -> Result<(),
     if cur.is_some() {
         return Err("すでに録音中です".into());
     }
-    *cur = Some(record::start()?);
+    *cur = Some(record::start(device)?);
     Ok(())
 }
 
@@ -552,6 +561,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             save_note,
             transcribe_file,
+            list_input_devices,
             start_recording,
             stop_recording,
             resolve_model,

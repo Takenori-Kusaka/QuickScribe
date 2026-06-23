@@ -119,6 +119,20 @@
   // タスクバー上のウィジェット表示（Windows）。既定ON。設定でON/OFF可能。
   let taskbarWidget = $state<boolean>(true);
 
+  // 入力デバイス選択（S1.2 / #18）。空文字=OS既定。録音開始時にバックエンドへ渡す。
+  let inputDevice = $state<string>("");
+  let inputDevices = $state<string[]>([]);
+
+  // 利用可能な入力デバイスを列挙する（設定UIのプルダウン用）。失敗時は空のまま既定運用。
+  async function loadInputDevices() {
+    try {
+      inputDevices = await invoke<string[]>("list_input_devices");
+    } catch (e) {
+      console.error("list_input_devices failed", e);
+      inputDevices = [];
+    }
+  }
+
   // タスクバーウィジェットの表示有効/無効をバックエンドへ反映する（Windowsのみ実体動作）。
   async function applyTaskbarWidget() {
     try {
@@ -195,6 +209,7 @@
     awsAuthMode = (localStorage.getItem("awsAuthMode") as "sigv4" | "apikey") || "sigv4";
     bedrockModel = localStorage.getItem("bedrockModel") || "";
     taskbarWidget = localStorage.getItem("taskbarWidget") !== "false";
+    inputDevice = localStorage.getItem("inputDevice") || "";
     // 秘密情報(API鍵/AWS鍵)は keyring から非同期で読む(S3.2)。
     void loadSecrets();
   }
@@ -295,6 +310,7 @@
     localStorage.setItem("awsAuthMode", awsAuthMode);
     localStorage.setItem("bedrockModel", bedrockModel);
     localStorage.setItem("taskbarWidget", String(taskbarWidget));
+    localStorage.setItem("inputDevice", inputDevice);
     void applyTaskbarWidget();
     void syncSaveSettings();
     showSettings = false;
@@ -563,7 +579,7 @@
     error = null;
     if (!recording) {
       try {
-        await invoke("start_recording");
+        await invoke("start_recording", { device: inputDevice || null });
         recording = true;
         startedAt = Date.now();
         // タスクバーボタンに録音中バッジを表示（状態の可視化）。
@@ -599,6 +615,7 @@
     loadSettings();
     void applyShortcut();
     void applyTaskbarWidget();
+    void loadInputDevices();
     void syncSaveSettings();
     void resolveCurrentModel();
     void checkForUpdate();
@@ -924,6 +941,24 @@
       {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
 
       <div class="meta-group">
+        <span class="meta-title">入力デバイス（マイク）</span>
+        <div class="device-row">
+          <select bind:value={inputDevice}>
+            <option value="">OS既定のマイク</option>
+            {#each inputDevices as dev}
+              <option value={dev}>{dev}</option>
+            {/each}
+          </select>
+          <button type="button" class="btn small ghost" onclick={() => void loadInputDevices()}>
+            再読込
+          </button>
+        </div>
+        <p class="tip">
+          録音に使うマイクを選びます。次回の録音開始から反映されます（録音中は変わりません）。
+        </p>
+      </div>
+
+      <div class="meta-group">
         <span class="meta-title">文字起こしのメタデータ</span>
         <label class="check">
           <input type="checkbox" bind:checked={includeTimestamps} />
@@ -1124,6 +1159,18 @@
     display: flex;
     gap: 0.5rem;
     align-items: center;
+  }
+  .device-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .device-row select {
+    flex: 1;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #fff;
   }
   .hotkey-capture {
     flex: 1;
