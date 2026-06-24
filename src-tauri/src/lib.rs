@@ -575,6 +575,59 @@ mod tests {
         assert!(note_filename("abc").starts_with("note-"));
         assert!(note_filename("abc").ends_with(".txt"));
     }
+
+    #[test]
+    fn unique_name_without_conflict_is_plain() {
+        assert_eq!(next_unique_name("note-x", "txt", |_| false), "note-x.txt");
+    }
+
+    #[test]
+    fn unique_name_appends_suffix_on_conflict() {
+        // note-x.txt と note-x-2.txt が埋まっていれば次は note-x-3.txt（三角測量）。
+        let taken = ["note-x.txt", "note-x-2.txt"];
+        let name = next_unique_name("note-x", "txt", |n| taken.contains(&n));
+        assert_eq!(name, "note-x-3.txt");
+    }
+
+    #[test]
+    fn resolve_save_dir_uses_override_when_set() {
+        let s = SaveSettings {
+            save_dir: Some("/tmp/myvault".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            resolve_save_dir(&s).unwrap(),
+            std::path::PathBuf::from("/tmp/myvault")
+        );
+    }
+
+    #[test]
+    fn resolve_save_dir_blank_override_falls_back_to_default() {
+        // 空白のみの上書きは未設定扱い（既定の保管庫へフォールバック）。
+        let s = SaveSettings {
+            save_dir: Some("   ".into()),
+            ..Default::default()
+        };
+        if let Some(doc) = dirs::document_dir() {
+            assert_eq!(resolve_save_dir(&s).unwrap(), doc.join("QuickScribe"));
+        }
+    }
+
+    #[test]
+    fn save_text_in_does_not_overwrite_existing() {
+        // 一時ディレクトリで衝突時の非破壊保存(R5)を結合検証。
+        let mut dir = std::env::temp_dir();
+        dir.push(format!("qs-vault-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let p1 = save_text_in(&dir, "first").unwrap();
+        let p2 = save_text_in(&dir, "second").unwrap();
+        // 同一秒なら別名、別秒でも両方残ることを保証（どちらでもファイルは2つ）。
+        assert_ne!(p1, p2);
+        let count = std::fs::read_dir(&dir).unwrap().count();
+        assert_eq!(count, 2, "既存エントリが上書きされず2件残る");
+        assert_eq!(std::fs::read_to_string(&p1).unwrap(), "first");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 /// メインウィンドウを表示して前面に出す（トレイ操作・常駐からの復帰で使う）。
@@ -699,67 +752,4 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running QuickScribe");
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn note_filename_has_prefix_and_ext() {
-        assert_eq!(note_filename("20260624-120000"), "note-20260624-120000.txt");
-    }
-
-    #[test]
-    fn unique_name_without_conflict_is_plain() {
-        assert_eq!(next_unique_name("note-x", "txt", |_| false), "note-x.txt");
-    }
-
-    #[test]
-    fn unique_name_appends_suffix_on_conflict() {
-        // note-x.txt と note-x-2.txt が埋まっていれば次は note-x-3.txt（三角測量）。
-        let taken = ["note-x.txt", "note-x-2.txt"];
-        let name = next_unique_name("note-x", "txt", |n| taken.contains(&n));
-        assert_eq!(name, "note-x-3.txt");
-    }
-
-    #[test]
-    fn resolve_save_dir_uses_override_when_set() {
-        let s = SaveSettings {
-            save_dir: Some("/tmp/myvault".into()),
-            ..Default::default()
-        };
-        assert_eq!(
-            resolve_save_dir(&s).unwrap(),
-            std::path::PathBuf::from("/tmp/myvault")
-        );
-    }
-
-    #[test]
-    fn resolve_save_dir_blank_override_falls_back_to_default() {
-        // 空白のみの上書きは未設定扱い（既定の保管庫へフォールバック）。
-        let s = SaveSettings {
-            save_dir: Some("   ".into()),
-            ..Default::default()
-        };
-        if let Some(doc) = dirs::document_dir() {
-            assert_eq!(resolve_save_dir(&s).unwrap(), doc.join("QuickScribe"));
-        }
-    }
-
-    #[test]
-    fn save_text_in_does_not_overwrite_existing() {
-        // 一時ディレクトリで衝突時の非破壊保存(R5)を結合検証。
-        let mut dir = std::env::temp_dir();
-        dir.push(format!("qs-vault-test-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        let p1 = save_text_in(&dir, "first").unwrap();
-        let p2 = save_text_in(&dir, "second").unwrap();
-        // 同一秒なら別名、別秒でも両方残ることを保証（どちらでもファイルは2つ）。
-        assert_ne!(p1, p2);
-        let count = std::fs::read_dir(&dir).unwrap().count();
-        assert_eq!(count, 2, "既存エントリが上書きされず2件残る");
-        assert_eq!(std::fs::read_to_string(&p1).unwrap(), "first");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
 }
