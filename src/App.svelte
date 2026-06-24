@@ -969,6 +969,9 @@
         <div class="device-row">
           <select value={`${inputDeviceKind}|${inputDevice}`} onchange={onSourceChange}>
             <option value="input|">OS既定のマイク</option>
+            {#if IS_WINDOWS}
+              <option value="mix|">マイク＋システム音（既定の出力 / 同時録音）</option>
+            {/if}
             {#each audioSources as s}
               <option value={`${s.kind}|${s.id}`}>{s.label}</option>
             {/each}
@@ -978,7 +981,7 @@
           </button>
         </div>
         <p class="tip">
-          録音元を選びます。マイクのほか「システム音: …」を選ぶと、その出力デバイスで再生中の音（会議の相手の声・再生音）を録音します。次回の録音開始から反映されます。
+          録音元を選びます。「システム音: …」はその出力で再生中の音（相手の声・再生音）を録音。「マイク＋システム音」は自分の声と相手の声を同時に録音します（会議・通話向け）。次回の録音開始から反映されます。
         </p>
       </div>
 
