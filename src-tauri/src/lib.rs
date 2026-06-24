@@ -34,6 +34,23 @@ fn note_filename(ts: &str) -> String {
     format!("note-{ts}.txt")
 }
 
+/// 既存名と衝突しない一意なファイル名を返す（S4.1 R5・非破壊保存）。
+/// 衝突時は `stem-2.ext`, `stem-3.ext`… を試す。`exists` は候補名の存在判定（テスト容易性のため注入）。
+fn next_unique_name(stem: &str, ext: &str, exists: impl Fn(&str) -> bool) -> String {
+    let first = format!("{stem}.{ext}");
+    if !exists(&first) {
+        return first;
+    }
+    let mut n = 2u32;
+    loop {
+        let cand = format!("{stem}-{n}.{ext}");
+        if !exists(&cand) {
+            return cand;
+        }
+        n += 1;
+    }
+}
+
 /// 保存に関する設定（保存先・音声保存可否/形式・文字起こしテキスト保持）。
 /// フロントの設定から set_save_settings で更新し、保存系コマンドが参照する。
 #[derive(Clone)]
@@ -84,12 +101,49 @@ fn resolve_save_dir(settings: &SaveSettings) -> Result<std::path::PathBuf, Strin
 }
 
 /// タイムスタンプ付きファイル名で dir 配下にテキストを書き出し、パスを返す。
+/// 同一秒の衝突では既存を上書きせず一意名にする（S4.1 R4/R5）。
 fn save_text_in(dir: &std::path::Path, content: &str) -> Result<String, String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
-    let path = dir.join(note_filename(&ts));
+    let stem = format!("note-{ts}");
+    let name = next_unique_name(&stem, "txt", |n| dir.join(n).exists());
+    let path = dir.join(name);
     std::fs::write(&path, content).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().to_string())
+}
+
+/// 保管庫フォルダを OS のファイルマネージャで開く（S4.1 R6）。無ければ作成してから開く。
+#[tauri::command]
+fn open_vault(app: tauri::AppHandle) -> Result<(), String> {
+    let dir = resolve_save_dir(&current_settings(&app))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("保管庫の作成に失敗: {e}"))?;
+    open_in_file_manager(&dir)
+}
+
+/// OS別にディレクトリをファイルマネージャで開く（待たずに起動）。
+fn open_in_file_manager(dir: &std::path::Path) -> Result<(), String> {
+    #[cfg(windows)]
+    let mut cmd = {
+        let mut c = std::process::Command::new("explorer");
+        c.arg(dir);
+        c
+    };
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("open");
+        c.arg(dir);
+        c
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut cmd = {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(dir);
+        c
+    };
+    // explorer は対象が開いても非0終了することがあるため spawn のみで成否判定しない。
+    cmd.spawn()
+        .map(|_| ())
+        .map_err(|e| format!("ファイルマネージャの起動に失敗: {e}"))
 }
 
 /// フロントの保存設定を反映する。
@@ -563,6 +617,7 @@ pub fn run() {
         .manage(AppSettings::default())
         .invoke_handler(tauri::generate_handler![
             save_note,
+            open_vault,
             transcribe_file,
             list_audio_sources,
             start_recording,
@@ -642,4 +697,67 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running QuickScribe");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn note_filename_has_prefix_and_ext() {
+        assert_eq!(note_filename("20260624-120000"), "note-20260624-120000.txt");
+    }
+
+    #[test]
+    fn unique_name_without_conflict_is_plain() {
+        assert_eq!(next_unique_name("note-x", "txt", |_| false), "note-x.txt");
+    }
+
+    #[test]
+    fn unique_name_appends_suffix_on_conflict() {
+        // note-x.txt と note-x-2.txt が埋まっていれば次は note-x-3.txt（三角測量）。
+        let taken = ["note-x.txt", "note-x-2.txt"];
+        let name = next_unique_name("note-x", "txt", |n| taken.contains(&n));
+        assert_eq!(name, "note-x-3.txt");
+    }
+
+    #[test]
+    fn resolve_save_dir_uses_override_when_set() {
+        let s = SaveSettings {
+            save_dir: Some("/tmp/myvault".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            resolve_save_dir(&s).unwrap(),
+            std::path::PathBuf::from("/tmp/myvault")
+        );
+    }
+
+    #[test]
+    fn resolve_save_dir_blank_override_falls_back_to_default() {
+        // 空白のみの上書きは未設定扱い（既定の保管庫へフォールバック）。
+        let s = SaveSettings {
+            save_dir: Some("   ".into()),
+            ..Default::default()
+        };
+        if let Some(doc) = dirs::document_dir() {
+            assert_eq!(resolve_save_dir(&s).unwrap(), doc.join("QuickScribe"));
+        }
+    }
+
+    #[test]
+    fn save_text_in_does_not_overwrite_existing() {
+        // 一時ディレクトリで衝突時の非破壊保存(R5)を結合検証。
+        let mut dir = std::env::temp_dir();
+        dir.push(format!("qs-vault-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let p1 = save_text_in(&dir, "first").unwrap();
+        let p2 = save_text_in(&dir, "second").unwrap();
+        // 同一秒なら別名、別秒でも両方残ることを保証（どちらでもファイルは2つ）。
+        assert_ne!(p1, p2);
+        let count = std::fs::read_dir(&dir).unwrap().count();
+        assert_eq!(count, 2, "既存エントリが上書きされず2件残る");
+        assert_eq!(std::fs::read_to_string(&p1).unwrap(), "first");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

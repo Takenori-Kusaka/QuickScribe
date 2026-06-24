@@ -304,6 +304,14 @@
     const d = await open({ directory: true, multiple: false });
     if (typeof d === "string") saveDir = d;
   }
+  // 保管庫フォルダをOSのファイルマネージャで開く（S4.1 R6）。
+  async function openVault() {
+    try {
+      await invoke("open_vault");
+    } catch (e) {
+      error = `保管庫を開けませんでした: ${e}`;
+    }
+  }
   function saveSettings() {
     localStorage.setItem("provider", provider);
     // 鍵(API鍵/AWS鍵)は keyring に保存する(localStorageには置かない / S3.2)。
@@ -1026,6 +1034,7 @@
         <div class="dir-row">
           <span class="tip">保存先: {saveDir || "既定（ドキュメント/QuickScribe）"}</span>
           <button class="btn small ghost" onclick={pickSaveDir}>変更</button>
+          <button class="btn small ghost" onclick={openVault}>保管庫を開く</button>
         </div>
       </div>
 
