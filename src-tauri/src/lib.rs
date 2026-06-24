@@ -287,7 +287,9 @@ async fn stop_recording(
     };
     let recorded = recording.finish()?;
     if recorded.mono16k.is_empty() {
-        return Err("録音データが空でした（マイク入力を確認してください）".into());
+        return Err(
+            "録音データが空でした（録音が短すぎたか、選択した録音ソースに音声がありませんでした）".into(),
+        );
     }
     let raw = recorded.raw;
     let sample_rate = recorded.sample_rate;
