@@ -1,6 +1,6 @@
 # ADR-0014: 物理トリガー連携（ホットキー橋渡し＋録音API start/stop 分離＋モーメンタリ）
 
-- Status: Proposed（段階実装。Phase 0=ドキュメント未着手）
+- Status: Accepted（Phase 0=ドキュメント / Phase 1=start/stop分離＋モーメンタリ 実装済み。Phase 2=カスタムSDプラグインは後続）
 - Date: 2026-06-24
 - Deciders: Takenori Kusaka
 - 関連: [ADR-0006 スコープ規律], [ADR-0007 調査規律]

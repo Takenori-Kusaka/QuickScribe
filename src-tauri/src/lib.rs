@@ -646,10 +646,15 @@ pub fn run() {
 
     tauri::Builder::default()
         // 単一インスタンス: 2回目起動のargvを常駐インスタンスへ転送する（最初に登録する必要あり）。
-        // `quickscribe --toggle-record` で録音トグル、引数無しはウィンドウ表示。
+        // 物理トリガー/自動化向けCLI（S1.5 / ADR-0014）:
+        //   --toggle-record  録音トグル / --start-record 開始 / --stop-record 停止。引数無しはウィンドウ表示。
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             if argv.iter().any(|a| a == "--toggle-record") {
                 let _ = app.emit("toggle-record", ());
+            } else if argv.iter().any(|a| a == "--start-record") {
+                let _ = app.emit("start-record", ());
+            } else if argv.iter().any(|a| a == "--stop-record") {
+                let _ = app.emit("stop-record", ());
             } else {
                 show_main_window(app);
             }
@@ -659,11 +664,15 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                // 録音トグルのショートカットは1つだけ登録するため、押下イベントは全て録音トグルに割当て。
-                // （ユーザがキーを変更しても再登録だけで済む。set_record_shortcut 参照）
-                .with_handler(move |app, _shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        let _ = app.emit("toggle-record", ());
+                // 押下/解放を別イベントで通知し、フロントの録音モード（トグル/モーメンタリ）で振り分ける。
+                // モーメンタリ（押している間だけ録音 / S1.5・ADR-0014）はキーの key-up が要るため
+                // Pressed だけでなく Released も発火する。（set_record_shortcut 参照）
+                .with_handler(move |app, _shortcut, event| match event.state() {
+                    ShortcutState::Pressed => {
+                        let _ = app.emit("record-press", ());
+                    }
+                    ShortcutState::Released => {
+                        let _ = app.emit("record-release", ());
                     }
                 })
                 .build(),

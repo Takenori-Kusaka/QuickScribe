@@ -52,6 +52,18 @@ quickscribe --toggle-record
 - フットスイッチ経路が最も確実です（ベンダーソフト不要）。
 - Logicool/Razer のボタン再割り当ては Options+/Synapse が Linux 非対応のため、`solaar` / `libratbag`(Piper) / `OpenRazer` 等を利用してください。
 
----
+## モーメンタリ録音（押している間だけ録音）
 
-> モーメンタリ録音（**押している間だけ録音**＝ hold-to-record）への対応は計画中です（[ADR-0014](../adr/0014-physical-trigger-integration.md)）。
+設定 →「録音モード」で **「押している間だけ録音（ホールド）」** を選ぶと、ホットキー／物理ボタンを**押し続けている間だけ**録音し、離すと停止します（とっさの一言・会議の発言向け。末尾切れ防止に離してから約0.3秒は録音を継続）。
+
+- **キーボード／マウス／フットスイッチ**: キーを「押し続ける」操作がそのまま録音時間になります。
+- **Stream Deck の組み込み Hotkey は「一瞬の押下」**を送るため、モーメンタリには使えません（トグルでお使いください）。Stream Deck でホールド録音したい場合は将来のカスタムプラグインで対応予定（[ADR-0014](../adr/0014-physical-trigger-integration.md) Phase 2）。
+
+## コマンドラインの開始/停止（自動化）
+
+トグルに加えて、明示的な開始・停止も呼べます（マクロで押下→解放を2コマンドに割り当てる等）。
+
+```
+quickscribe --start-record
+quickscribe --stop-record
+```

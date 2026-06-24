@@ -105,6 +105,8 @@
   const DEFAULT_SHORTCUT = "CommandOrControl+Shift+R";
   let recordShortcut = $state<string>(DEFAULT_SHORTCUT);
   let shortcutMsg = $state<string>("");
+  // 録音モード（S1.5 / ADR-0014）: toggle=1押しで開始/停止 / momentary=押している間だけ録音。
+  let recordMode = $state<"toggle" | "momentary">("toggle");
   // ホットキーのキャプチャモード（変更ボタン押下中＝キー入力待ち）。
   let capturing = $state<boolean>(false);
 
@@ -207,6 +209,8 @@
       resolvedModel[p] = localStorage.getItem(`resolvedModel:${p}`) ?? "";
     }
     recordShortcut = localStorage.getItem("recordShortcut") || DEFAULT_SHORTCUT;
+    recordMode =
+      localStorage.getItem("recordMode") === "momentary" ? "momentary" : "toggle";
     includeTimestamps = localStorage.getItem("includeTimestamps") !== "false";
     autoPipeline = localStorage.getItem("autoPipeline") === "true";
     keepText = localStorage.getItem("keepText") !== "false";
@@ -330,6 +334,7 @@
     localStorage.setItem("awsAuthMode", awsAuthMode);
     localStorage.setItem("bedrockModel", bedrockModel);
     localStorage.setItem("taskbarWidget", String(taskbarWidget));
+    localStorage.setItem("recordMode", recordMode);
     localStorage.setItem("inputDevice", inputDevice);
     localStorage.setItem("inputDeviceKind", inputDeviceKind);
     void applyTaskbarWidget();
@@ -635,6 +640,33 @@
     }
   }
 
+  // 物理トリガーのホットキー押下/解放を録音モードで振り分ける（S1.5 / ADR-0014）。
+  // モーメンタリ=押している間だけ録音。解放時は末尾切れ防止に少し遅延して停止（OBS/Discord定石）。
+  const MOMENTARY_STOP_DELAY_MS = 300;
+  let momentaryStopTimer: ReturnType<typeof setTimeout> | null = null;
+  function clearMomentaryTimer() {
+    if (momentaryStopTimer !== null) {
+      clearTimeout(momentaryStopTimer);
+      momentaryStopTimer = null;
+    }
+  }
+  function onRecordPress() {
+    if (recordMode === "momentary") {
+      clearMomentaryTimer(); // 直前の解放猶予をキャンセルして録音継続。
+      if (!recording) void toggle();
+    } else {
+      void toggle();
+    }
+  }
+  function onRecordRelease() {
+    if (recordMode !== "momentary") return;
+    clearMomentaryTimer();
+    momentaryStopTimer = setTimeout(() => {
+      momentaryStopTimer = null;
+      if (recording) void toggle();
+    }, MOMENTARY_STOP_DELAY_MS);
+  }
+
   onMount(() => {
     loadSettings();
     void applyShortcut();
@@ -643,7 +675,18 @@
     void syncSaveSettings();
     void resolveCurrentModel();
     void checkForUpdate();
-    const unToggle = listen("toggle-record", () => toggle());
+    // トレイ/メニュー/CLI --toggle-record は常にトグル。
+    const unToggle = listen("toggle-record", () => void toggle());
+    // ホットキー押下/解放（録音モードで振り分け）。
+    const unPress = listen("record-press", () => onRecordPress());
+    const unRelease = listen("record-release", () => onRecordRelease());
+    // CLI --start-record / --stop-record（自動化・マクロ向け 明示開始/停止）。
+    const unStartRec = listen("start-record", () => {
+      if (!recording) void toggle();
+    });
+    const unStopRec = listen("stop-record", () => {
+      if (recording) void toggle();
+    });
     const unStatus = listen<string>("status", (e) => (status = e.payload));
     const unProgress = listen<number>("progress", (e) => {
       progress = e.payload;
@@ -678,7 +721,12 @@
       error = e.payload;
     });
     return () => {
+      clearMomentaryTimer();
       unToggle.then((f) => f());
+      unPress.then((f) => f());
+      unRelease.then((f) => f());
+      unStartRec.then((f) => f());
+      unStopRec.then((f) => f());
       unStatus.then((f) => f());
       unProgress.then((f) => f());
       unSegment.then((f) => f());
@@ -963,6 +1011,19 @@
       </div>
       <p class="tip">「{displayShortcut(recordShortcut)}」をクリックして、登録したいキーを押します。</p>
       {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
+
+      <div class="meta-group">
+        <span class="meta-title">録音モード</span>
+        <div class="device-row">
+          <select bind:value={recordMode}>
+            <option value="toggle">トグル（1回押すと開始 / もう1回で停止）</option>
+            <option value="momentary">押している間だけ録音（ホールド）</option>
+          </select>
+        </div>
+        <p class="tip">
+          「押している間だけ録音」は、物理ボタン（マウス・フットスイッチ等）やホットキーを<strong>押し続けている間だけ</strong>録音します。離すと停止します（会議の発言・とっさの一言向け）。
+        </p>
+      </div>
 
       <div class="meta-group">
         <span class="meta-title">録音ソース（マイク / システム音）</span>
