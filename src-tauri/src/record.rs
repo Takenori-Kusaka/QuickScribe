@@ -532,11 +532,19 @@ mod tests {
         assert!((out.len() as i32 - 50).abs() <= 1);
     }
 
+    // 浮動小数点の近似一致を検証する（加算で末尾ビットがずれるため厳密等価は使わない）。
+    fn assert_close(actual: &[f32], expected: &[f32]) {
+        assert_eq!(actual.len(), expected.len(), "長さ不一致");
+        for (i, (a, e)) in actual.iter().zip(expected).enumerate() {
+            assert!((a - e).abs() < 1e-6, "index {i}: {a} != {e}");
+        }
+    }
+
     #[test]
     fn mix_sums_same_length_streams() {
         let a = vec![0.1, 0.2, -0.3];
         let b = vec![0.2, 0.2, 0.1];
-        assert_eq!(mix_16k(&[a, b]), vec![0.3, 0.4, -0.2]);
+        assert_close(&mix_16k(&[a, b]), &[0.3, 0.4, -0.2]);
     }
 
     #[test]
@@ -544,19 +552,19 @@ mod tests {
         // 長さ違いは最長に合わせ、短い側は無音(0)として扱う（三角測量・R3）。
         let a = vec![0.5, 0.5, 0.5];
         let b = vec![0.1];
-        assert_eq!(mix_16k(&[a, b]), vec![0.6, 0.5, 0.5]);
+        assert_close(&mix_16k(&[a, b]), &[0.6, 0.5, 0.5]);
     }
 
     #[test]
     fn mix_clips_to_unit_range() {
         let a = vec![0.8, -0.8];
         let b = vec![0.5, -0.5];
-        assert_eq!(mix_16k(&[a, b]), vec![1.0, -1.0]);
+        assert_close(&mix_16k(&[a, b]), &[1.0, -1.0]);
     }
 
     #[test]
     fn mix_single_stream_is_identity() {
         let a = vec![0.1, -0.2, 0.3];
-        assert_eq!(mix_16k(&[a.clone()]), a);
+        assert_close(&mix_16k(&[a.clone()]), &a);
     }
 }
