@@ -12,13 +12,32 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 use crate::stt::{resample_linear, WHISPER_SR};
 
-/// 録音中のハンドル（停止フラグ・収集バッファ・キャプチャスレッド・入力仕様）。
-pub struct Recording {
+/// 単一ソースのキャプチャ（停止フラグ・収集バッファ・キャプチャスレッド・入力仕様）。
+struct Capture {
     stop: Arc<AtomicBool>,
     samples: Arc<Mutex<Vec<f32>>>,
     sample_rate: u32,
     channels: u16,
     join: JoinHandle<()>,
+}
+
+impl Capture {
+    /// 停止してスレッドをjoinし、文字起こし用 16kHz mono を返す（収集生データも返す）。
+    fn finish(self) -> Result<(Vec<f32>, u32, u16), String> {
+        self.stop.store(true, Ordering::Relaxed);
+        let _ = self.join.join();
+        let raw = self
+            .samples
+            .lock()
+            .map_err(|_| "録音バッファの取得に失敗".to_string())?
+            .clone();
+        Ok((raw, self.sample_rate, self.channels))
+    }
+}
+
+/// 録音中のハンドル。1ソース（マイク/ループバック）または複数ソース（ミックス）を保持する。
+pub struct Recording {
+    captures: Vec<Capture>,
 }
 
 /// Tauri 管理状態。録音は単一インスタンスのみ保持する。
@@ -39,22 +58,52 @@ pub struct Recorded {
 
 impl Recording {
     /// 録音を停止し、文字起こし用(16kHz mono)と保存用(原音)の音声を返す。
+    /// 複数ソース（ミックス）の場合は各々を16k monoへ変換してから加算合成する（S1.3 Phase1）。
     pub fn finish(self) -> Result<Recorded, String> {
-        self.stop.store(true, Ordering::Relaxed);
-        let _ = self.join.join();
-        let raw = self
-            .samples
-            .lock()
-            .map_err(|_| "録音バッファの取得に失敗".to_string())?
-            .clone();
-        let mono16k = to_mono_16k(&raw, self.sample_rate, self.channels);
+        let mut parts: Vec<(Vec<f32>, u32, u16)> = Vec::new();
+        for cap in self.captures {
+            parts.push(cap.finish()?);
+        }
+        // 単一ソース: 従来どおり原音を保存用に保持（回帰不変・R5）。
+        if parts.len() == 1 {
+            let (raw, sample_rate, channels) = parts.pop().unwrap();
+            let mono16k = to_mono_16k(&raw, sample_rate, channels);
+            return Ok(Recorded {
+                mono16k,
+                raw,
+                sample_rate,
+                channels,
+            });
+        }
+        // ミックス: 各ソースを16k monoへ変換し加算合成（R2）。保存用も合成後の16k mono。
+        let mono_parts: Vec<Vec<f32>> = parts
+            .iter()
+            .map(|(raw, sr, ch)| to_mono_16k(raw, *sr, *ch))
+            .collect();
+        let mono16k = mix_16k(&mono_parts);
         Ok(Recorded {
+            raw: mono16k.clone(),
             mono16k,
-            raw,
-            sample_rate: self.sample_rate,
-            channels: self.channels,
+            sample_rate: WHISPER_SR,
+            channels: 1,
         })
     }
+}
+
+/// 複数の 16kHz mono ストリームを加算合成し [-1,1] にクリップする（S1.3 Phase1 / 純粋）。
+/// 長さは最長に合わせ、短いストリームは無音として扱う（片側欠損でも他方は残る・R3）。
+fn mix_16k(parts: &[Vec<f32>]) -> Vec<f32> {
+    let len = parts.iter().map(|p| p.len()).max().unwrap_or(0);
+    let mut out = vec![0.0f32; len];
+    for p in parts {
+        for (i, &s) in p.iter().enumerate() {
+            out[i] += s;
+        }
+    }
+    for s in out.iter_mut() {
+        *s = s.clamp(-1.0, 1.0);
+    }
+    out
 }
 
 /// 録音ソース(マイク入力 / 出力デバイスのループバック)の記述子(S1.3 / ADR-0013)。
@@ -134,25 +183,48 @@ fn list_loopback_sources() -> Vec<AudioSource> {
     .unwrap_or_default()
 }
 
-/// 録音を開始する。kind="loopback" なら出力デバイスのループバック(Windowsのみ)、
-/// それ以外はマイク入力。device は入力=デバイス名 / ループバック=レンダーデバイスID。
+/// 録音を開始する。kind により録音ソースを切り替える:
+/// "loopback"=出力デバイスのループバック(Windows) / "mix"=既定マイク＋システム音 同時取得(Windows) /
+/// それ以外=マイク入力。device は入力=デバイス名 / ループバック=レンダーデバイスID。
 pub fn start(device: Option<String>, kind: Option<String>) -> Result<Recording, String> {
-    if kind.as_deref() == Some("loopback") {
-        #[cfg(windows)]
-        {
-            return start_loopback(device);
+    match kind.as_deref() {
+        Some("loopback") => {
+            #[cfg(windows)]
+            {
+                Ok(Recording {
+                    captures: vec![start_loopback(device)?],
+                })
+            }
+            #[cfg(not(windows))]
+            {
+                let _ = device;
+                Err("システム音(ループバック)はこのプラットフォームでは未対応です".into())
+            }
         }
-        #[cfg(not(windows))]
-        {
-            let _ = device;
-            return Err("システム音(ループバック)はこのプラットフォームでは未対応です".into());
+        Some("mix") => {
+            #[cfg(windows)]
+            {
+                // 既定マイク＋指定/既定の出力デバイスを同時取得（S1.3 Phase1）。
+                let mic = start_input(None)?;
+                let sys = start_loopback(device)?;
+                Ok(Recording {
+                    captures: vec![mic, sys],
+                })
+            }
+            #[cfg(not(windows))]
+            {
+                let _ = device;
+                Err("マイク＋システム音の同時取得はこのプラットフォームでは未対応です".into())
+            }
         }
+        _ => Ok(Recording {
+            captures: vec![start_input(device)?],
+        }),
     }
-    start_input(device)
 }
 
-/// マイク入力から録音を開始する。device_name 指定時はその入力デバイス(無ければ既定にフォールバック)。
-fn start_input(device_name: Option<String>) -> Result<Recording, String> {
+/// マイク入力のキャプチャを開始する。device_name 指定時はその入力デバイス(無ければ既定にフォールバック)。
+fn start_input(device_name: Option<String>) -> Result<Capture, String> {
     let stop = Arc::new(AtomicBool::new(false));
     let samples = Arc::new(Mutex::new(Vec::<f32>::new()));
 
@@ -256,7 +328,7 @@ fn start_input(device_name: Option<String>) -> Result<Recording, String> {
     });
 
     match cfg_rx.recv() {
-        Ok(Ok((sample_rate, channels))) => Ok(Recording {
+        Ok(Ok((sample_rate, channels))) => Ok(Capture {
             stop,
             samples,
             sample_rate,
@@ -275,7 +347,7 @@ fn start_input(device_name: Option<String>) -> Result<Recording, String> {
 /// レンダーデバイス + Direction::Capture で wasapi が AUDCLNT_STREAMFLAGS_LOOPBACK を設定する。
 /// 無音時はパケットが来ないため、wait_for_event をタイムアウト付きにして stop を監視する。
 #[cfg(windows)]
-fn start_loopback(device_id: Option<String>) -> Result<Recording, String> {
+fn start_loopback(device_id: Option<String>) -> Result<Capture, String> {
     use std::collections::VecDeque;
     use wasapi::{Direction, DeviceEnumerator, StreamMode};
 
@@ -382,7 +454,7 @@ fn start_loopback(device_id: Option<String>) -> Result<Recording, String> {
     });
 
     match cfg_rx.recv() {
-        Ok(Ok((sample_rate, channels))) => Ok(Recording {
+        Ok(Ok((sample_rate, channels))) => Ok(Capture {
             stop,
             samples,
             sample_rate,
@@ -458,5 +530,33 @@ mod tests {
         let interleaved: Vec<f32> = (0..200).map(|i| i as f32).collect();
         let out = to_mono_16k(&interleaved, 32000, 2);
         assert!((out.len() as i32 - 50).abs() <= 1);
+    }
+
+    #[test]
+    fn mix_sums_same_length_streams() {
+        let a = vec![0.1, 0.2, -0.3];
+        let b = vec![0.2, 0.2, 0.1];
+        assert_eq!(mix_16k(&[a, b]), vec![0.3, 0.4, -0.2]);
+    }
+
+    #[test]
+    fn mix_pads_shorter_stream_with_silence() {
+        // 長さ違いは最長に合わせ、短い側は無音(0)として扱う（三角測量・R3）。
+        let a = vec![0.5, 0.5, 0.5];
+        let b = vec![0.1];
+        assert_eq!(mix_16k(&[a, b]), vec![0.6, 0.5, 0.5]);
+    }
+
+    #[test]
+    fn mix_clips_to_unit_range() {
+        let a = vec![0.8, -0.8];
+        let b = vec![0.5, -0.5];
+        assert_eq!(mix_16k(&[a, b]), vec![1.0, -1.0]);
+    }
+
+    #[test]
+    fn mix_single_stream_is_identity() {
+        let a = vec![0.1, -0.2, 0.3];
+        assert_eq!(mix_16k(&[a.clone()]), a);
     }
 }
