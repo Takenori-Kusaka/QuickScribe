@@ -778,7 +778,7 @@ mod tests {
         assert!(RefineStyle::Brainstorm.user_prompt("x").contains("ブレスト"));
     }
 
-    fn req_with(custom: Option<&str>, transcript: &str) -> RefineRequest<'_> {
+    fn req_with<'a>(custom: Option<&'a str>, transcript: &'a str) -> RefineRequest<'a> {
         RefineRequest {
             style: RefineStyle::Structured,
             api_key: "",
