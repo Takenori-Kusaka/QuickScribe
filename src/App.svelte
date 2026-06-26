@@ -4,6 +4,11 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { check } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
+  import {
+    enable as enableAutostart,
+    disable as disableAutostart,
+    isEnabled as isAutostartEnabled,
+  } from "@tauri-apps/plugin-autostart";
   import { onMount } from "svelte";
   import { estimateRemaining, formatRemaining } from "./lib/note";
 
@@ -120,6 +125,27 @@
     /win/i.test(`${navigator.userAgent} ${navigator.platform ?? ""}`);
   // タスクバー上のウィジェット表示（Windows）。既定ON。設定でON/OFF可能。
   let taskbarWidget = $state<boolean>(true);
+
+  // OSログイン時の自動起動（S6.3）。実体はOSに登録されるため、状態はOSから取得する。
+  let autoStart = $state<boolean>(false);
+  async function loadAutoStart() {
+    try {
+      autoStart = await isAutostartEnabled();
+    } catch (e) {
+      console.error("isAutostartEnabled failed", e);
+    }
+  }
+  async function onAutoStartChange() {
+    try {
+      if (autoStart) await enableAutostart();
+      else await disableAutostart();
+      // OSの実際の登録状態に同期（失敗時のずれを防ぐ）。
+      autoStart = await isAutostartEnabled();
+    } catch (e) {
+      error = `自動起動の設定に失敗しました: ${e}`;
+      autoStart = await isAutostartEnabled().catch(() => autoStart);
+    }
+  }
 
   // 録音ソース選択（S1.2/S1.3 / #18 #19）。マイク入力＋出力デバイスのループバックを統一。
   // inputDevice: 入力=デバイス名 / ループバック=レンダーデバイスID（空=OS既定）。
@@ -671,6 +697,7 @@
     loadSettings();
     void applyShortcut();
     void applyTaskbarWidget();
+    void loadAutoStart();
     void loadAudioSources();
     void syncSaveSettings();
     void resolveCurrentModel();
@@ -1071,6 +1098,17 @@
             タスクバー上の録音/停止・ウィンドウ表示ボタン（Windows）。OFFにすると非表示になります。
           </p>
         {/if}
+        <label class="check">
+          <input
+            type="checkbox"
+            bind:checked={autoStart}
+            onchange={() => void onAutoStartChange()}
+          />
+          PCのログイン時に自動起動する
+        </label>
+        <p class="tip">
+          OSにログインすると QuickScribe を自動で起動し、トレイに常駐します（ウィンドウは出ません）。
+        </p>
       </div>
 
       <div class="meta-group">
