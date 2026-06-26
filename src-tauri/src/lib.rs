@@ -395,6 +395,8 @@ async fn refine_text(
     api_key: String,
     model: String,
     style: String,
+    // ユーザー定義のカスタム整形指示(S3.3)。指定時は style の既定指示の代わりに使う。
+    custom_instruction: Option<String>,
     // AWSプロバイダ(Bedrock / Claude Platform on AWS)用 / ADR-0011。非AWS時は未指定(None)。
     region: Option<String>,
     workspace_id: Option<String>,
@@ -428,7 +430,15 @@ async fn refine_text(
         } else {
             None
         };
-        let refined = refine::refine(&provider, &api_key, &m, &style, &text, aws_cfg)?;
+        let refined = refine::refine(
+            &provider,
+            &api_key,
+            &m,
+            &style,
+            &text,
+            aws_cfg,
+            custom_instruction,
+        )?;
         // 整形結果（ジャーナルの成果物）は常に保存先へ書き出す。
         if let Ok(dir) = resolve_save_dir(&current_settings(&app)) {
             let _ = save_text_in(&dir, &refined);
