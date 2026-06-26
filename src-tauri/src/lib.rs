@@ -662,6 +662,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // OSログイン時の自動起動（S6.3）。--minimized で起動し常駐（ウィンドウは出さない）。
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .args(["--minimized"])
+                .build(),
+        )
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 // 押下/解放を別イベントで通知し、フロントの録音モード（トグル/モーメンタリ）で振り分ける。
@@ -755,6 +761,13 @@ pub fn run() {
                 }
                 // タスクバーに録音/停止＋ウィンドウ表示ボタンを埋め込む（本命の操作導線）。
                 taskbar_widget::install(app.handle().clone());
+            }
+
+            // 自動起動（--minimized）時はウィンドウを出さずトレイ常駐から始める（S6.3）。
+            if std::env::args().any(|a| a == "--minimized") {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.hide();
+                }
             }
 
             Ok(())
