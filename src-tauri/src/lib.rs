@@ -28,12 +28,6 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 
 /// メモ内容を保存フォルダ(既定: ドキュメント/QuickScribe)へ書き出す。
 ///
-/// 保存先はのちに設定で上書き可能にする(現状は既定のみ)。
-/// タイムスタンプ文字列からメモのファイル名を組み立てる（純粋関数・テスト対象 S7.1）。
-fn note_filename(ts: &str) -> String {
-    format!("note-{ts}.txt")
-}
-
 /// 既存名と衝突しない一意なファイル名を返す（S4.1 R5・非破壊保存）。
 /// 衝突時は `stem-2.ext`, `stem-3.ext`… を試す。`exists` は候補名の存在判定（テスト容易性のため注入）。
 fn next_unique_name(stem: &str, ext: &str, exists: impl Fn(&str) -> bool) -> String {
@@ -51,7 +45,7 @@ fn next_unique_name(stem: &str, ext: &str, exists: impl Fn(&str) -> bool) -> Str
     }
 }
 
-/// 保存に関する設定（保存先・音声保存可否/形式・文字起こしテキスト保持）。
+/// 保存に関する設定（保存先・音声保存可否/形式・文字起こしテキスト保持・出力形式）。
 /// フロントの設定から set_save_settings で更新し、保存系コマンドが参照する。
 #[derive(Clone)]
 struct SaveSettings {
@@ -63,6 +57,8 @@ struct SaveSettings {
     audio_format: String,
     /// 文字起こしテキスト(.txt)を保存するか。
     keep_text: bool,
+    /// エントリの出力形式("txt"=本文のみ / "md"=YAMLフロントマター付きMarkdown)。S4.2。
+    output_format: String,
 }
 
 impl Default for SaveSettings {
@@ -72,8 +68,51 @@ impl Default for SaveSettings {
             save_audio: false,
             audio_format: "wav".to_string(),
             keep_text: true,
+            output_format: "txt".to_string(),
         }
     }
+}
+
+/// エントリのメタデータ(S4.2 / Markdownフロントマター用)。
+struct DocMeta<'a> {
+    /// 種別: "transcript"(文字起こし) / "refined"(整形) / "note"(任意保存)。
+    kind: &'a str,
+    /// 整形スタイル(refined のときのみ Some)。
+    style: Option<&'a str>,
+}
+
+/// 出力形式から拡張子を返す(純粋)。"md" 以外は "txt"。
+fn doc_extension(format: &str) -> &'static str {
+    if format.trim().eq_ignore_ascii_case("md") {
+        "md"
+    } else {
+        "txt"
+    }
+}
+
+/// YAMLフロントマターの値を1行・安全に整える(改行を空白化、前後空白除去)。
+/// コロン等を含んでもダブルクォートで囲むため曖昧にならない。
+fn yaml_scalar(v: &str) -> String {
+    let one_line = v.replace(['\n', '\r'], " ");
+    let escaped = one_line.replace('"', "'");
+    format!("\"{}\"", escaped.trim())
+}
+
+/// 出力形式に応じてエントリ本文を組み立てる(純粋・テスト対象)。
+/// md は created/type(/style) のYAMLフロントマターを本文の前に付す。
+fn build_document(content: &str, format: &str, created_iso: &str, meta: &DocMeta) -> String {
+    if doc_extension(format) != "md" {
+        return content.to_string();
+    }
+    let mut fm = String::from("---\n");
+    fm.push_str(&format!("created: {}\n", yaml_scalar(created_iso)));
+    fm.push_str(&format!("type: {}\n", yaml_scalar(meta.kind)));
+    if let Some(style) = meta.style {
+        fm.push_str(&format!("style: {}\n", yaml_scalar(style)));
+    }
+    fm.push_str("---\n\n");
+    fm.push_str(content);
+    fm
 }
 
 #[derive(Default)]
@@ -100,15 +139,24 @@ fn resolve_save_dir(settings: &SaveSettings) -> Result<std::path::PathBuf, Strin
         .join("QuickScribe"))
 }
 
-/// タイムスタンプ付きファイル名で dir 配下にテキストを書き出し、パスを返す。
-/// 同一秒の衝突では既存を上書きせず一意名にする（S4.1 R4/R5）。
-fn save_text_in(dir: &std::path::Path, content: &str) -> Result<String, String> {
+/// タイムスタンプ付きファイル名で dir 配下にエントリを書き出し、パスを返す（S4.1/S4.2）。
+/// 出力形式(txt/md)とメタデータに従って本文を組み立て、同一秒の衝突は一意名にする（非破壊）。
+fn save_document(
+    dir: &std::path::Path,
+    content: &str,
+    format: &str,
+    meta: &DocMeta,
+) -> Result<String, String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let now = chrono::Local::now();
+    let ts = now.format("%Y%m%d-%H%M%S").to_string();
+    let created_iso = now.format("%Y-%m-%dT%H:%M:%S").to_string();
+    let body = build_document(content, format, &created_iso, meta);
+    let ext = doc_extension(format);
     let stem = format!("note-{ts}");
-    let name = next_unique_name(&stem, "txt", |n| dir.join(n).exists());
+    let name = next_unique_name(&stem, ext, |n| dir.join(n).exists());
     let path = dir.join(name);
-    std::fs::write(&path, content).map_err(|e| e.to_string())?;
+    std::fs::write(&path, body).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().to_string())
 }
 
@@ -154,6 +202,7 @@ fn set_save_settings(
     save_audio: bool,
     audio_format: String,
     keep_text: bool,
+    output_format: Option<String>,
 ) -> Result<(), String> {
     let mut s = state
         .inner
@@ -163,14 +212,26 @@ fn set_save_settings(
     s.save_audio = save_audio;
     s.audio_format = audio_format;
     s.keep_text = keep_text;
+    if let Some(f) = output_format {
+        s.output_format = f;
+    }
     Ok(())
 }
 
 /// 整形結果など任意テキストを保存先へ書き出す（整形は常に保存）。
 #[tauri::command]
 fn save_note(app: tauri::AppHandle, content: String) -> Result<String, String> {
-    let dir = resolve_save_dir(&current_settings(&app))?;
-    save_text_in(&dir, &content)
+    let settings = current_settings(&app);
+    let dir = resolve_save_dir(&settings)?;
+    save_document(
+        &dir,
+        &content,
+        &settings.output_format,
+        &DocMeta {
+            kind: "note",
+            style: None,
+        },
+    )
 }
 
 /// 16kHz mono 音声を文字起こしし、保存して返す共通処理（録音/ファイル入力で共用）。
@@ -211,7 +272,15 @@ fn transcribe_blocking(
     let settings = current_settings(app);
     if settings.keep_text && !text.trim().is_empty() {
         if let Ok(dir) = resolve_save_dir(&settings) {
-            let _ = save_text_in(&dir, &text);
+            let _ = save_document(
+                &dir,
+                &text,
+                &settings.output_format,
+                &DocMeta {
+                    kind: "transcript",
+                    style: None,
+                },
+            );
         }
     }
     let _ = app.emit("status", "");
@@ -440,8 +509,17 @@ async fn refine_text(
             custom_instruction,
         )?;
         // 整形結果（ジャーナルの成果物）は常に保存先へ書き出す。
-        if let Ok(dir) = resolve_save_dir(&current_settings(&app)) {
-            let _ = save_text_in(&dir, &refined);
+        let settings = current_settings(&app);
+        if let Ok(dir) = resolve_save_dir(&settings) {
+            let _ = save_document(
+                &dir,
+                &refined,
+                &settings.output_format,
+                &DocMeta {
+                    kind: "refined",
+                    style: Some(&style),
+                },
+            );
         }
         Ok::<String, String>(refined)
     })
@@ -576,14 +654,57 @@ mod tests {
     use super::*;
 
     #[test]
-    fn note_filename_has_prefix_and_extension() {
-        assert_eq!(note_filename("20260616-120000"), "note-20260616-120000.txt");
+    fn doc_extension_maps_md_else_txt() {
+        assert_eq!(doc_extension("md"), "md");
+        assert_eq!(doc_extension("MD"), "md");
+        assert_eq!(doc_extension("txt"), "txt");
+        assert_eq!(doc_extension(""), "txt");
+        assert_eq!(doc_extension("zzz"), "txt");
     }
 
     #[test]
-    fn note_filename_uses_given_timestamp() {
-        assert!(note_filename("abc").starts_with("note-"));
-        assert!(note_filename("abc").ends_with(".txt"));
+    fn build_document_txt_is_content_only() {
+        let meta = DocMeta {
+            kind: "refined",
+            style: Some("構造化"),
+        };
+        // txt は本文そのまま(フロントマター無し・後方互換)。
+        assert_eq!(build_document("本文", "txt", "2026-06-27T12:00:00", &meta), "本文");
+    }
+
+    #[test]
+    fn build_document_md_refined_has_frontmatter_with_style() {
+        let meta = DocMeta {
+            kind: "refined",
+            style: Some("構造化"),
+        };
+        let out = build_document("本文ABC", "md", "2026-06-27T12:00:00", &meta);
+        assert!(out.starts_with("---\n"), "先頭はYAMLフロントマター");
+        assert!(out.contains("created: \"2026-06-27T12:00:00\""));
+        assert!(out.contains("type: \"refined\""));
+        assert!(out.contains("style: \"構造化\""));
+        assert!(out.contains("\n---\n\n本文ABC"), "本文が後続する");
+    }
+
+    #[test]
+    fn build_document_md_transcript_omits_style() {
+        // style 無し(transcript)では style 行を出さない(三角測量)。
+        let meta = DocMeta {
+            kind: "transcript",
+            style: None,
+        };
+        let out = build_document("x", "md", "2026-06-27T12:00:00", &meta);
+        assert!(out.contains("type: \"transcript\""));
+        assert!(!out.contains("style:"), "style 行は無い");
+    }
+
+    #[test]
+    fn yaml_scalar_is_single_line_and_quoted() {
+        // 改行はスペース化、二重引用符は単引用符化し、ダブルクォートで囲む(YAML安全)。
+        let s = yaml_scalar("行1\n行2: \"値\"");
+        assert!(!s.contains('\n'));
+        assert!(s.starts_with('"') && s.ends_with('"'));
+        assert!(s.contains("行1 行2"));
     }
 
     #[test]
@@ -624,18 +745,38 @@ mod tests {
     }
 
     #[test]
-    fn save_text_in_does_not_overwrite_existing() {
-        // 一時ディレクトリで衝突時の非破壊保存(R5)を結合検証。
+    fn save_document_does_not_overwrite_existing() {
+        // 一時ディレクトリで衝突時の非破壊保存(S4.1 R5)を結合検証。
+        let meta = DocMeta {
+            kind: "note",
+            style: None,
+        };
         let mut dir = std::env::temp_dir();
         dir.push(format!("qs-vault-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let p1 = save_text_in(&dir, "first").unwrap();
-        let p2 = save_text_in(&dir, "second").unwrap();
+        let p1 = save_document(&dir, "first", "txt", &meta).unwrap();
+        let p2 = save_document(&dir, "second", "txt", &meta).unwrap();
         // 同一秒なら別名、別秒でも両方残ることを保証（どちらでもファイルは2つ）。
         assert_ne!(p1, p2);
         let count = std::fs::read_dir(&dir).unwrap().count();
         assert_eq!(count, 2, "既存エントリが上書きされず2件残る");
         assert_eq!(std::fs::read_to_string(&p1).unwrap(), "first");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_document_md_writes_md_extension_with_frontmatter() {
+        let meta = DocMeta {
+            kind: "refined",
+            style: Some("要約"),
+        };
+        let mut dir = std::env::temp_dir();
+        dir.push(format!("qs-vault-md-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let p = save_document(&dir, "本文", "md", &meta).unwrap();
+        assert!(p.ends_with(".md"), "md 拡張子で保存される");
+        let body = std::fs::read_to_string(&p).unwrap();
+        assert!(body.starts_with("---\n") && body.contains("type: \"refined\""));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
