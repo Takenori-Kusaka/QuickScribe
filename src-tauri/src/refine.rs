@@ -67,9 +67,9 @@ impl RefineStyle {
          タグの外には前置き・挨拶・後書き・補足説明を一切書かないでください。"
     }
 
-    /// スタイル別のユーザープロンプトを組み立てる(純粋関数・テスト対象)。
-    fn user_prompt(&self, transcript: &str) -> String {
-        let instruction = match self {
+    /// スタイル別の指示ブロック(箇条書き)。カスタムパターンはここだけを差し替える。
+    fn instruction(&self) -> &'static str {
+        match self {
             RefineStyle::Structured => "\
                 - 要点を見出しと箇条書きで構造化する\n\
                 - 言い淀みや繰り返しは整理しつつ、本人のニュアンス・迷い・語り口は残す\n\
@@ -86,14 +86,25 @@ impl RefineStyle {
                 - 内容から派生する問い・観点・次の一歩をブレスト的に列挙して思考を広げる\n\
                 - 本人が気づいていない切り口や深掘りポイントを提案する\n\
                 - 元の発話の要点も簡潔に添える",
-        };
-        format!(
-            "以下は音声の文字起こしです。話者本人の思考整理を助けてください。\n\
-             {instruction}\n\
-             - 事実を捏造せず、書かれていないことは足さない\n\n\
-             ---\n{transcript}"
-        )
+        }
     }
+
+    /// スタイル別のユーザープロンプトを組み立てる(純粋関数・テスト対象)。
+    fn user_prompt(&self, transcript: &str) -> String {
+        build_user_prompt(self.instruction(), transcript)
+    }
+}
+
+/// 指示ブロックと本文からユーザープロンプトを組み立てる(純粋関数)。
+/// 共通の不変条件(捏造禁止・本人の思考整理補助)は指示の中身に関わらず常に付与する。
+/// → カスタムパターンでも「事実を捏造しない」等のコア規律が外れない。
+fn build_user_prompt(instruction: &str, transcript: &str) -> String {
+    format!(
+        "以下は音声の文字起こしです。話者本人の思考整理を助けてください。\n\
+         {instruction}\n\
+         - 事実を捏造せず、書かれていないことは足さない\n\n\
+         ---\n{transcript}"
+    )
 }
 
 /// 整形リクエスト(スタイル・鍵・モデル・本文)。FormattingEngine に渡す。
@@ -104,6 +115,24 @@ pub struct RefineRequest<'a> {
     pub transcript: &'a str,
     /// AWSプロバイダのときのみ Some(region/workspace_id/認証)。それ以外は None。
     pub aws: Option<&'a AwsConfig>,
+    /// ユーザー定義のカスタム整形指示(S3.3)。Some かつ非空なら style の指示の代わりに使う。
+    /// システム指示(捏造禁止・<journal>タグ境界)は共通で不変＝カスタムでも品質ガードが効く。
+    pub custom_instruction: Option<&'a str>,
+}
+
+impl RefineRequest<'_> {
+    /// 全リクエスト共通のシステム指示(カスタムでも不変)。
+    fn system_prompt(&self) -> &'static str {
+        self.style.system_prompt()
+    }
+
+    /// ユーザープロンプト。カスタム指示があればそれを、無ければスタイル既定の指示を使う。
+    fn user_prompt(&self) -> String {
+        match self.custom_instruction {
+            Some(instr) if !instr.trim().is_empty() => build_user_prompt(instr, self.transcript),
+            _ => self.style.user_prompt(self.transcript),
+        }
+    }
 }
 
 /// 整形エンジンの抽象(S3.1: プロバイダ/戦略を差し替え可能にする DIP 境界)。
@@ -136,6 +165,7 @@ fn ollama_base() -> String {
 }
 
 /// 整形のエントリポイント。プロバイダとスタイルを解決して整形する。
+#[allow(clippy::too_many_arguments)]
 pub fn refine(
     provider: &str,
     api_key: &str,
@@ -143,6 +173,7 @@ pub fn refine(
     style: &str,
     transcript: &str,
     aws: Option<AwsConfig>,
+    custom_instruction: Option<String>,
 ) -> Result<String, String> {
     let req = RefineRequest {
         style: RefineStyle::parse(style),
@@ -150,6 +181,7 @@ pub fn refine(
         model,
         transcript,
         aws: aws.as_ref(),
+        custom_instruction: custom_instruction.as_deref(),
     };
     engine_for(provider).refine(&req)
 }
@@ -242,8 +274,8 @@ impl FormattingEngine for GeminiEngine {
         // Gemini はシステムロールを使わないため、システム指示をユーザーテキストに前置する。
         let text = format!(
             "{}\n\n{}",
-            req.style.system_prompt(),
-            req.style.user_prompt(req.transcript)
+            req.system_prompt(),
+            req.user_prompt()
         );
         let body = json!({ "contents": [{ "parts": [{ "text": text }] }] });
 
@@ -285,9 +317,9 @@ impl FormattingEngine for AnthropicEngine {
         let body = json!({
             "model": req.model,
             "max_tokens": 4096,
-            "system": req.style.system_prompt(),
+            "system": req.system_prompt(),
             "messages": [
-                { "role": "user", "content": req.style.user_prompt(req.transcript) }
+                { "role": "user", "content": req.user_prompt() }
             ]
         });
 
@@ -328,8 +360,8 @@ impl FormattingEngine for OpenAiEngine {
         let body = json!({
             "model": req.model,
             "messages": [
-                { "role": "system", "content": req.style.system_prompt() },
-                { "role": "user", "content": req.style.user_prompt(req.transcript) }
+                { "role": "system", "content": req.system_prompt() },
+                { "role": "user", "content": req.user_prompt() }
             ]
         });
 
@@ -369,8 +401,8 @@ impl FormattingEngine for OllamaEngine {
             "model": model,
             "stream": false,
             "messages": [
-                { "role": "system", "content": req.style.system_prompt() },
-                { "role": "user", "content": req.style.user_prompt(req.transcript) }
+                { "role": "system", "content": req.system_prompt() },
+                { "role": "user", "content": req.user_prompt() }
             ]
         });
 
@@ -467,9 +499,9 @@ impl FormattingEngine for BedrockEngine {
         let body = json!({
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": 4096,
-            "system": req.style.system_prompt(),
+            "system": req.system_prompt(),
             "messages": [
-                { "role": "user", "content": req.style.user_prompt(req.transcript) }
+                { "role": "user", "content": req.user_prompt() }
             ]
         });
         let body_bytes = serde_json::to_vec(&body).map_err(|e| e.to_string())?;
@@ -508,9 +540,9 @@ impl FormattingEngine for ClaudePlatformAwsEngine {
         let body = json!({
             "model": req.model,
             "max_tokens": 4096,
-            "system": req.style.system_prompt(),
+            "system": req.system_prompt(),
             "messages": [
-                { "role": "user", "content": req.style.user_prompt(req.transcript) }
+                { "role": "user", "content": req.user_prompt() }
             ]
         });
         let body_bytes = serde_json::to_vec(&body).map_err(|e| e.to_string())?;
@@ -744,6 +776,44 @@ mod tests {
         assert!(RefineStyle::Verbatim.user_prompt("x").contains("逐語"));
         assert!(RefineStyle::Summary.user_prompt("x").contains("要約"));
         assert!(RefineStyle::Brainstorm.user_prompt("x").contains("ブレスト"));
+    }
+
+    fn req_with<'a>(custom: Option<&'a str>, transcript: &'a str) -> RefineRequest<'a> {
+        RefineRequest {
+            style: RefineStyle::Structured,
+            api_key: "",
+            model: "",
+            transcript,
+            aws: None,
+            custom_instruction: custom,
+        }
+    }
+
+    #[test]
+    fn custom_instruction_overrides_style_but_keeps_core_rules() {
+        // カスタム指示は本文に反映され、かつ「捏造禁止」等のコア規律は外れない(S3.3)。
+        let p = req_with(Some("- 箇条書きせず一段落で書く"), "本文ABC").user_prompt();
+        assert!(p.contains("- 箇条書きせず一段落で書く"), "カスタム指示を含む");
+        assert!(p.contains("本文ABC"), "本文を含む");
+        assert!(p.contains("捏造"), "コア規律(捏造禁止)は不変");
+        // 既定スタイル(Structured)の指示語には引きずられない。
+        assert!(!p.contains("ひとことまとめ"), "既定指示は使われない");
+    }
+
+    #[test]
+    fn empty_custom_instruction_falls_back_to_style() {
+        // 空白のみのカスタムは未指定扱い → スタイル既定の指示を使う。
+        let p = req_with(Some("   "), "x").user_prompt();
+        assert!(p.contains("見出し"), "空カスタムは既定(Structured)へフォールバック");
+        let p_none = req_with(None, "x").user_prompt();
+        assert!(p_none.contains("見出し"));
+    }
+
+    #[test]
+    fn custom_system_prompt_is_unchanged() {
+        // システム指示(journalタグ境界・捏造禁止)はカスタムでも共通で不変。
+        let p = req_with(Some("好きに書いて"), "x");
+        assert!(p.system_prompt().contains("<journal>"));
     }
 
     #[test]

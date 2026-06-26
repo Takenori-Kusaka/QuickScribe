@@ -222,10 +222,52 @@
     { value: "summary", label: "要約", desc: "全体を短く要約し、重要な要点を3〜5個に絞ります。" },
     { value: "brainstorm", label: "ブレスト", desc: "内容から問い・観点・次の一歩を広げ、発想を促します。" },
   ];
+  // ユーザー定義のカスタム整形パターン（S3.3）。value は "custom:<id>"。
+  // instruction は LLM へ渡す指示ブロック（捏造禁止・journalタグ境界はバックエンド共通で不変）。
+  type CustomStyle = { id: string; label: string; instruction: string };
+  let customStyles = $state<CustomStyle[]>([]);
+  // 組み込み＋カスタムを1つの選択肢リストに統合（チップ・設定ドロップダウン・解説で共用）。
+  const allStyles = $derived([
+    ...REFINE_STYLES,
+    ...customStyles.map((c) => ({
+      value: `custom:${c.id}`,
+      label: c.label || "カスタム",
+      desc: c.instruction.trim() || "ユーザー定義の整形指示。",
+    })),
+  ]);
   // 現在選択中のスタイル(処理画面の表示・解説に使う)。未知値は既定にフォールバック。
   const currentStyle = $derived(
-    REFINE_STYLES.find((s) => s.value === refineStyle) ?? REFINE_STYLES[0],
+    allStyles.find((s) => s.value === refineStyle) ?? allStyles[0],
   );
+
+  // カスタムパターンの編集フォーム状態（新規追加）。
+  let newCustomLabel = $state<string>("");
+  let newCustomInstruction = $state<string>("");
+  function addCustomStyle() {
+    const label = newCustomLabel.trim();
+    const instruction = newCustomInstruction.trim();
+    if (!label || !instruction) {
+      error = "カスタムパターンには名前と指示の両方が必要です。";
+      return;
+    }
+    const id =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID().slice(0, 8)
+        : String(Date.now());
+    customStyles = [...customStyles, { id, label, instruction }];
+    newCustomLabel = "";
+    newCustomInstruction = "";
+    persistCustomStyles();
+  }
+  function removeCustomStyle(id: string) {
+    customStyles = customStyles.filter((c) => c.id !== id);
+    // 削除したパターンを選択中なら既定へ戻す。
+    if (refineStyle === `custom:${id}`) refineStyle = "structured";
+    persistCustomStyles();
+  }
+  function persistCustomStyles() {
+    localStorage.setItem("customStyles", JSON.stringify(customStyles));
+  }
 
   function loadSettings() {
     provider = (localStorage.getItem("provider") as Provider) || "gemini";
@@ -244,6 +286,11 @@
     audioFormat = localStorage.getItem("audioFormat") || "opus";
     saveDir = localStorage.getItem("saveDir") || "";
     refineStyle = localStorage.getItem("refineStyle") || "structured";
+    try {
+      customStyles = JSON.parse(localStorage.getItem("customStyles") || "[]");
+    } catch {
+      customStyles = [];
+    }
     // AWS設定(秘密でないもの)。region/workspace_id/認証方式/モデルは localStorage。
     awsRegion = localStorage.getItem("awsRegion") || "us-east-1";
     awsWorkspaceId = localStorage.getItem("awsWorkspaceId") || "";
@@ -558,6 +605,12 @@
       model: provider === "bedrock" ? bedrockModel : resolvedModel[provider],
       style: styleOverride ?? refineStyle,
     };
+    // カスタムパターン選択時は指示文をバックエンドへ渡す（style既定指示の代わりに使われる）。
+    const styleVal = (styleOverride ?? refineStyle) as string;
+    if (styleVal.startsWith("custom:")) {
+      const cs = customStyles.find((c) => `custom:${c.id}` === styleVal);
+      base.customInstruction = cs?.instruction ?? null;
+    }
     if (AWS_PROVIDERS.includes(provider)) {
       base.region = awsRegion.trim();
       base.workspaceId = awsWorkspaceId.trim();
@@ -884,7 +937,7 @@
       <!-- 段階的深掘り(S3.5): 結果から別スタイルで整形し直す(再文字起こし不要＝逐語⇄要約⇄ブレストを行き来)。 -->
       <div class="restyle-row">
         <span class="restyle-label">別のスタイルで整形し直す:</span>
-        {#each REFINE_STYLES as s}
+        {#each allStyles as s}
           <button
             type="button"
             class="chip"
@@ -1011,13 +1064,48 @@
       <label>
         整形スタイル（録音後の自動整形にも適用されます）
         <select bind:value={refineStyle}>
-          {#each REFINE_STYLES as s}
+          {#each allStyles as s}
             <option value={s.value} title={s.desc}>{s.label}</option>
           {/each}
         </select>
       </label>
       <!-- 選択中スタイルの解説を常時表示(マウスオーバーに頼らず各モードの違いを示す)。 -->
       <p class="style-desc">{currentStyle.desc}</p>
+
+      <!-- カスタム整形パターン(S3.3): ユーザー定義の指示を追加・管理する。 -->
+      <div class="meta-group">
+        <span class="meta-title">カスタム整形パターン</span>
+        {#if customStyles.length > 0}
+          <ul class="custom-list">
+            {#each customStyles as c}
+              <li class="custom-item">
+                <span class="custom-name">{c.label}</span>
+                <button
+                  type="button"
+                  class="btn small ghost"
+                  onclick={() => removeCustomStyle(c.id)}>削除</button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        <input
+          class="custom-name-input"
+          type="text"
+          bind:value={newCustomLabel}
+          placeholder="パターン名（例: 議事録、日報、感情ラベル付け）" />
+        <textarea
+          class="custom-instruction-input"
+          bind:value={newCustomInstruction}
+          rows="4"
+          placeholder={"AIへの指示を箇条書きで。例:\n- 決定事項とToDoを分けて箇条書きにする\n- 各ToDoに担当と期限の候補を添える"}
+        ></textarea>
+        <button type="button" class="btn small" onclick={addCustomStyle}>
+          カスタムパターンを追加
+        </button>
+        <p class="tip">
+          作成したパターンは整形スタイルの一覧（上の選択と結果画面のチップ）に並びます。捏造禁止・本文だけを出力する基本ルールは自動で守られます。
+        </p>
+      </div>
       <span class="meta-title">録音開始/停止のホットキー</span>
       <div class="hotkey-row">
         <button
@@ -1298,6 +1386,44 @@
     border: 1px solid #d1d5db;
     border-radius: 6px;
     background: #fff;
+  }
+  .custom-list {
+    list-style: none;
+    margin: 0 0 0.5rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .custom-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    background: #fff;
+  }
+  .custom-name {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .custom-name-input,
+  .custom-instruction-input {
+    width: 100%;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #fff;
+    margin-bottom: 0.4rem;
+    box-sizing: border-box;
+    font-family: inherit;
+  }
+  .custom-instruction-input {
+    resize: vertical;
   }
   .hotkey-capture {
     flex: 1;
