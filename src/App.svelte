@@ -213,6 +213,8 @@
   let saveAudio = $state<boolean>(false);
   let audioFormat = $state<string>("opus");
   let saveDir = $state<string>(""); // 空=既定(ドキュメント/QuickScribe)
+  // 出力形式（S4.2）: "txt"=本文のみ / "md"=メタデータ付きMarkdown。既定はtxt（後方互換）。
+  let outputFormat = $state<string>("txt");
   // 整形スタイル(コア価値: 逐語⇄要約⇄ブレストを行き来 / S3.3)。
   // desc は各モードの短い解説(設定のtips・処理画面のツールチップに使う。refine.rs の指示と一致)。
   let refineStyle = $state<string>("structured");
@@ -285,6 +287,7 @@
     saveAudio = localStorage.getItem("saveAudio") === "true";
     audioFormat = localStorage.getItem("audioFormat") || "opus";
     saveDir = localStorage.getItem("saveDir") || "";
+    outputFormat = localStorage.getItem("outputFormat") || "txt";
     refineStyle = localStorage.getItem("refineStyle") || "structured";
     try {
       customStyles = JSON.parse(localStorage.getItem("customStyles") || "[]");
@@ -370,6 +373,7 @@
         saveAudio,
         audioFormat,
         keepText,
+        outputFormat,
       });
     } catch (e) {
       console.error("set_save_settings failed", e);
@@ -400,6 +404,7 @@
     localStorage.setItem("saveAudio", String(saveAudio));
     localStorage.setItem("audioFormat", audioFormat);
     localStorage.setItem("saveDir", saveDir);
+    localStorage.setItem("outputFormat", outputFormat);
     localStorage.setItem("refineStyle", refineStyle);
     // AWS設定(秘密でないもの)のみ localStorage。
     localStorage.setItem("awsRegion", awsRegion);
@@ -1226,6 +1231,16 @@
           <button class="btn small ghost" onclick={pickSaveDir}>変更</button>
           <button class="btn small ghost" onclick={openVault}>保管庫を開く</button>
         </div>
+        <label>
+          出力形式
+          <select bind:value={outputFormat}>
+            <option value="txt">プレーンテキスト（.txt・本文のみ）</option>
+            <option value="md">Markdown（.md・日時/種別などのメタデータ付き）</option>
+          </select>
+        </label>
+        <p class="tip">
+          Markdownは先頭に作成日時・種別（文字起こし/整形）・整形スタイルを付け、後で見返しやすくします。
+        </p>
       </div>
 
       <div class="settings-actions">
