@@ -1,6 +1,6 @@
 # ADR-0016: クラウドSTTプロバイダ（Groq/OpenAI/Deepgram/Azure・段階実装）
 
-- Status: Accepted（Phase A=OpenAI互換(Groq/OpenAI) 実装。Phase B=Deepgram/Azure は後続）
+- Status: Accepted（Phase A=Groq/OpenAI, Phase B=Deepgram/Azure 実装済み。長尺Opus/分割は後続）
 - Date: 2026-06-27
 - Deciders: Takenori Kusaka
 - 関連: [ADR-0002 STT決定], [ADR-0005 BYO], [ADR-0006 スコープ規律], [ADR-0011 AWSプロバイダ(同型のBYO/同期HTTP方針)], [S2.3 TranscriptionEngine抽象](../specs/s2-3-transcription-engine/requirements.md)

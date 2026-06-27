@@ -140,6 +140,7 @@ struct SttSettings {
     provider: String,
     model: String,
     api_key: String,
+    azure_resource: String,
 }
 
 #[derive(Default)]
@@ -163,6 +164,7 @@ fn set_stt_settings(
     provider: String,
     model: String,
     api_key: String,
+    azure_resource: Option<String>,
 ) -> Result<(), String> {
     let mut s = state
         .inner
@@ -171,6 +173,7 @@ fn set_stt_settings(
     s.provider = provider;
     s.model = model;
     s.api_key = api_key;
+    s.azure_resource = azure_resource.unwrap_or_default();
     Ok(())
 }
 
@@ -347,6 +350,7 @@ fn transcribe_blocking(
         provider,
         model: stt.model,
         api_key: stt.api_key,
+        azure_resource: stt.azure_resource,
         model_path,
     });
     let text = engine.transcribe(
