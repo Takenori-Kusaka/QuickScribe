@@ -1033,11 +1033,19 @@
       <h1>QuickScribe</h1>
       <button
         class="gear"
-        title="保管庫（過去のエントリ）"
+        title="保管庫（過去のエントリを一覧・検索・横断発見）"
         aria-label="保管庫"
         onclick={openEntriesPanel}
       >
         📁
+      </button>
+      <button
+        class="gear"
+        title="出力先フォルダを開く（録音・整形の保存先をエクスプローラー等で開きます）"
+        aria-label="出力先フォルダを開く"
+        onclick={openVault}
+      >
+        📂
       </button>
       <button
         class="gear"
