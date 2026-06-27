@@ -1,21 +1,62 @@
 # QuickScribe
 
-思考整理・自己理解のための、ローカル完結ボイスジャーナル。
-話した内容を、ニュアンスを残しつつ賢く成形・要約し、自分の考えを整理する。
+**思考整理・自己理解のための、ローカル完結ボイスジャーナル。**
+話した内容を、ニュアンスを残しつつ賢く整形・要約し、自分の考えを整理する。
+
+[![Release](https://img.shields.io/github/v/release/Takenori-Kusaka/QuickScribe?sort=semver)](https://github.com/Takenori-Kusaka/QuickScribe/releases/latest)
+[![CI](https://github.com/Takenori-Kusaka/QuickScribe/actions/workflows/ci.yml/badge.svg)](https://github.com/Takenori-Kusaka/QuickScribe/actions/workflows/ci.yml)
+[![Downloads](https://img.shields.io/github/downloads/Takenori-Kusaka/QuickScribe/total)](https://github.com/Takenori-Kusaka/QuickScribe/releases)
+[![License: MIT](https://img.shields.io/github/license/Takenori-Kusaka/QuickScribe)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-site-4f46e5)](https://takenori-kusaka.github.io/QuickScribe/)
+[![Code of Conduct](https://img.shields.io/badge/Contributor%20Covenant-2.1-blue)](CODE_OF_CONDUCT.md)
 
 > 企画・設計の背景は [docs/vision.md](docs/vision.md) と [docs/adr/](docs/adr/) を参照。
+> 使い方の詳細・ダウンロードは **[ドキュメントサイト](https://takenori-kusaka.github.io/QuickScribe/)** へ。
 
-## 状態
+<!-- DEMO: 操作デモGIF（録音→文字起こし→整形）を docs/assets/demo.gif として後日追加し、ここに差し込む。 -->
 
-開発初期（Walking Skeleton）。Phase 1 は「トレイ常駐 + ウィンドウ + 録音トグル +
-グローバルホットキー + 指定フォルダ保存」を貫通させる段階。文字起こし(whisper)・
-整形(LLM)・システム音声取り込み・デバイス切替・Stream Deck連携は後続の縦切りで追加する
-（[ADR-0006](docs/adr/0006-scope-completeness-policy.md) によりスコープからは外さない）。
+## QuickScribe とは
+
+声に出した思考を、**端末内で完結**しながら、**ニュアンスを残したまま整形**して、自分の考えを整理するためのボイスジャーナルです。コア価値は「文字起こし精度」そのものではなく、**思考を整理する整形の知性**にあります。
+
+- 🎙 **録音 → 文字起こし → 整形** をワンフローで。物理ボタン（グローバルホットキー）で素早く開始。
+- 🧠 **ニュアンス保持の整形**: 言い淀みや迷いも消し去らず、考えの流れを保ったまま読みやすく整える。用語補正フェーズで誤変換も確認・置換。
+- 🔒 **ローカル完結・プライバシー優先**: 録音とローカル文字起こしは端末内で完結。**音声は既定で外部送信されません。** クラウド連携は明示的オプトインのみ。
+- 🗂 **保管庫**: ジャーナルはプレーンな Markdown / テキストで保存。横断的な振り返り・絞り込みが可能。
+
+## クイックスタート（ダウンロード）
+
+最新版を **[GitHub Releases](https://github.com/Takenori-Kusaka/QuickScribe/releases/latest)** から入手できます。
+
+| OS | ファイル |
+|---|---|
+| Windows (x64) | `QuickScribe_<version>_x64-setup.exe` |
+| Windows (ARM64) | `QuickScribe_<version>_arm64-setup.exe` |
+| Linux (AppImage) | `QuickScribe_<version>_amd64.AppImage` |
+| Linux (deb) | `QuickScribe_<version>_amd64.deb` |
+
+インストール後はアプリ内の自動アップデートで最新版に更新されます（配布物の完全性は Tauri updater 署名で担保）。
+
+> **Windows の SmartScreen 警告**: 現在 Windows バイナリは未署名のため「発行元不明」警告が出る場合があります。「詳細情報」→「実行」で起動できます。コード署名は [SignPath Foundation](https://signpath.org/)（OSS向け無償）での整備を進めています。
+
+詳細は **[ダウンロードページ](https://takenori-kusaka.github.io/QuickScribe/download)** を参照。
+
+## プライバシー
+
+QuickScribe は**プライバシーを中核に設計**されています。
+
+- 録音・ローカル文字起こし（whisper.cpp / kotoba-whisper）・整形前処理はすべて端末内で行われ、**音声は既定で外部へ送信されません**。
+- **解析・トラッキング・テレメトリは行いません**。
+- クラウド文字起こし（Groq/OpenAI/Deepgram/Azure）・AI整形（Gemini/Anthropic/OpenAI/Ollama/AWS）は**明示的にオプトインした場合のみ**、対象データを選択したプロバイダへ送信します。
+- APIキーは **OSのセキュアストレージ**（Credential Manager / Keychain / Secret Service）に保存します。
+
+全文は **[プライバシーポリシー](https://takenori-kusaka.github.io/QuickScribe/privacy)** を参照。
 
 ## 技術スタック
 
 - Tauri 2（Rust）+ Svelte 5（TypeScript）— [ADR-0005](docs/adr/0005-tech-stack.md)
-- 文字起こし: ローカル whisper.cpp 既定（予定）— [ADR-0002](docs/adr/0002-stt-engine-strategy.md)
+- 文字起こし: ローカル whisper.cpp 既定（クラウドエンジンも選択可）— [ADR-0002](docs/adr/0002-stt-engine-strategy.md)
+- 整形: 複数LLMプロバイダ抽象（Gemini/Anthropic/OpenAI/Ollama/Bedrock 等）
 
 ## 開発
 
@@ -27,10 +68,18 @@ npm run icons     # アイコン生成（src-tauri/icons/）
 npm run tauri dev # 開発起動
 ```
 
-## ビルド / リリース
+フロントの検証は `npm run check` / `npm test`。
+
+### ビルド / リリース
 
 - `main` への push / PR で CI がクロスプラットフォーム(win/linux)ビルドを検証。
-- `v*` タグの push で Release ワークフローがインストーラを生成し GitHub Releases へ公開。
+- `v*` タグの push で Release ワークフローがインストーラを生成し GitHub Releases へ公開（version はタグ由来で自動設定）。
+
+## コントリビューション
+
+- 開発フロー・規約は [CONTRIBUTING.md](CONTRIBUTING.md)、行動規範は [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) を参照。
+- 質問・提案は [Discussions](https://github.com/Takenori-Kusaka/QuickScribe/discussions)、不具合は [Issue](https://github.com/Takenori-Kusaka/QuickScribe/issues) へ。
+- セキュリティ上の問題は [SECURITY.md](SECURITY.md) の手順（非公開報告）でお願いします。
 
 ## ライセンス
 
@@ -38,5 +87,5 @@ npm run tauri dev # 開発起動
 
 本アプリは whisper.cpp（MIT）・libopus（BSD-3-Clause）・Tauri（MIT/Apache-2.0）等の
 オープンソースを利用しており、配布物には第三者ライセンスの帰属表記
-（`THIRD-PARTY-NOTICES`）を同梱する。同ファイルは CI で `cargo-about` により
-依存関係から自動生成される。
+（`THIRD-PARTY-NOTICES`）を同梱します。同ファイルは CI で `cargo-about` により
+依存関係から自動生成されます。
