@@ -146,6 +146,56 @@
     }
   }
 
+  // 横断発見（S4.3 Phase2）。絞り込んだ過去エントリ群をAIで読み解く。
+  const DISCOVERY_MAX = 30; // プロンプト肥大を避けるため上限。
+  const DISCOVERY_INSTRUCTION = [
+    "- これは過去の複数のジャーナル（日付付き）です。横断して読み解いてください。",
+    "- 繰り返し現れるテーマ・関心、感情やトーンの変化・傾向、未解決の問い、次の一歩の候補を抽出する",
+    "- 具体的な日付や言葉に触れつつ、本人が気づいていない接続・パターンを丁寧に提示する",
+    "- 決めつけず、本人の言葉とニュアンスを尊重する。事実を捏造しない",
+  ].join("\n");
+  let discovering = $state(false);
+  let discoveryResult = $state<string | null>(null);
+  let discoveryTruncated = $state(false);
+  async function discoverAcross() {
+    const cfgErr = refineConfigError();
+    if (cfgErr) {
+      error = `${cfgErr}設定から入力してください。`;
+      showEntries = false;
+      showSettings = true;
+      return;
+    }
+    const targets = filteredEntries.slice(0, DISCOVERY_MAX);
+    discoveryTruncated = filteredEntries.length > DISCOVERY_MAX;
+    if (targets.length < 2) {
+      error =
+        "横断発見には2件以上のエントリが必要です（タグ/検索で絞ってからお試しください）。";
+      return;
+    }
+    error = null;
+    discovering = true;
+    discoveryResult = null;
+    try {
+      await resolveCurrentModel();
+      const parts: string[] = [];
+      for (const e of targets) {
+        const content = await invoke<string>("read_text_file", { path: e.path });
+        const tagStr = e.tags.map((t) => `#${t}`).join(" ");
+        parts.push(`### ${e.created} ${tagStr}\n${content}`);
+      }
+      const args = refineArgs();
+      args.text = parts.join("\n\n---\n\n");
+      args.customInstruction = DISCOVERY_INSTRUCTION;
+      args.save = false; // 発見結果は一時表示（保管庫を汚さない）。
+      delete args.tags;
+      discoveryResult = await invoke<string>("refine_text", args);
+    } catch (e) {
+      error = `横断発見に失敗しました: ${e}`;
+    } finally {
+      discovering = false;
+    }
+  }
+
   let provider = $state<Provider>("gemini");
   // プロバイダごとに鍵を保持する（切替時に再入力不要）。
   let apiKeys = $state<Record<Provider, string>>({
@@ -1114,7 +1164,15 @@
         <button class="close" aria-label="閉じる" onclick={() => (showEntries = false)}>×</button>
       </div>
 
-      {#if viewingEntry}
+      {#if discoveryResult !== null}
+        <button class="btn small ghost" onclick={() => (discoveryResult = null)}>← 一覧へ戻る</button>
+        <p class="tip">
+          絞り込んだ{Math.min(filteredEntries.length, 30)}件{discoveryTruncated
+            ? `（先頭30件のみ・全${filteredEntries.length}件）`
+            : ""}からの横断発見です。保存はされません（必要ならコピーしてください）。
+        </p>
+        <pre class="entry-view">{discoveryResult}</pre>
+      {:else if viewingEntry}
         <button class="btn small ghost" onclick={() => (viewingEntry = null)}>← 一覧へ戻る</button>
         <pre class="entry-view">{viewingEntry.content}</pre>
       {:else}
@@ -1133,6 +1191,20 @@
                 onclick={() => toggleTagFilter(t)}>#{t}</button>
             {/each}
           </div>
+        {/if}
+        {#if filteredEntries.length >= 2}
+          <button
+            type="button"
+            class="btn small"
+            disabled={discovering}
+            onclick={discoverAcross}>
+            {discovering
+              ? "AIが横断的に読み解いています…"
+              : `✨ この${filteredEntries.length}件から横断発見`}
+          </button>
+          <p class="tip">
+            絞り込んだ過去エントリから、繰り返すテーマ・感情の傾向・未解決の問い・次の一歩をAIが抽出します（整形プロバイダの鍵が必要・最大30件）。
+          </p>
         {/if}
         {#if entriesLoading}
           <p class="muted center"><span class="spinner" aria-hidden="true"></span> 読み込み中…</p>
