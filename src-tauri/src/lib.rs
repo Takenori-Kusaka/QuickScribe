@@ -272,17 +272,18 @@ fn transcribe_blocking(
     let _ = app.emit("status", "文字起こし中…");
     let app_p = app.clone();
     let app_s = app.clone();
-    let text = stt::transcribe_with(
-        &model,
+    // STTエンジンを解決して文字起こし（S2.3: 現状ローカル whisper。S2.4でクラウド追加）。
+    let engine = stt::engine_for("local", model);
+    let text = engine.transcribe(
         audio,
         Some("ja"),
         timestamps,
-        move |pct| {
+        Box::new(move |pct| {
             let _ = app_p.emit("progress", pct);
-        },
-        move |seg| {
+        }),
+        Box::new(move |seg| {
             let _ = app_s.emit("segment", seg);
-        },
+        }),
     )?;
 
     // 文字起こしテキストの保存は設定(keep_text)に従う。空(文字起こし対象なし)は保存しない。
