@@ -562,6 +562,8 @@ async fn refine_text(
     custom_instruction: Option<String>,
     // 内省タグ(S4.3)。保存時にメタデータとして付与する。
     tags: Option<Vec<String>>,
+    // 保存するか(S4.3 Phase2 横断発見など一時的な結果は false で保管庫を汚さない)。既定 true。
+    save: Option<bool>,
     // AWSプロバイダ(Bedrock / Claude Platform on AWS)用 / ADR-0011。非AWS時は未指定(None)。
     region: Option<String>,
     workspace_id: Option<String>,
@@ -604,20 +606,22 @@ async fn refine_text(
             aws_cfg,
             custom_instruction,
         )?;
-        // 整形結果（ジャーナルの成果物）は常に保存先へ書き出す。
+        // 整形結果（ジャーナルの成果物）は保存先へ書き出す（save=false の一時結果は保存しない）。
         let settings = current_settings(&app);
-        if let Ok(dir) = resolve_save_dir(&settings) {
-            let tags = tags.unwrap_or_default();
-            let _ = save_document(
-                &dir,
-                &refined,
-                &settings.output_format,
-                &DocMeta {
-                    kind: "refined",
-                    style: Some(&style),
-                    tags: &tags,
-                },
-            );
+        if save.unwrap_or(true) {
+            if let Ok(dir) = resolve_save_dir(&settings) {
+                let tags = tags.unwrap_or_default();
+                let _ = save_document(
+                    &dir,
+                    &refined,
+                    &settings.output_format,
+                    &DocMeta {
+                        kind: "refined",
+                        style: Some(&style),
+                        tags: &tags,
+                    },
+                );
+            }
         }
         Ok::<String, String>(refined)
     })
