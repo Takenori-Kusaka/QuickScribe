@@ -131,6 +131,47 @@ struct AppSettings {
     inner: std::sync::Mutex<SaveSettings>,
 }
 
+/// 文字起こし(STT)の設定（S2.4）。provider 既定は "local"。クラウド時のみ model/api_key を使う。
+/// 鍵は keyring 由来をフロントが起動時に注入する（メモリ内のみ・永続化しない）。
+#[derive(Clone, Default)]
+struct SttSettings {
+    provider: String,
+    model: String,
+    api_key: String,
+}
+
+#[derive(Default)]
+struct SttState {
+    inner: std::sync::Mutex<SttSettings>,
+}
+
+/// 現在のSTT設定のスナップショットを返す（未設定なら provider="local" 相当）。
+fn current_stt_settings(app: &tauri::AppHandle) -> SttSettings {
+    app.state::<SttState>()
+        .inner
+        .lock()
+        .map(|g| g.clone())
+        .unwrap_or_default()
+}
+
+/// フロントのSTT設定を反映する（S2.4）。クラウド選択時の provider/model/api_key を保持。
+#[tauri::command]
+fn set_stt_settings(
+    state: tauri::State<'_, SttState>,
+    provider: String,
+    model: String,
+    api_key: String,
+) -> Result<(), String> {
+    let mut s = state
+        .inner
+        .lock()
+        .map_err(|_| "STT設定のロックに失敗".to_string())?;
+    s.provider = provider;
+    s.model = model;
+    s.api_key = api_key;
+    Ok(())
+}
+
 /// 現在の保存設定のスナップショットを返す。
 fn current_settings(app: &tauri::AppHandle) -> SaveSettings {
     app.state::<AppSettings>()
@@ -259,21 +300,46 @@ fn transcribe_blocking(
     audio: &[f32],
     timestamps: bool,
 ) -> Result<String, String> {
-    // モデル（初回はダウンロードし進捗を通知）。
-    let app_dl = app.clone();
-    let model = model::ensure_model(move |done, total| {
-        let msg = match total {
-            Some(t) if t > 0 => format!("whisperモデルをダウンロード中… {}%", done * 100 / t),
-            _ => format!("whisperモデルをダウンロード中… {} MB", done / 1_048_576),
-        };
-        let _ = app_dl.emit("status", msg);
-    })?;
+    // STT設定を解決（S2.4）。既定はローカル whisper（プライバシー）。
+    let stt = current_stt_settings(app);
+    let provider = if stt.provider.trim().is_empty() {
+        "local".to_string()
+    } else {
+        stt.provider.clone()
+    };
+    let is_cloud = stt::is_cloud_provider(&provider);
 
-    let _ = app.emit("status", "文字起こし中…");
+    // ローカルのみモデルを用意（クラウドは端末外処理＝モデルDL不要）。
+    let model_path = if is_cloud {
+        std::path::PathBuf::new()
+    } else {
+        let app_dl = app.clone();
+        model::ensure_model(move |done, total| {
+            let msg = match total {
+                Some(t) if t > 0 => format!("whisperモデルをダウンロード中… {}%", done * 100 / t),
+                _ => format!("whisperモデルをダウンロード中… {} MB", done / 1_048_576),
+            };
+            let _ = app_dl.emit("status", msg);
+        })?
+    };
+
+    let _ = app.emit(
+        "status",
+        if is_cloud {
+            "クラウドで文字起こし中…"
+        } else {
+            "文字起こし中…"
+        },
+    );
     let app_p = app.clone();
     let app_s = app.clone();
-    // STTエンジンを解決して文字起こし（S2.3: 現状ローカル whisper。S2.4でクラウド追加）。
-    let engine = stt::engine_for("local", model);
+    // STTエンジンを解決して文字起こし（S2.3抽象 / S2.4でクラウド）。
+    let engine = stt::engine_for(stt::SttConfig {
+        provider,
+        model: stt.model,
+        api_key: stt.api_key,
+        model_path,
+    });
     let text = engine.transcribe(
         audio,
         Some("ja"),
@@ -890,6 +956,7 @@ pub fn run() {
         )
         .manage(record::RecorderState::default())
         .manage(AppSettings::default())
+        .manage(SttState::default())
         .invoke_handler(tauri::generate_handler![
             save_note,
             open_vault,
@@ -902,6 +969,7 @@ pub fn run() {
             read_text_file,
             set_record_shortcut,
             set_save_settings,
+            set_stt_settings,
             set_recording_overlay,
             set_taskbar_shortcut,
             set_taskbar_widget,

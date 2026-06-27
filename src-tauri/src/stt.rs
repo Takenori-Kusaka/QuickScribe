@@ -179,6 +179,125 @@ pub trait TranscriptionEngine {
     ) -> Result<String, String>;
 }
 
+/// 16kHz mono f32 を WAV(PCM16) バイト列へエンコードする（クラウドSTT送信用 / S2.4）。
+/// 全クラウドプロバイダが受け付ける最小形式。16k mono16bit ≈ 1.9MB/分。
+pub fn encode_wav_16k_mono(samples: &[f32]) -> Result<Vec<u8>, String> {
+    use std::io::Cursor;
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: WHISPER_SR,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut cursor = Cursor::new(Vec::<u8>::new());
+    {
+        let mut writer =
+            hound::WavWriter::new(&mut cursor, spec).map_err(|e| format!("WAV生成に失敗: {e}"))?;
+        for &s in samples {
+            let v = (s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
+            writer
+                .write_sample(v)
+                .map_err(|e| format!("WAV書込に失敗: {e}"))?;
+        }
+        writer.finalize().map_err(|e| format!("WAV確定に失敗: {e}"))?;
+    }
+    Ok(cursor.into_inner())
+}
+
+/// multipart/form-data 本文を組み立てる（ureqに組込multipartが無いため最小実装 / S2.4）。
+/// fields=テキスト項目、末尾にファイル項目を1つ付す。戻り値=(Content-Type, body)。
+fn build_multipart(
+    fields: &[(&str, &str)],
+    file_field: &str,
+    filename: &str,
+    file_ct: &str,
+    file_bytes: &[u8],
+) -> (String, Vec<u8>) {
+    let boundary = "----QuickScribeFormBoundary8x2Lq9Zk1Wp0Vn";
+    let mut body = Vec::new();
+    for (k, v) in fields {
+        body.extend_from_slice(
+            format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n")
+                .as_bytes(),
+        );
+    }
+    body.extend_from_slice(
+        format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"{file_field}\"; filename=\"{filename}\"\r\nContent-Type: {file_ct}\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(file_bytes);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    (format!("multipart/form-data; boundary={boundary}"), body)
+}
+
+/// OpenAI互換の文字起こしAPI（Groq / OpenAI / ADR-0016 Phase A）。
+/// `POST {base_url}/audio/transcriptions`・Bearer認証・multipart(file+model)・本文は `.text`。
+/// クラウドは逐次セグメント通知を持たないため進捗は段階的、本文は一括（timestamps は未対応）。
+pub struct OpenAiCompatibleSttEngine {
+    /// 例: https://api.groq.com/openai/v1 / https://api.openai.com/v1
+    pub base_url: String,
+    pub model: String,
+    pub api_key: String,
+}
+
+impl TranscriptionEngine for OpenAiCompatibleSttEngine {
+    fn transcribe(
+        &self,
+        audio: &[f32],
+        lang: Option<&str>,
+        _timestamps: bool,
+        mut on_progress: Box<dyn FnMut(i32) + Send>,
+        mut on_segment: Box<dyn FnMut(String) + Send>,
+    ) -> Result<String, String> {
+        if self.api_key.trim().is_empty() {
+            return Err("クラウドSTTのAPIキーが未設定です（設定から入力してください）".into());
+        }
+        on_progress(5);
+        let wav = encode_wav_16k_mono(audio)?;
+        let url = format!("{}/audio/transcriptions", self.base_url.trim_end_matches('/'));
+        let mut fields: Vec<(&str, &str)> = vec![("model", self.model.as_str())];
+        if let Some(l) = lang {
+            fields.push(("language", l));
+        }
+        fields.push(("response_format", "json"));
+        let (content_type, body) = build_multipart(&fields, "file", "audio.wav", "audio/wav", &wav);
+        on_progress(30);
+        let resp = match ureq::post(&url)
+            .set("Authorization", &format!("Bearer {}", self.api_key))
+            .set("Content-Type", &content_type)
+            .send_bytes(&body)
+        {
+            Ok(r) => r,
+            Err(ureq::Error::Status(code, r)) => {
+                let detail: String = r
+                    .into_string()
+                    .unwrap_or_default()
+                    .chars()
+                    .take(300)
+                    .collect();
+                return Err(format!("クラウドSTTエラー({code}): {detail}"));
+            }
+            Err(e) => return Err(format!("クラウドSTT通信に失敗: {e}")),
+        };
+        let json: serde_json::Value = resp
+            .into_json()
+            .map_err(|e| format!("クラウドSTT応答の解析に失敗: {e}"))?;
+        let text = json
+            .get("text")
+            .and_then(|t| t.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        on_progress(100);
+        if !text.is_empty() {
+            on_segment(text.clone());
+        }
+        Ok(text)
+    }
+}
+
 /// ローカル whisper.cpp 実装（既定エンジン / ADR-0002）。
 pub struct LocalWhisperEngine {
     pub model_path: std::path::PathBuf,
@@ -204,14 +323,53 @@ impl TranscriptionEngine for LocalWhisperEngine {
     }
 }
 
-/// STTプロバイダ名からエンジンを解決する（S2.3）。
-/// 現状はローカルのみ。クラウドSTT(Groq/Deepgram/Azure)は S2.4 でこの分岐に追加する。
-/// 空/未知/"local"/"whisper" はローカル whisper にフォールバック。
-pub fn engine_for(provider: &str, model_path: std::path::PathBuf) -> Box<dyn TranscriptionEngine> {
-    match provider.trim().to_ascii_lowercase().as_str() {
-        // 将来: "groq" | "deepgram" | "azure" => Box::new(CloudEngine{...}),
-        _ => Box::new(LocalWhisperEngine { model_path }),
+/// STT解決の設定（S2.3/S2.4）。provider と鍵/モデル、ローカル用モデルパスを束ねる。
+pub struct SttConfig {
+    /// "local"(既定) / "groq" / "openai"（Deepgram/Azureは Phase B）。
+    pub provider: String,
+    /// クラウドのモデルID（空ならプロバイダ既定）。
+    pub model: String,
+    /// クラウドのAPIキー（ローカルでは未使用）。
+    pub api_key: String,
+    /// ローカル whisper のモデルファイルパス。
+    pub model_path: std::path::PathBuf,
+}
+
+/// STT設定からエンジンを解決する（S2.3抽象 / S2.4でクラウド追加 / ADR-0016）。
+/// 空/未知/"local"/"whisper" はローカル whisper にフォールバック（プライバシー既定）。
+pub fn engine_for(cfg: SttConfig) -> Box<dyn TranscriptionEngine> {
+    let model = |default: &str| {
+        if cfg.model.trim().is_empty() {
+            default.to_string()
+        } else {
+            cfg.model.clone()
+        }
+    };
+    match cfg.provider.trim().to_ascii_lowercase().as_str() {
+        "groq" => Box::new(OpenAiCompatibleSttEngine {
+            base_url: "https://api.groq.com/openai/v1".into(),
+            model: model("whisper-large-v3-turbo"),
+            api_key: cfg.api_key,
+        }),
+        "openai" => Box::new(OpenAiCompatibleSttEngine {
+            base_url: "https://api.openai.com/v1".into(),
+            model: model("gpt-4o-transcribe"),
+            api_key: cfg.api_key,
+        }),
+        _ => Box::new(LocalWhisperEngine {
+            model_path: cfg.model_path,
+        }),
     }
+}
+
+/// プロバイダがクラウド（端末外送信）かを返す。lib側でモデルDL要否やUX分岐に使う。
+/// engine_for が実装済みのものだけを列挙する（未実装はローカルへフォールバックさせる）。
+/// Phase B で Deepgram/Azure を実装したらここに追加する。
+pub fn is_cloud_provider(provider: &str) -> bool {
+    matches!(
+        provider.trim().to_ascii_lowercase().as_str(),
+        "groq" | "openai"
+    )
 }
 
 #[cfg(test)]
@@ -224,13 +382,41 @@ mod tests {
         assert_eq!(resample_linear(&v, 16000, 16000), v);
     }
 
+    fn cfg(provider: &str) -> SttConfig {
+        SttConfig {
+            provider: provider.into(),
+            model: String::new(),
+            api_key: "k".into(),
+            model_path: std::path::PathBuf::from("dummy.bin"),
+        }
+    }
+
     #[test]
     fn engine_for_is_total_and_returns_engine() {
-        // どのプロバイダ名でもパニックせずエンジンを返す(現状は全てローカルへフォールバック)。
-        for p in ["", "local", "whisper", "groq", "unknown"] {
-            let _engine: Box<dyn TranscriptionEngine> =
-                engine_for(p, std::path::PathBuf::from("dummy.bin"));
+        // どのプロバイダ名でもパニックせずエンジンを返す。
+        for p in ["", "local", "whisper", "groq", "openai", "unknown"] {
+            let _engine: Box<dyn TranscriptionEngine> = engine_for(cfg(p));
         }
+    }
+
+    #[test]
+    fn is_cloud_provider_classifies() {
+        assert!(is_cloud_provider("groq"));
+        assert!(is_cloud_provider("openai"));
+        assert!(is_cloud_provider("OpenAI"));
+        assert!(!is_cloud_provider("local"));
+        assert!(!is_cloud_provider(""));
+        // Phase B未実装はローカル扱い(フォールバック)。
+        assert!(!is_cloud_provider("deepgram"));
+    }
+
+    #[test]
+    fn wav_encode_has_riff_header_and_grows_with_samples() {
+        // WAVは "RIFF"/"WAVE" ヘッダを持ち、44byteヘッダ＋PCM16(2byte/sample)。
+        let wav = encode_wav_16k_mono(&[0.0, 0.5, -0.5, 1.0]).unwrap();
+        assert_eq!(&wav[0..4], b"RIFF");
+        assert_eq!(&wav[8..12], b"WAVE");
+        assert_eq!(wav.len(), 44 + 4 * 2, "44byteヘッダ＋4サンプル×2byte");
     }
 
     #[test]

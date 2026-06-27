@@ -230,6 +230,33 @@
     }
     return out;
   }
+  // 文字起こし(STT)プロバイダ（S2.4 / ADR-0016）。既定はローカルwhisper（プライバシー）。
+  // クラウドは音声を端末外へ送信＝明示選択時のみ。鍵はkeyring保管。
+  type SttProvider = "local" | "groq" | "openai";
+  const STT_LABELS: Record<SttProvider, string> = {
+    local: "ローカル (whisper・端末内完結)",
+    groq: "Groq (whisper-large-v3-turbo・高速)",
+    openai: "OpenAI (gpt-4o-transcribe)",
+  };
+  const STT_CLOUD: SttProvider[] = ["groq", "openai"];
+  let sttProvider = $state<SttProvider>("local");
+  let sttModel = $state<string>(""); // 空=プロバイダ既定
+  // クラウドSTTのAPIキー（プロバイダごと）。keyringに "sttKey:<provider>" で保管。
+  let sttKeys = $state<Record<string, string>>({ groq: "", openai: "" });
+  // STT設定をバックエンドへ反映（クラウド時のみ鍵を渡す）。
+  async function syncSttSettings() {
+    try {
+      const isCloud = (STT_CLOUD as string[]).includes(sttProvider);
+      await invoke("set_stt_settings", {
+        provider: sttProvider,
+        model: sttModel,
+        apiKey: isCloud ? (sttKeys[sttProvider] ?? "") : "",
+      });
+    } catch (e) {
+      console.error("set_stt_settings failed", e);
+    }
+  }
+
   // 整形スタイル(コア価値: 逐語⇄要約⇄ブレストを行き来 / S3.3)。
   // desc は各モードの短い解説(設定のtips・処理画面のツールチップに使う。refine.rs の指示と一致)。
   let refineStyle = $state<string>("structured");
@@ -304,6 +331,9 @@
     saveDir = localStorage.getItem("saveDir") || "";
     outputFormat = localStorage.getItem("outputFormat") || "txt";
     refineStyle = localStorage.getItem("refineStyle") || "structured";
+    sttProvider =
+      (localStorage.getItem("sttProvider") as SttProvider) || "local";
+    sttModel = localStorage.getItem("sttModel") || "";
     try {
       customStyles = JSON.parse(localStorage.getItem("customStyles") || "[]");
     } catch {
@@ -372,12 +402,17 @@
     awsAccessKey = await loadSecretMigrating("awsAccessKey", "awsAccessKey");
     awsSecretKey = await loadSecretMigrating("awsSecretKey", "awsSecretKey");
     awsSessionToken = await loadSecretMigrating("awsSessionToken", "awsSessionToken");
+    // クラウドSTTのAPIキー（S2.4）。
+    for (const p of STT_CLOUD) sttKeys[p] = await getSecret(`sttKey:${p}`);
+    // 鍵を読み込んだらSTT設定をバックエンドへ反映（クラウド選択時に有効化）。
+    void syncSttSettings();
   }
   async function saveSecrets() {
     for (const p of ALL_PROVIDERS) await setSecret(`apiKey:${p}`, apiKeys[p]);
     await setSecret("awsAccessKey", awsAccessKey);
     await setSecret("awsSecretKey", awsSecretKey);
     await setSecret("awsSessionToken", awsSessionToken);
+    for (const p of STT_CLOUD) await setSecret(`sttKey:${p}`, sttKeys[p] ?? "");
   }
 
   // 保存設定をバックエンドへ反映する（保存系コマンドが参照）。
@@ -421,6 +456,8 @@
     localStorage.setItem("saveDir", saveDir);
     localStorage.setItem("outputFormat", outputFormat);
     localStorage.setItem("refineStyle", refineStyle);
+    localStorage.setItem("sttProvider", sttProvider);
+    localStorage.setItem("sttModel", sttModel);
     // AWS設定(秘密でないもの)のみ localStorage。
     localStorage.setItem("awsRegion", awsRegion);
     localStorage.setItem("awsWorkspaceId", awsWorkspaceId);
@@ -432,6 +469,7 @@
     localStorage.setItem("inputDeviceKind", inputDeviceKind);
     void applyTaskbarWidget();
     void syncSaveSettings();
+    void syncSttSettings();
     showSettings = false;
     // 鍵が入っていれば現在のプロバイダの最新モデルを取得（強制更新）。
     void resolveCurrentModel(true);
@@ -1193,6 +1231,42 @@
       </div>
 
       <div class="meta-group">
+        <span class="meta-title">文字起こしエンジン</span>
+        <div class="device-row">
+          <select bind:value={sttProvider}>
+            {#each Object.keys(STT_LABELS) as p}
+              <option value={p}>{STT_LABELS[p as SttProvider]}</option>
+            {/each}
+          </select>
+        </div>
+        {#if STT_CLOUD.includes(sttProvider)}
+          <label>
+            APIキー（{STT_LABELS[sttProvider]}）
+            <input
+              type="password"
+              bind:value={sttKeys[sttProvider]}
+              placeholder={sttProvider === "groq" ? "gsk_..." : "sk-..."} />
+          </label>
+          <label>
+            モデル（任意・空で既定）
+            <input
+              type="text"
+              bind:value={sttModel}
+              placeholder={sttProvider === "groq"
+                ? "whisper-large-v3-turbo"
+                : "gpt-4o-transcribe"} />
+          </label>
+          <p class="tip warn">
+            ⚠ クラウド文字起こしは<strong>音声を端末外（{sttProvider === "groq" ? "Groq" : "OpenAI"}）へ送信</strong>します。各社は既定でAPI音声を学習利用しないと明言していますが、プライバシー重視なら「ローカル」をお使いください。鍵はこの端末の安全な保管領域に保存されます。
+          </p>
+        {:else}
+          <p class="tip">
+            ローカルの whisper で端末内完結（音声は外部送信されません）。初回はモデルを自動ダウンロードします。
+          </p>
+        {/if}
+      </div>
+
+      <div class="meta-group">
         <span class="meta-title">文字起こしのメタデータ</span>
         <label class="check">
           <input type="checkbox" bind:checked={includeTimestamps} />
@@ -1515,6 +1589,13 @@
     color: #6b7280;
     margin: 0.2rem 0 0;
     line-height: 1.5;
+  }
+  .tip.warn {
+    color: #92400e;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 6px;
+    padding: 0.4rem 0.5rem;
   }
   .dir-row {
     display: flex;
