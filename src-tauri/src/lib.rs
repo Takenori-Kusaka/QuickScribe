@@ -73,12 +73,14 @@ impl Default for SaveSettings {
     }
 }
 
-/// エントリのメタデータ(S4.2 / Markdownフロントマター用)。
+/// エントリのメタデータ(S4.2/S4.3 / Markdownフロントマター用)。
 struct DocMeta<'a> {
     /// 種別: "transcript"(文字起こし) / "refined"(整形) / "note"(任意保存)。
     kind: &'a str,
     /// 整形スタイル(refined のときのみ Some)。
     style: Option<&'a str>,
+    /// 内省タグ(S4.3)。空なら付与しない。
+    tags: &'a [String],
 }
 
 /// 出力形式から拡張子を返す(純粋)。"md" 以外は "txt"。
@@ -99,16 +101,25 @@ fn yaml_scalar(v: &str) -> String {
 }
 
 /// 出力形式に応じてエントリ本文を組み立てる(純粋・テスト対象)。
-/// md は created/type(/style) のYAMLフロントマターを本文の前に付す。
+/// md は created/type(/style/tags) のYAMLフロントマターを本文の前に付す。
+/// txt はタグがあれば末尾に `Tags: a, b` 行を付す(形式に依らずタグを残す / S4.3)。
 fn build_document(content: &str, format: &str, created_iso: &str, meta: &DocMeta) -> String {
     if doc_extension(format) != "md" {
-        return content.to_string();
+        // プレーンテキスト: 本文＋(タグがあれば)末尾にタグ行。
+        if meta.tags.is_empty() {
+            return content.to_string();
+        }
+        return format!("{}\n\nTags: {}", content, meta.tags.join(", "));
     }
     let mut fm = String::from("---\n");
     fm.push_str(&format!("created: {}\n", yaml_scalar(created_iso)));
     fm.push_str(&format!("type: {}\n", yaml_scalar(meta.kind)));
     if let Some(style) = meta.style {
         fm.push_str(&format!("style: {}\n", yaml_scalar(style)));
+    }
+    if !meta.tags.is_empty() {
+        let items: Vec<String> = meta.tags.iter().map(|t| yaml_scalar(t)).collect();
+        fm.push_str(&format!("tags: [{}]\n", items.join(", ")));
     }
     fm.push_str("---\n\n");
     fm.push_str(content);
@@ -218,11 +229,16 @@ fn set_save_settings(
     Ok(())
 }
 
-/// 整形結果など任意テキストを保存先へ書き出す（整形は常に保存）。
+/// 整形結果など任意テキストを保存先へ書き出す（整形は常に保存）。tags は内省タグ(S4.3)。
 #[tauri::command]
-fn save_note(app: tauri::AppHandle, content: String) -> Result<String, String> {
+fn save_note(
+    app: tauri::AppHandle,
+    content: String,
+    tags: Option<Vec<String>>,
+) -> Result<String, String> {
     let settings = current_settings(&app);
     let dir = resolve_save_dir(&settings)?;
+    let tags = tags.unwrap_or_default();
     save_document(
         &dir,
         &content,
@@ -230,6 +246,7 @@ fn save_note(app: tauri::AppHandle, content: String) -> Result<String, String> {
         &DocMeta {
             kind: "note",
             style: None,
+            tags: &tags,
         },
     )
 }
@@ -279,6 +296,7 @@ fn transcribe_blocking(
                 &DocMeta {
                     kind: "transcript",
                     style: None,
+                    tags: &[],
                 },
             );
         }
@@ -466,6 +484,8 @@ async fn refine_text(
     style: String,
     // ユーザー定義のカスタム整形指示(S3.3)。指定時は style の既定指示の代わりに使う。
     custom_instruction: Option<String>,
+    // 内省タグ(S4.3)。保存時にメタデータとして付与する。
+    tags: Option<Vec<String>>,
     // AWSプロバイダ(Bedrock / Claude Platform on AWS)用 / ADR-0011。非AWS時は未指定(None)。
     region: Option<String>,
     workspace_id: Option<String>,
@@ -511,6 +531,7 @@ async fn refine_text(
         // 整形結果（ジャーナルの成果物）は常に保存先へ書き出す。
         let settings = current_settings(&app);
         if let Ok(dir) = resolve_save_dir(&settings) {
+            let tags = tags.unwrap_or_default();
             let _ = save_document(
                 &dir,
                 &refined,
@@ -518,6 +539,7 @@ async fn refine_text(
                 &DocMeta {
                     kind: "refined",
                     style: Some(&style),
+                    tags: &tags,
                 },
             );
         }
@@ -667,6 +689,7 @@ mod tests {
         let meta = DocMeta {
             kind: "refined",
             style: Some("構造化"),
+            tags: &[],
         };
         // txt は本文そのまま(フロントマター無し・後方互換)。
         assert_eq!(build_document("本文", "txt", "2026-06-27T12:00:00", &meta), "本文");
@@ -677,6 +700,7 @@ mod tests {
         let meta = DocMeta {
             kind: "refined",
             style: Some("構造化"),
+            tags: &[],
         };
         let out = build_document("本文ABC", "md", "2026-06-27T12:00:00", &meta);
         assert!(out.starts_with("---\n"), "先頭はYAMLフロントマター");
@@ -692,10 +716,37 @@ mod tests {
         let meta = DocMeta {
             kind: "transcript",
             style: None,
+            tags: &[],
         };
         let out = build_document("x", "md", "2026-06-27T12:00:00", &meta);
         assert!(out.contains("type: \"transcript\""));
         assert!(!out.contains("style:"), "style 行は無い");
+        assert!(!out.contains("tags:"), "tags 行は無い");
+    }
+
+    #[test]
+    fn build_document_md_includes_tags_when_present() {
+        let tags = vec!["仕事".to_string(), "不安".to_string()];
+        let meta = DocMeta {
+            kind: "refined",
+            style: Some("構造化"),
+            tags: &tags,
+        };
+        let out = build_document("本文", "md", "2026-06-27T12:00:00", &meta);
+        assert!(out.contains("tags: [\"仕事\", \"不安\"]"), "frontmatterにtags配列: {out}");
+    }
+
+    #[test]
+    fn build_document_txt_appends_tags_line() {
+        // txt でもタグがあれば末尾に Tags: 行を付す(形式に依らずタグを残す)。
+        let tags = vec!["アイデア".to_string()];
+        let meta = DocMeta {
+            kind: "note",
+            style: None,
+            tags: &tags,
+        };
+        let out = build_document("本文", "txt", "2026-06-27T12:00:00", &meta);
+        assert_eq!(out, "本文\n\nTags: アイデア");
     }
 
     #[test]
@@ -750,6 +801,7 @@ mod tests {
         let meta = DocMeta {
             kind: "note",
             style: None,
+            tags: &[],
         };
         let mut dir = std::env::temp_dir();
         dir.push(format!("qs-vault-test-{}", std::process::id()));
@@ -769,6 +821,7 @@ mod tests {
         let meta = DocMeta {
             kind: "refined",
             style: Some("要約"),
+            tags: &[],
         };
         let mut dir = std::env::temp_dir();
         dir.push(format!("qs-vault-md-{}", std::process::id()));
