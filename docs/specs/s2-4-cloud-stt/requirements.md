@@ -34,7 +34,11 @@ Scenario: Groqで文字起こし (R2,R4)
 - [x] `encode_wav_16k_mono` が RIFF/WAVE ヘッダ＋PCM16 長さ
 - [ ] 実機: 実キーでGroq/OpenAIに送って日本語が返る（CIでは鍵なし＝不可、手動）
 
+## Phase B（実装済み）: Deepgram / Azure
+- Deepgram: `POST v1/listen?model=nova-3&language=ja&smart_format=true&mip_opt_out=true`・`Token`認証・生WAV本文・`results.channels[0].alternatives[0].transcript`。
+- Azure: `transcribe?api-version=2025-10-15`・`Ocp-Apim-Subscription-Key`・multipart(audio＋definition `{"locales":["ja-JP"]}`)・`combinedPhrases[0].text`。リソース名を設定UIで入力。
+- 共通: `read_json_response` でHTTPエラーを状態＋短い詳細にして surface（R6）。
+
 ## 範囲（ADR-0006: 段階）
-- Phase A（本増分）: Groq + OpenAI（OpenAI互換1パス）。
-- Phase B（後続）: Deepgram（生バイト+クエリ）＋Azure（multipart+definition・リージョンhost）。
-- 長尺(>~13分=25MB超)のOpus/分割は後続。
+- Phase A: Groq + OpenAI（OpenAI互換1パス）。Phase B: Deepgram + Azure。**S2.4の主要スコープ完了。**
+- 長尺(>~13分=25MB超 ※Groq/OpenAI)のOpus/分割は後続（Deepgram 2GB/Azure 500MBは余裕）。

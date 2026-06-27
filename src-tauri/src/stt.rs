@@ -298,6 +298,127 @@ impl TranscriptionEngine for OpenAiCompatibleSttEngine {
     }
 }
 
+/// ureqのPOST応答をJSONにし、HTTPエラーは状態と短い詳細でErrにする共通処理。
+fn read_json_response(
+    result: Result<ureq::Response, ureq::Error>,
+) -> Result<serde_json::Value, String> {
+    match result {
+        Ok(r) => r
+            .into_json()
+            .map_err(|e| format!("クラウドSTT応答の解析に失敗: {e}")),
+        Err(ureq::Error::Status(code, r)) => {
+            let detail: String = r.into_string().unwrap_or_default().chars().take(300).collect();
+            Err(format!("クラウドSTTエラー({code}): {detail}"))
+        }
+        Err(e) => Err(format!("クラウドSTT通信に失敗: {e}")),
+    }
+}
+
+/// Deepgram 文字起こし（pre-recorded / ADR-0016 Phase B）。
+/// `POST api.deepgram.com/v1/listen?model=..&language=ja`・`Token`認証・生WAV本文。
+/// 既定でモデル学習に使われないが、防御的に `mip_opt_out=true` を付す。
+/// 本文は `results.channels[0].alternatives[0].transcript`。
+pub struct DeepgramSttEngine {
+    pub model: String,
+    pub api_key: String,
+}
+
+impl TranscriptionEngine for DeepgramSttEngine {
+    fn transcribe(
+        &self,
+        audio: &[f32],
+        lang: Option<&str>,
+        _timestamps: bool,
+        mut on_progress: Box<dyn FnMut(i32) + Send>,
+        mut on_segment: Box<dyn FnMut(String) + Send>,
+    ) -> Result<String, String> {
+        if self.api_key.trim().is_empty() {
+            return Err("クラウドSTTのAPIキーが未設定です（設定から入力してください）".into());
+        }
+        on_progress(5);
+        let wav = encode_wav_16k_mono(audio)?;
+        let lang = lang.unwrap_or("ja");
+        let url = format!(
+            "https://api.deepgram.com/v1/listen?model={}&language={}&smart_format=true&mip_opt_out=true",
+            self.model, lang
+        );
+        on_progress(30);
+        let json = read_json_response(
+            ureq::post(&url)
+                .set("Authorization", &format!("Token {}", self.api_key))
+                .set("Content-Type", "audio/wav")
+                .send_bytes(&wav),
+        )?;
+        let text = json
+            .pointer("/results/channels/0/alternatives/0/transcript")
+            .and_then(|t| t.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        on_progress(100);
+        if !text.is_empty() {
+            on_segment(text.clone());
+        }
+        Ok(text)
+    }
+}
+
+/// Azure AI Speech Fast Transcription（同期 / ADR-0016 Phase B）。
+/// `POST {resource}.cognitiveservices.azure.com/speechtotext/transcriptions:transcribe`・
+/// `Ocp-Apim-Subscription-Key`認証・multipart(audio＋definition JSON)。本文は `combinedPhrases[0].text`。
+pub struct AzureSttEngine {
+    /// リソース名（例: myres → host myres.cognitiveservices.azure.com）。
+    pub resource: String,
+    pub api_key: String,
+    /// BCP-47 ロケール（例: ja-JP）。
+    pub locale: String,
+}
+
+impl TranscriptionEngine for AzureSttEngine {
+    fn transcribe(
+        &self,
+        audio: &[f32],
+        _lang: Option<&str>,
+        _timestamps: bool,
+        mut on_progress: Box<dyn FnMut(i32) + Send>,
+        mut on_segment: Box<dyn FnMut(String) + Send>,
+    ) -> Result<String, String> {
+        if self.api_key.trim().is_empty() {
+            return Err("クラウドSTTのAPIキーが未設定です（設定から入力してください）".into());
+        }
+        if self.resource.trim().is_empty() {
+            return Err("Azureのリソース名が未設定です（設定から入力してください）".into());
+        }
+        on_progress(5);
+        let wav = encode_wav_16k_mono(audio)?;
+        let url = format!(
+            "https://{}.cognitiveservices.azure.com/speechtotext/transcriptions:transcribe?api-version=2025-10-15",
+            self.resource.trim()
+        );
+        let definition = format!("{{\"locales\":[\"{}\"]}}", self.locale);
+        let (content_type, body) =
+            build_multipart(&[("definition", &definition)], "audio", "audio.wav", "audio/wav", &wav);
+        on_progress(30);
+        let json = read_json_response(
+            ureq::post(&url)
+                .set("Ocp-Apim-Subscription-Key", self.api_key.trim())
+                .set("Content-Type", &content_type)
+                .send_bytes(&body),
+        )?;
+        let text = json
+            .pointer("/combinedPhrases/0/text")
+            .and_then(|t| t.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        on_progress(100);
+        if !text.is_empty() {
+            on_segment(text.clone());
+        }
+        Ok(text)
+    }
+}
+
 /// ローカル whisper.cpp 実装（既定エンジン / ADR-0002）。
 pub struct LocalWhisperEngine {
     pub model_path: std::path::PathBuf,
@@ -325,12 +446,14 @@ impl TranscriptionEngine for LocalWhisperEngine {
 
 /// STT解決の設定（S2.3/S2.4）。provider と鍵/モデル、ローカル用モデルパスを束ねる。
 pub struct SttConfig {
-    /// "local"(既定) / "groq" / "openai"（Deepgram/Azureは Phase B）。
+    /// "local"(既定) / "groq" / "openai" / "deepgram" / "azure"。
     pub provider: String,
     /// クラウドのモデルID（空ならプロバイダ既定）。
     pub model: String,
     /// クラウドのAPIキー（ローカルでは未使用）。
     pub api_key: String,
+    /// Azure のリソース名（azure のときのみ使用）。
+    pub azure_resource: String,
     /// ローカル whisper のモデルファイルパス。
     pub model_path: std::path::PathBuf,
 }
@@ -356,6 +479,15 @@ pub fn engine_for(cfg: SttConfig) -> Box<dyn TranscriptionEngine> {
             model: model("gpt-4o-transcribe"),
             api_key: cfg.api_key,
         }),
+        "deepgram" => Box::new(DeepgramSttEngine {
+            model: model("nova-3"),
+            api_key: cfg.api_key,
+        }),
+        "azure" => Box::new(AzureSttEngine {
+            resource: cfg.azure_resource,
+            api_key: cfg.api_key,
+            locale: "ja-JP".into(),
+        }),
         _ => Box::new(LocalWhisperEngine {
             model_path: cfg.model_path,
         }),
@@ -364,11 +496,10 @@ pub fn engine_for(cfg: SttConfig) -> Box<dyn TranscriptionEngine> {
 
 /// プロバイダがクラウド（端末外送信）かを返す。lib側でモデルDL要否やUX分岐に使う。
 /// engine_for が実装済みのものだけを列挙する（未実装はローカルへフォールバックさせる）。
-/// Phase B で Deepgram/Azure を実装したらここに追加する。
 pub fn is_cloud_provider(provider: &str) -> bool {
     matches!(
         provider.trim().to_ascii_lowercase().as_str(),
-        "groq" | "openai"
+        "groq" | "openai" | "deepgram" | "azure"
     )
 }
 
@@ -387,6 +518,7 @@ mod tests {
             provider: provider.into(),
             model: String::new(),
             api_key: "k".into(),
+            azure_resource: "res".into(),
             model_path: std::path::PathBuf::from("dummy.bin"),
         }
     }
@@ -394,7 +526,7 @@ mod tests {
     #[test]
     fn engine_for_is_total_and_returns_engine() {
         // どのプロバイダ名でもパニックせずエンジンを返す。
-        for p in ["", "local", "whisper", "groq", "openai", "unknown"] {
+        for p in ["", "local", "whisper", "groq", "openai", "deepgram", "azure", "unknown"] {
             let _engine: Box<dyn TranscriptionEngine> = engine_for(cfg(p));
         }
     }
@@ -404,10 +536,10 @@ mod tests {
         assert!(is_cloud_provider("groq"));
         assert!(is_cloud_provider("openai"));
         assert!(is_cloud_provider("OpenAI"));
+        assert!(is_cloud_provider("deepgram"));
+        assert!(is_cloud_provider("azure"));
         assert!(!is_cloud_provider("local"));
         assert!(!is_cloud_provider(""));
-        // Phase B未実装はローカル扱い(フォールバック)。
-        assert!(!is_cloud_provider("deepgram"));
     }
 
     #[test]

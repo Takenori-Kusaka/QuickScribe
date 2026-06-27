@@ -346,17 +346,34 @@
   }
   // 文字起こし(STT)プロバイダ（S2.4 / ADR-0016）。既定はローカルwhisper（プライバシー）。
   // クラウドは音声を端末外へ送信＝明示選択時のみ。鍵はkeyring保管。
-  type SttProvider = "local" | "groq" | "openai";
+  type SttProvider = "local" | "groq" | "openai" | "deepgram" | "azure";
   const STT_LABELS: Record<SttProvider, string> = {
     local: "ローカル (whisper・端末内完結)",
-    groq: "Groq (whisper-large-v3-turbo・高速)",
+    groq: "Groq (whisper-large-v3-turbo・高速・安価)",
     openai: "OpenAI (gpt-4o-transcribe)",
+    deepgram: "Deepgram (nova-3)",
+    azure: "Azure AI Speech (fast transcription)",
   };
-  const STT_CLOUD: SttProvider[] = ["groq", "openai"];
+  const STT_CLOUD: SttProvider[] = ["groq", "openai", "deepgram", "azure"];
+  const STT_KEY_PLACEHOLDERS: Record<string, string> = {
+    groq: "gsk_...",
+    openai: "sk-...",
+    deepgram: "Deepgram APIキー",
+    azure: "Azure Speech リソースキー",
+  };
+  const STT_MODEL_PLACEHOLDERS: Record<string, string> = {
+    groq: "whisper-large-v3-turbo",
+    openai: "gpt-4o-transcribe",
+    deepgram: "nova-3",
+    azure: "（不要）",
+  };
   let sttProvider = $state<SttProvider>("local");
   let sttModel = $state<string>(""); // 空=プロバイダ既定
+  let sttAzureResource = $state<string>(""); // Azureのリソース名（azure時のみ）
   // クラウドSTTのAPIキー（プロバイダごと）。keyringに "sttKey:<provider>" で保管。
-  let sttKeys = $state<Record<string, string>>({ groq: "", openai: "" });
+  let sttKeys = $state<Record<string, string>>({
+    groq: "", openai: "", deepgram: "", azure: "",
+  });
   // STT設定をバックエンドへ反映（クラウド時のみ鍵を渡す）。
   async function syncSttSettings() {
     try {
@@ -365,6 +382,7 @@
         provider: sttProvider,
         model: sttModel,
         apiKey: isCloud ? (sttKeys[sttProvider] ?? "") : "",
+        azureResource: sttProvider === "azure" ? sttAzureResource.trim() : "",
       });
     } catch (e) {
       console.error("set_stt_settings failed", e);
@@ -448,6 +466,7 @@
     sttProvider =
       (localStorage.getItem("sttProvider") as SttProvider) || "local";
     sttModel = localStorage.getItem("sttModel") || "";
+    sttAzureResource = localStorage.getItem("sttAzureResource") || "";
     try {
       customStyles = JSON.parse(localStorage.getItem("customStyles") || "[]");
     } catch {
@@ -572,6 +591,7 @@
     localStorage.setItem("refineStyle", refineStyle);
     localStorage.setItem("sttProvider", sttProvider);
     localStorage.setItem("sttModel", sttModel);
+    localStorage.setItem("sttAzureResource", sttAzureResource);
     // AWS設定(秘密でないもの)のみ localStorage。
     localStorage.setItem("awsRegion", awsRegion);
     localStorage.setItem("awsWorkspaceId", awsWorkspaceId);
@@ -1454,19 +1474,28 @@
             <input
               type="password"
               bind:value={sttKeys[sttProvider]}
-              placeholder={sttProvider === "groq" ? "gsk_..." : "sk-..."} />
+              placeholder={STT_KEY_PLACEHOLDERS[sttProvider]} />
           </label>
-          <label>
-            モデル（任意・空で既定）
-            <input
-              type="text"
-              bind:value={sttModel}
-              placeholder={sttProvider === "groq"
-                ? "whisper-large-v3-turbo"
-                : "gpt-4o-transcribe"} />
-          </label>
+          {#if sttProvider === "azure"}
+            <label>
+              Azure リソース名
+              <input
+                type="text"
+                bind:value={sttAzureResource}
+                placeholder="例: myspeechresource（.cognitiveservices.azure.com の前）" />
+            </label>
+          {/if}
+          {#if sttProvider !== "azure"}
+            <label>
+              モデル（任意・空で既定）
+              <input
+                type="text"
+                bind:value={sttModel}
+                placeholder={STT_MODEL_PLACEHOLDERS[sttProvider]} />
+            </label>
+          {/if}
           <p class="tip warn">
-            ⚠ クラウド文字起こしは<strong>音声を端末外（{sttProvider === "groq" ? "Groq" : "OpenAI"}）へ送信</strong>します。各社は既定でAPI音声を学習利用しないと明言していますが、プライバシー重視なら「ローカル」をお使いください。鍵はこの端末の安全な保管領域に保存されます。
+            ⚠ クラウド文字起こしは<strong>音声を端末外（{STT_LABELS[sttProvider]}）へ送信</strong>します。各社は既定でAPI音声を学習利用しないと明言していますが、プライバシー重視なら「ローカル」をお使いください。鍵はこの端末の安全な保管領域に保存されます。
           </p>
         {:else}
           <p class="tip">
