@@ -32,6 +32,10 @@ Scenario: タグ未入力は従来どおり (R5)
 - [x] tags 無しは md/txt とも従来どおり（行を出さない）
 - [x] フロント `parseTags`: 区切り/重複/空/先頭# の正規化（型レベルで担保、目視確認）
 
+## Phase 1（実装済み）: 保管庫エントリの一覧＋タグ/全文絞り込み
+- ヘッダの📁から保管庫パネルを開く。`list_entries` が .txt/.md を解析(frontmatter/Tags行)し created 降順で一覧。
+- 受入: R7 一覧表示 / R8 タグチップで絞り込み(AND) / R9 本文・タグ・名前の全文検索 / R10 クリックで本文閲覧。
+- テスト(vault.rs 純粋): frontmatter解析(quoted/箇条書きtags) / txt末尾Tags / プレーン / preview整形。
+
 ## 範囲外（後続Phase）
-- Phase 1: 保管庫エントリの一覧＋タグ/全文絞り込み。
-- Phase 2: 複数エントリからの横断発見（AI抽出）。
+- Phase 2: 複数エントリからの横断発見（AI抽出＝コア価値の最終形）。
