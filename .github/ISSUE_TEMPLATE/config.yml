@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 質問・アイデア (Discussions)
+    url: https://github.com/Takenori-Kusaka/QuickScribe/discussions
+    about: バグ報告以外の質問・提案・雑談はこちら。
+  - name: 🔒 セキュリティ報告
+    url: https://github.com/Takenori-Kusaka/QuickScribe/security/policy
+    about: 脆弱性は公開Issueではなくセキュリティポリシーに従って報告してください。
+  - name: 📖 ドキュメント
+    url: https://takenori-kusaka.github.io/QuickScribe/
+    about: 使い方・ガイドはドキュメントサイトを参照。
