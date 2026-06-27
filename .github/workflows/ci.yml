@@ -13,6 +13,10 @@ concurrency:
 # cmake_minimum_required < 3.5 を拒否するため、CMake公式の回避策で最低ポリシー版を指定。
 env:
   CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+  # crates.io DLの「HTTP2 framing layer」フレーク対策: HTTP/1.1へ落として多重化を切り、
+  # ネットワーク再試行を増やす(curl 8系のHTTP2バグ回避。CIの間欠失敗を抑止)。
+  CARGO_NET_RETRY: "10"
+  CARGO_HTTP_MULTIPLEXING: "false"
   # whisper(ggml)のCPU移植性は AVX512安全ゲート(後述の objdump zmm チェック)で担保する。
   # env系(SOURCE_DATE_EPOCH/WHISPER_NATIVE)では GGML_NATIVE を倒せないため
   # (docs/research/sources/whisper-cpu-portability.md)、成果物にAVX512が入ったらビルドを失敗させる。
