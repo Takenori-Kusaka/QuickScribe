@@ -11,6 +11,11 @@
   } from "@tauri-apps/plugin-autostart";
   import { onMount } from "svelte";
   import { estimateRemaining, formatRemaining } from "./lib/note";
+  import {
+    parseCorrections,
+    applyCorrections,
+    type Correction,
+  } from "./lib/corrections";
 
   let recording = $state(false);
   let error = $state<string | null>(null);
@@ -887,6 +892,51 @@
     }
   }
 
+  // 用語補正フェーズ（文字起こし→整形の間）。誤変換疑いの語を検出→確認→置換。
+  let checkingTerms = $state(false);
+  let corrections = $state<Correction[] | null>(null); // null=未実行 / []=候補なし。型は ./lib/corrections
+  // 校正専用の指示。整形(思考整理)ではなく誤変換検出だけを行わせ、<journal>内に区切り行で返させる。
+  const CORRECTION_INSTRUCTION = [
+    "（重要）今回は思考整理ではなく「校正」だけを行う。整理・要約・再構成・書き換えは一切しない。",
+    "- 文字起こしの中で、音声認識の誤変換が疑われる語（文脈に合わない固有名詞・専門用語・カタカナ語・同音異義語）を検出する",
+    "- 各候補について、文脈から推定される正しい表記を提案する。確信が低い候補は出さない（多くて15件まで）",
+    "- 出力は <journal> と </journal> の中に、候補を1行ずつ `原文の語 ||| 提案する語 ||| 理由(短く)` の形式で書く。候補が無ければ中身は空にする",
+    "- 本文の整形や書き換えはしない。区切りは半角の ||| を使う",
+  ].join("\n");
+  async function suggestCorrections() {
+    if (!transcript) return;
+    const cfgErr = refineConfigError();
+    if (cfgErr) {
+      showSettings = true;
+      error = `${cfgErr}設定から入力してください。`;
+      return;
+    }
+    error = null;
+    checkingTerms = true;
+    corrections = null;
+    try {
+      await resolveCurrentModel();
+      const args = refineArgs();
+      args.customInstruction = CORRECTION_INSTRUCTION;
+      args.save = false; // 校正候補は保存しない。
+      delete args.tags;
+      const raw = await invoke<string>("refine_text", args);
+      corrections = parseCorrections(raw);
+    } catch (e) {
+      error = `用語チェックに失敗しました: ${e}`;
+    } finally {
+      checkingTerms = false;
+    }
+  }
+  // 選択された候補を文字起こしに適用（全置換）し、確認パネルを閉じる。
+  function applyCorrectionsToTranscript() {
+    if (!corrections || !transcript) return;
+    const { text, applied } = applyCorrections(transcript, corrections);
+    transcript = text;
+    corrections = null;
+    status = applied > 0 ? `用語を${applied}件置換しました` : "";
+  }
+
   // 整形結果をクリップボードへコピー(S3.5・最小操作の利便)。
   let copyMsg = $state<string>("");
   async function copyRefined() {
@@ -1177,12 +1227,55 @@
           <span class="style-indicator" title={currentStyle.desc}>
             整形スタイル: <strong>{currentStyle.label}</strong>
           </span>
+          <button
+            class="btn small ghost"
+            title="誤変換が疑われる用語をAIが検出し、置換を提案します（整形の前に手修正を緩和）"
+            onclick={suggestCorrections}
+            disabled={checkingTerms || refining}>
+            {checkingTerms ? "用語を確認中…" : "✓ 用語チェック"}
+          </button>
           <button class="btn small" onclick={() => refineNow()} disabled={refining}>
             {refining ? "整形中…" : "✨ 整形する"}
           </button>
         </div>
       </div>
       <div class="scroll">{transcript}</div>
+
+      <!-- 用語補正フェーズ: 誤変換疑いの候補を確認→置換（置換しない選択肢付き）。 -->
+      {#if corrections !== null}
+        {#if corrections.length === 0}
+          <p class="tip">誤変換の疑いがある用語は見つかりませんでした。</p>
+        {:else}
+          <div class="corrections">
+            <div class="corrections-head">
+              <span>誤変換の疑い（{corrections.length}件）— 置換する語にチェック、提案は編集可</span>
+              <button
+                type="button"
+                class="btn small ghost"
+                onclick={() => corrections && corrections.forEach((c) => (c.replace = false))}>
+                すべて置換しない
+              </button>
+            </div>
+            <ul class="correction-list">
+              {#each corrections as c}
+                <li class="correction-item">
+                  <label class="correction-check">
+                    <input type="checkbox" bind:checked={c.replace} />
+                    <span class="correction-orig">{c.original}</span>
+                    <span class="correction-arrow">→</span>
+                  </label>
+                  <input class="correction-sugg" type="text" bind:value={c.suggestion} />
+                  {#if c.reason}<span class="correction-reason" title={c.reason}>{c.reason}</span>{/if}
+                </li>
+              {/each}
+            </ul>
+            <div class="corrections-actions">
+              <button class="btn small" onclick={applyCorrectionsToTranscript}>選んだ用語を置換して更新</button>
+              <button class="btn small ghost" onclick={() => (corrections = null)}>閉じる（置換しない）</button>
+            </div>
+          </div>
+        {/if}
+      {/if}
       <!-- 内省タグ(S4.3): 整形・保存時にメタデータとして付与。後から束ねて見返す入口。 -->
       <div class="tags-row">
         <input
@@ -1849,6 +1942,70 @@
     resize: vertical;
   }
   .tags-row {
+    margin-top: 0.5rem;
+  }
+  .corrections {
+    margin-top: 0.6rem;
+    border: 1px solid #fde68a;
+    background: #fffbeb;
+    border-radius: 8px;
+    padding: 0.5rem 0.6rem;
+  }
+  .corrections-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.74rem;
+    color: #92400e;
+    margin-bottom: 0.4rem;
+  }
+  .correction-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .correction-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+  .correction-check {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .correction-orig {
+    text-decoration: line-through;
+    color: #b91c1c;
+  }
+  .correction-arrow {
+    color: #6b7280;
+  }
+  .correction-sugg {
+    flex: 1;
+    min-width: 8rem;
+    padding: 0.3rem 0.45rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #fff;
+    font-family: inherit;
+  }
+  .correction-reason {
+    font-size: 0.7rem;
+    color: #6b7280;
+    max-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .corrections-actions {
+    display: flex;
+    gap: 0.4rem;
     margin-top: 0.5rem;
   }
   .tag-filter {
