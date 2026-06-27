@@ -137,6 +137,16 @@
       return hay.includes(q);
     });
   });
+  // エントリ種別の日本語ラベル（生の文字起こし/整形済み/メモ）。
+  function kindLabel(kind: string): string {
+    return kind === "transcript"
+      ? "文字起こし"
+      : kind === "refined"
+        ? "整形済み"
+        : kind === "note"
+          ? "メモ"
+          : kind;
+  }
   async function openEntry(e: EntrySummary) {
     try {
       const content = await invoke<string>("read_text_file", { path: e.path });
@@ -1031,23 +1041,33 @@
   <header>
     <div class="title-row">
       <h1>QuickScribe</h1>
-      <button
-        class="gear"
-        title="保管庫（過去のエントリ）"
-        aria-label="保管庫"
-        onclick={openEntriesPanel}
-      >
-        📁
-      </button>
-      <button
-        class="gear"
-        data-testid="settings-btn"
-        title="設定"
-        aria-label="設定"
-        onclick={() => (showSettings = !showSettings)}
-      >
-        ⚙
-      </button>
+      <div class="header-actions">
+        <button
+          class="gear"
+          title="保管庫（過去のエントリを一覧・検索・横断発見）"
+          aria-label="保管庫"
+          onclick={openEntriesPanel}
+        >
+          📁
+        </button>
+        <button
+          class="gear"
+          title="出力先フォルダを開く（録音・整形の保存先をエクスプローラー等で開きます）"
+          aria-label="出力先フォルダを開く"
+          onclick={openVault}
+        >
+          📂
+        </button>
+        <button
+          class="gear"
+          data-testid="settings-btn"
+          title="設定"
+          aria-label="設定"
+          onclick={() => (showSettings = !showSettings)}
+        >
+          ⚙
+        </button>
+      </div>
     </div>
     <p class="tagline">思考整理・自己理解のためのボイスジャーナル</p>
   </header>
@@ -1256,7 +1276,7 @@
                 <button type="button" class="entry-item" onclick={() => openEntry(e)}>
                   <div class="entry-meta">
                     <span class="entry-date">{e.created.replace("T", " ")}</span>
-                    {#if e.kind}<span class="entry-kind">{e.kind}</span>{/if}
+                    {#if e.kind}<span class="entry-kind">{kindLabel(e.kind)}</span>{/if}
                   </div>
                   {#if e.tags.length > 0}
                     <div class="entry-tags">{#each e.tags as t}<span class="entry-tag">#{t}</span>{/each}</div>
@@ -1593,14 +1613,14 @@
           <button class="btn small ghost" onclick={openVault}>保管庫を開く</button>
         </div>
         <label>
-          出力形式
+          出力形式（生の文字起こし）
           <select bind:value={outputFormat}>
             <option value="txt">プレーンテキスト（.txt・本文のみ）</option>
             <option value="md">Markdown（.md・日時/種別などのメタデータ付き）</option>
           </select>
         </label>
         <p class="tip">
-          Markdownは先頭に作成日時・種別（文字起こし/整形）・整形スタイルを付け、後で見返しやすくします。
+          生の文字起こしの保存形式です。Markdownは先頭に作成日時・種別・タグを付けます。<strong>整形結果は構造化Markdownのため常に .md で保存</strong>されます。ファイル名も <code>transcript-…</code>（生）/ <code>refined-…</code>（整形）で区別されます。
         </p>
       </div>
 
@@ -1679,15 +1699,21 @@
     font-size: 1.5rem;
     font-weight: 700;
   }
-  .gear {
+  .header-actions {
     position: absolute;
     right: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .gear {
     background: none;
     border: none;
     font-size: 1.2rem;
     cursor: pointer;
     opacity: 0.6;
     line-height: 1;
+    padding: 0.15rem;
   }
   .gear:hover {
     opacity: 1;

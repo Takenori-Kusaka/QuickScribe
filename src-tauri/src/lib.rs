@@ -198,6 +198,16 @@ fn resolve_save_dir(settings: &SaveSettings) -> Result<std::path::PathBuf, Strin
 
 /// タイムスタンプ付きファイル名で dir 配下にエントリを書き出し、パスを返す（S4.1/S4.2）。
 /// 出力形式(txt/md)とメタデータに従って本文を組み立て、同一秒の衝突は一意名にする（非破壊）。
+/// 種別ごとのファイル名プレフィックス（純粋）。生の文字起こしと整形済みを名前で見分けられるようにする。
+/// transcript=生の文字起こし / refined=整形済み / note=その他。
+fn filename_prefix(kind: &str) -> &'static str {
+    match kind {
+        "transcript" => "transcript",
+        "refined" => "refined",
+        _ => "note",
+    }
+}
+
 fn save_document(
     dir: &std::path::Path,
     content: &str,
@@ -210,7 +220,7 @@ fn save_document(
     let created_iso = now.format("%Y-%m-%dT%H:%M:%S").to_string();
     let body = build_document(content, format, &created_iso, meta);
     let ext = doc_extension(format);
-    let stem = format!("note-{ts}");
+    let stem = format!("{}-{ts}", filename_prefix(meta.kind));
     let name = next_unique_name(&stem, ext, |n| dir.join(n).exists());
     let path = dir.join(name);
     std::fs::write(&path, body).map_err(|e| e.to_string())?;
@@ -622,10 +632,12 @@ async fn refine_text(
         if save.unwrap_or(true) {
             if let Ok(dir) = resolve_save_dir(&settings) {
                 let tags = tags.unwrap_or_default();
+                // 整形結果は構造化Markdownのため常に .md で保存（出力形式設定に依らない）。
+                // 生の文字起こし(transcript)は出力形式設定(txt/md)に従う。
                 let _ = save_document(
                     &dir,
                     &refined,
-                    &settings.output_format,
+                    "md",
                     &DocMeta {
                         kind: "refined",
                         style: Some(&style),
@@ -765,6 +777,15 @@ fn delete_secret(key: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn filename_prefix_distinguishes_kinds() {
+        // 生の文字起こしと整形済みをファイル名で見分けられる。
+        assert_eq!(filename_prefix("transcript"), "transcript");
+        assert_eq!(filename_prefix("refined"), "refined");
+        assert_eq!(filename_prefix("note"), "note");
+        assert_eq!(filename_prefix("unknown"), "note");
+    }
 
     #[test]
     fn doc_extension_maps_md_else_txt() {
