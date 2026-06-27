@@ -137,6 +137,20 @@ fn parse_frontmatter(fm: &str) -> (Option<String>, Option<String>, Vec<String>) 
     (created, kind, tags)
 }
 
+/// ファイル名のプレフィックスから種別を推定する（フロントマター欠落時の補完・主にtxt用）。
+/// transcript-/refined-/note- を見分ける。該当なしは空。
+pub fn kind_from_filename(name: &str) -> &'static str {
+    if name.starts_with("transcript-") {
+        "transcript"
+    } else if name.starts_with("refined-") {
+        "refined"
+    } else if name.starts_with("note-") {
+        "note"
+    } else {
+        ""
+    }
+}
+
 /// 本文の冒頭を1行・最大 n 文字でプレビューする（純粋）。
 pub fn preview_of(body: &str, n: usize) -> String {
     let one_line = body.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -173,15 +187,20 @@ pub fn list_entries(dir: &Path) -> Result<Vec<EntrySummary>, String> {
         };
         let parsed = parse_entry(&content);
         let created = parsed.created.unwrap_or_else(|| file_mtime_iso(&path));
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        // フロントマターに type が無ければ(主にtxt)ファイル名から種別を推定。
+        let kind = parsed
+            .kind
+            .unwrap_or_else(|| kind_from_filename(&name).to_string());
         out.push(EntrySummary {
             path: path.to_string_lossy().to_string(),
-            name: path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("")
-                .to_string(),
+            name,
             created,
-            kind: parsed.kind.unwrap_or_default(),
+            kind,
             tags: parsed.tags,
             preview: preview_of(&parsed.body, 140),
         });
@@ -240,6 +259,14 @@ mod tests {
         let p = parse_entry("ただの本文");
         assert!(p.tags.is_empty());
         assert_eq!(p.body, "ただの本文");
+    }
+
+    #[test]
+    fn kind_from_filename_classifies() {
+        assert_eq!(kind_from_filename("transcript-20260627-120000.txt"), "transcript");
+        assert_eq!(kind_from_filename("refined-20260627-120000.md"), "refined");
+        assert_eq!(kind_from_filename("note-x.txt"), "note");
+        assert_eq!(kind_from_filename("foo.txt"), "");
     }
 
     #[test]
