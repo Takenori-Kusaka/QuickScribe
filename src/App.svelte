@@ -215,6 +215,21 @@
   let saveDir = $state<string>(""); // 空=既定(ドキュメント/QuickScribe)
   // 出力形式（S4.2）: "txt"=本文のみ / "md"=メタデータ付きMarkdown。既定はtxt（後方互換）。
   let outputFormat = $state<string>("txt");
+  // 内省タグ（S4.3）。エントリ保存時にメタデータとして付与（カンマ/空白区切りで入力）。
+  let entryTags = $state<string>("");
+  // 入力文字列をタグ配列へ（カンマ/全角カンマ/空白区切り・重複/空除去・先頭#除去）。
+  function parseTags(s: string): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raw of s.split(/[,、\s]+/)) {
+      const t = raw.trim().replace(/^#+/, "");
+      if (t && !seen.has(t)) {
+        seen.add(t);
+        out.push(t);
+      }
+    }
+    return out;
+  }
   // 整形スタイル(コア価値: 逐語⇄要約⇄ブレストを行き来 / S3.3)。
   // desc は各モードの短い解説(設定のtips・処理画面のツールチップに使う。refine.rs の指示と一致)。
   let refineStyle = $state<string>("structured");
@@ -616,6 +631,9 @@
       const cs = customStyles.find((c) => `custom:${c.id}` === styleVal);
       base.customInstruction = cs?.instruction ?? null;
     }
+    // 内省タグ（S4.3）。保存時にメタデータとして付与。
+    const tags = parseTags(entryTags);
+    if (tags.length > 0) base.tags = tags;
     if (AWS_PROVIDERS.includes(provider)) {
       base.region = awsRegion.trim();
       base.workspaceId = awsWorkspaceId.trim();
@@ -929,6 +947,14 @@
         </div>
       </div>
       <div class="scroll">{transcript}</div>
+      <!-- 内省タグ(S4.3): 整形・保存時にメタデータとして付与。後から束ねて見返す入口。 -->
+      <div class="tags-row">
+        <input
+          class="tags-input"
+          type="text"
+          bind:value={entryTags}
+          placeholder="タグ（任意・カンマ区切り 例: 仕事, 不安, アイデア）" />
+      </div>
     </section>
   {/if}
 
@@ -1439,6 +1465,18 @@
   }
   .custom-instruction-input {
     resize: vertical;
+  }
+  .tags-row {
+    margin-top: 0.5rem;
+  }
+  .tags-input {
+    width: 100%;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #fff;
+    box-sizing: border-box;
+    font-family: inherit;
   }
   .hotkey-capture {
     flex: 1;
