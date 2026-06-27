@@ -503,8 +503,29 @@
     taskbarWidget = localStorage.getItem("taskbarWidget") !== "false";
     inputDevice = localStorage.getItem("inputDevice") || "";
     inputDeviceKind = localStorage.getItem("inputDeviceKind") || "input";
+    // 設定スキーマの検証＋版更新（S5.3 / ADR-0017）。破損/旧値は既定へクランプ。
+    validateSettings();
     // 秘密情報(API鍵/AWS鍵)は keyring から非同期で読む(S3.2)。
     void loadSecrets();
+  }
+
+  // 設定スキーマ版（ADR-0017）。形式が将来変わってもクランプ＋移行で壊れないようにする。
+  const SETTINGS_VERSION = 1;
+  // enum的な設定値を検証し、不正なら既定へクランプする（破損耐性）。未知キーは保持（非破壊）。
+  function validateSettings() {
+    if (!(provider in PROVIDER_LABELS)) provider = "gemini";
+    if (!(sttProvider in STT_LABELS)) sttProvider = "local";
+    if (recordMode !== "toggle" && recordMode !== "momentary") recordMode = "toggle";
+    if (outputFormat !== "txt" && outputFormat !== "md") outputFormat = "txt";
+    if (audioFormat !== "opus" && audioFormat !== "wav") audioFormat = "opus";
+    if (awsAuthMode !== "sigv4" && awsAuthMode !== "apikey") awsAuthMode = "sigv4";
+    // 整形スタイルは「組み込み」または「存在するカスタム」以外は既定へ。
+    const styleOk =
+      REFINE_STYLES.some((s) => s.value === refineStyle) ||
+      (refineStyle.startsWith("custom:") &&
+        customStyles.some((c) => `custom:${c.id}` === refineStyle));
+    if (!styleOk) refineStyle = "structured";
+    localStorage.setItem("settingsVersion", String(SETTINGS_VERSION));
   }
 
   // OSセキュアストレージ(keyring)との橋渡し(S3.2)。鍵は localStorage に置かない。

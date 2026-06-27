@@ -102,8 +102,11 @@ fn yaml_scalar(v: &str) -> String {
     format!("\"{}\"", escaped.trim())
 }
 
+/// エントリのスキーマ版（ADR-0017 / S4.4）。md フロントマターに刻む。
+const CURRENT_ENTRY_SCHEMA: u32 = 1;
+
 /// 出力形式に応じてエントリ本文を組み立てる(純粋・テスト対象)。
-/// md は created/type(/style/tags) のYAMLフロントマターを本文の前に付す。
+/// md は schema/created/type(/style/tags) のYAMLフロントマターを本文の前に付す。
 /// txt はタグがあれば末尾に `Tags: a, b` 行を付す(形式に依らずタグを残す / S4.3)。
 fn build_document(content: &str, format: &str, created_iso: &str, meta: &DocMeta) -> String {
     if doc_extension(format) != "md" {
@@ -114,6 +117,8 @@ fn build_document(content: &str, format: &str, created_iso: &str, meta: &DocMeta
         return format!("{}\n\nTags: {}", content, meta.tags.join(", "));
     }
     let mut fm = String::from("---\n");
+    // エントリスキーマ版（S4.4 / ADR-0017）。将来の非破壊移行のための版マーカー。
+    fm.push_str(&format!("schema: {CURRENT_ENTRY_SCHEMA}\n"));
     fm.push_str(&format!("created: {}\n", yaml_scalar(created_iso)));
     fm.push_str(&format!("type: {}\n", yaml_scalar(meta.kind)));
     if let Some(style) = meta.style {
@@ -816,6 +821,7 @@ mod tests {
         };
         let out = build_document("本文ABC", "md", "2026-06-27T12:00:00", &meta);
         assert!(out.starts_with("---\n"), "先頭はYAMLフロントマター");
+        assert!(out.contains("schema: 1"), "スキーマ版マーカーを含む(ADR-0017)");
         assert!(out.contains("created: \"2026-06-27T12:00:00\""));
         assert!(out.contains("type: \"refined\""));
         assert!(out.contains("style: \"構造化\""));
