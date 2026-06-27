@@ -165,6 +165,55 @@ pub fn transcribe(model_path: &Path, audio: &[f32], lang: Option<&str>) -> Resul
     transcribe_with(model_path, audio, lang, false, |_| {}, |_| {})
 }
 
+/// 文字起こしエンジンの抽象（S2.3 / Strategy・DIP 境界）。
+/// ローカル whisper.cpp とクラウドSTT(S2.4)を同一インターフェイスで差し替え可能にする。
+/// 進捗(0-100)と確定セグメントは所有クロージャ(whisperのコールバック制約=Send+'static)で受ける。
+pub trait TranscriptionEngine {
+    fn transcribe(
+        &self,
+        audio: &[f32],
+        lang: Option<&str>,
+        timestamps: bool,
+        on_progress: Box<dyn FnMut(i32) + Send>,
+        on_segment: Box<dyn FnMut(String) + Send>,
+    ) -> Result<String, String>;
+}
+
+/// ローカル whisper.cpp 実装（既定エンジン / ADR-0002）。
+pub struct LocalWhisperEngine {
+    pub model_path: std::path::PathBuf,
+}
+
+impl TranscriptionEngine for LocalWhisperEngine {
+    fn transcribe(
+        &self,
+        audio: &[f32],
+        lang: Option<&str>,
+        timestamps: bool,
+        on_progress: Box<dyn FnMut(i32) + Send>,
+        on_segment: Box<dyn FnMut(String) + Send>,
+    ) -> Result<String, String> {
+        transcribe_with(
+            &self.model_path,
+            audio,
+            lang,
+            timestamps,
+            on_progress,
+            on_segment,
+        )
+    }
+}
+
+/// STTプロバイダ名からエンジンを解決する（S2.3）。
+/// 現状はローカルのみ。クラウドSTT(Groq/Deepgram/Azure)は S2.4 でこの分岐に追加する。
+/// 空/未知/"local"/"whisper" はローカル whisper にフォールバック。
+pub fn engine_for(provider: &str, model_path: std::path::PathBuf) -> Box<dyn TranscriptionEngine> {
+    match provider.trim().to_ascii_lowercase().as_str() {
+        // 将来: "groq" | "deepgram" | "azure" => Box::new(CloudEngine{...}),
+        _ => Box::new(LocalWhisperEngine { model_path }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,6 +222,15 @@ mod tests {
     fn resample_same_rate_is_identity() {
         let v = vec![0.1, 0.2, 0.3];
         assert_eq!(resample_linear(&v, 16000, 16000), v);
+    }
+
+    #[test]
+    fn engine_for_is_total_and_returns_engine() {
+        // どのプロバイダ名でもパニックせずエンジンを返す(現状は全てローカルへフォールバック)。
+        for p in ["", "local", "whisper", "groq", "unknown"] {
+            let _engine: Box<dyn TranscriptionEngine> =
+                engine_for(p, std::path::PathBuf::from("dummy.bin"));
+        }
     }
 
     #[test]
