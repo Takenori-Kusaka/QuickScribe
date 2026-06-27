@@ -368,19 +368,31 @@
     azure: "（不要）",
   };
   let sttProvider = $state<SttProvider>("local");
-  let sttModel = $state<string>(""); // 空=プロバイダ既定
+  let sttModel = $state<string>(""); // クラウドのモデルID（空=プロバイダ既定）
   let sttAzureResource = $state<string>(""); // Azureのリソース名（azure時のみ）
+  // ローカル whisper のモデル選択（S2.2）。クラウドの sttModel とは分離。
+  let whisperModel = $state<string>(""); // 空=既定 base
+  let whisperModels = $state<{ id: string; label: string }[]>([]);
+  async function loadWhisperModels() {
+    try {
+      whisperModels = await invoke<{ id: string; label: string }[]>(
+        "list_whisper_models",
+      );
+    } catch (e) {
+      console.error("list_whisper_models failed", e);
+    }
+  }
   // クラウドSTTのAPIキー（プロバイダごと）。keyringに "sttKey:<provider>" で保管。
   let sttKeys = $state<Record<string, string>>({
     groq: "", openai: "", deepgram: "", azure: "",
   });
-  // STT設定をバックエンドへ反映（クラウド時のみ鍵を渡す）。
+  // STT設定をバックエンドへ反映。ローカルは whisperModel、クラウドは sttModel を model として渡す。
   async function syncSttSettings() {
     try {
       const isCloud = (STT_CLOUD as string[]).includes(sttProvider);
       await invoke("set_stt_settings", {
         provider: sttProvider,
-        model: sttModel,
+        model: isCloud ? sttModel : whisperModel,
         apiKey: isCloud ? (sttKeys[sttProvider] ?? "") : "",
         azureResource: sttProvider === "azure" ? sttAzureResource.trim() : "",
       });
@@ -467,6 +479,7 @@
       (localStorage.getItem("sttProvider") as SttProvider) || "local";
     sttModel = localStorage.getItem("sttModel") || "";
     sttAzureResource = localStorage.getItem("sttAzureResource") || "";
+    whisperModel = localStorage.getItem("whisperModel") || "base";
     try {
       customStyles = JSON.parse(localStorage.getItem("customStyles") || "[]");
     } catch {
@@ -592,6 +605,7 @@
     localStorage.setItem("sttProvider", sttProvider);
     localStorage.setItem("sttModel", sttModel);
     localStorage.setItem("sttAzureResource", sttAzureResource);
+    localStorage.setItem("whisperModel", whisperModel);
     // AWS設定(秘密でないもの)のみ localStorage。
     localStorage.setItem("awsRegion", awsRegion);
     localStorage.setItem("awsWorkspaceId", awsWorkspaceId);
@@ -947,6 +961,7 @@
     void applyTaskbarWidget();
     void loadAutoStart();
     void loadAudioSources();
+    void loadWhisperModels();
     void syncSaveSettings();
     void resolveCurrentModel();
     void checkForUpdate();
@@ -1498,8 +1513,16 @@
             ⚠ クラウド文字起こしは<strong>音声を端末外（{STT_LABELS[sttProvider]}）へ送信</strong>します。各社は既定でAPI音声を学習利用しないと明言していますが、プライバシー重視なら「ローカル」をお使いください。鍵はこの端末の安全な保管領域に保存されます。
           </p>
         {:else}
+          <label>
+            モデル（S2.2）
+            <select bind:value={whisperModel}>
+              {#each whisperModels as m}
+                <option value={m.id}>{m.label}</option>
+              {/each}
+            </select>
+          </label>
           <p class="tip">
-            ローカルの whisper で端末内完結（音声は外部送信されません）。初回はモデルを自動ダウンロードします。
+            ローカルの whisper で端末内完結（音声は外部送信されません）。日本語中心なら <strong>kotoba-whisper</strong> が高精度です。選んだモデルは初回録音時に自動ダウンロードします（大きいモデルは時間がかかります）。
           </p>
         {/if}
       </div>

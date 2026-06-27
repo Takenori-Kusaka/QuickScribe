@@ -326,7 +326,8 @@ fn transcribe_blocking(
         std::path::PathBuf::new()
     } else {
         let app_dl = app.clone();
-        model::ensure_model(move |done, total| {
+        // 選択された whisper モデル（S2.2）。stt.model が空なら既定 base。
+        model::ensure_model_id(&stt.model, move |done, total| {
             let msg = match total {
                 Some(t) if t > 0 => format!("whisperモデルをダウンロード中… {}%", done * 100 / t),
                 _ => format!("whisperモデルをダウンロード中… {} MB", done / 1_048_576),
@@ -407,6 +408,12 @@ async fn transcribe_file(
 #[tauri::command]
 fn list_audio_sources() -> Result<Vec<record::AudioSource>, String> {
     record::list_audio_sources()
+}
+
+/// 選択可能な whisper モデルを列挙する（S2.2 ローカルSTTのモデル選択）。
+#[tauri::command]
+fn list_whisper_models() -> Vec<model::ModelInfo> {
+    model::list_models()
 }
 
 /// マイク録音を開始する（S1.1/S1.2/S1.3）。
@@ -980,6 +987,7 @@ pub fn run() {
             list_entries,
             transcribe_file,
             list_audio_sources,
+            list_whisper_models,
             start_recording,
             stop_recording,
             resolve_model,
