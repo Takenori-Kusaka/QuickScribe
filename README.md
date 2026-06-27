@@ -13,7 +13,9 @@
 > 企画・設計の背景は [docs/vision.md](docs/vision.md) と [docs/adr/](docs/adr/) を参照。
 > 使い方の詳細・ダウンロードは **[ドキュメントサイト](https://takenori-kusaka.github.io/QuickScribe/)** へ。
 
-<!-- DEMO: 操作デモGIF（録音→文字起こし→整形）を docs/assets/demo.gif として後日追加し、ここに差し込む。 -->
+<!-- SCREENSHOT: アプリ画面のスクリーンショットを docs/assets/screenshot.png として追加し、ここに差し込む（GIFは作らない方針）。
+     例: ![QuickScribe スクリーンショット](docs/assets/screenshot.png) -->
+
 
 ## QuickScribe とは
 
