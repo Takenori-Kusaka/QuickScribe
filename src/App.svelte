@@ -82,6 +82,70 @@
   const MODEL_TTL_MS = 24 * 60 * 60 * 1000;
 
   let showSettings = $state(false);
+
+  // 保管庫エントリの横断（S4.3 Phase1）。一覧＋タグ/全文絞り込み＋閲覧。
+  type EntrySummary = {
+    path: string;
+    name: string;
+    created: string;
+    kind: string;
+    tags: string[];
+    preview: string;
+  };
+  let showEntries = $state(false);
+  let entries = $state<EntrySummary[]>([]);
+  let entriesLoading = $state(false);
+  let entrySearch = $state<string>("");
+  let selectedTags = $state<string[]>([]);
+  let viewingEntry = $state<{ name: string; content: string } | null>(null);
+  async function loadEntries() {
+    entriesLoading = true;
+    try {
+      entries = await invoke<EntrySummary[]>("list_entries");
+    } catch (e) {
+      error = `保管庫の読み込みに失敗しました: ${e}`;
+      entries = [];
+    } finally {
+      entriesLoading = false;
+    }
+  }
+  function openEntriesPanel() {
+    showEntries = true;
+    viewingEntry = null;
+    void loadEntries();
+  }
+  function toggleTagFilter(tag: string) {
+    selectedTags = selectedTags.includes(tag)
+      ? selectedTags.filter((t) => t !== tag)
+      : [...selectedTags, tag];
+  }
+  // 全エントリのタグ集合（絞り込みチップ用・出現頻度降順）。
+  const allTags = $derived.by(() => {
+    const count = new Map<string, number>();
+    for (const e of entries)
+      for (const t of e.tags) count.set(t, (count.get(t) ?? 0) + 1);
+    return [...count.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
+  });
+  // 検索語(name/preview/tags)＋選択タグ(AND)で絞り込んだ一覧。
+  const filteredEntries = $derived.by(() => {
+    const q = entrySearch.trim().toLowerCase();
+    return entries.filter((e) => {
+      if (selectedTags.length > 0 && !selectedTags.every((t) => e.tags.includes(t)))
+        return false;
+      if (!q) return true;
+      const hay = `${e.name} ${e.preview} ${e.tags.join(" ")}`.toLowerCase();
+      return hay.includes(q);
+    });
+  });
+  async function openEntry(e: EntrySummary) {
+    try {
+      const content = await invoke<string>("read_text_file", { path: e.path });
+      viewingEntry = { name: e.name, content };
+    } catch (err) {
+      error = `エントリを開けませんでした: ${err}`;
+    }
+  }
+
   let provider = $state<Provider>("gemini");
   // プロバイダごとに鍵を保持する（切替時に再入力不要）。
   let apiKeys = $state<Record<Provider, string>>({
@@ -884,6 +948,14 @@
       <h1>QuickScribe</h1>
       <button
         class="gear"
+        title="保管庫（過去のエントリ）"
+        aria-label="保管庫"
+        onclick={openEntriesPanel}
+      >
+        📁
+      </button>
+      <button
+        class="gear"
         data-testid="settings-btn"
         title="設定"
         aria-label="設定"
@@ -1027,6 +1099,71 @@
   {/if}
   </div>
 </main>
+
+{#if showEntries}
+  <div
+    class="settings-overlay"
+    role="presentation"
+    onclick={(e) => {
+      if (e.target === e.currentTarget) showEntries = false;
+    }}
+  >
+    <aside class="settings vault-panel">
+      <div class="settings-head">
+        <h2>保管庫{viewingEntry ? `：${viewingEntry.name}` : ""}</h2>
+        <button class="close" aria-label="閉じる" onclick={() => (showEntries = false)}>×</button>
+      </div>
+
+      {#if viewingEntry}
+        <button class="btn small ghost" onclick={() => (viewingEntry = null)}>← 一覧へ戻る</button>
+        <pre class="entry-view">{viewingEntry.content}</pre>
+      {:else}
+        <input
+          class="tags-input"
+          type="text"
+          bind:value={entrySearch}
+          placeholder="🔎 本文・タグ・ファイル名で検索" />
+        {#if allTags.length > 0}
+          <div class="tag-filter">
+            {#each allTags as t}
+              <button
+                type="button"
+                class="chip"
+                class:active={selectedTags.includes(t)}
+                onclick={() => toggleTagFilter(t)}>#{t}</button>
+            {/each}
+          </div>
+        {/if}
+        {#if entriesLoading}
+          <p class="muted center"><span class="spinner" aria-hidden="true"></span> 読み込み中…</p>
+        {:else if filteredEntries.length === 0}
+          <p class="tip">
+            {entries.length === 0
+              ? "まだエントリがありません。録音・整形すると保管庫に保存されます。"
+              : "条件に合うエントリがありません。"}
+          </p>
+        {:else}
+          <ul class="entry-list">
+            {#each filteredEntries as e}
+              <li>
+                <button type="button" class="entry-item" onclick={() => openEntry(e)}>
+                  <div class="entry-meta">
+                    <span class="entry-date">{e.created.replace("T", " ")}</span>
+                    {#if e.kind}<span class="entry-kind">{e.kind}</span>{/if}
+                  </div>
+                  {#if e.tags.length > 0}
+                    <div class="entry-tags">{#each e.tags as t}<span class="entry-tag">#{t}</span>{/each}</div>
+                  {/if}
+                  <div class="entry-preview">{e.preview}</div>
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      {/if}
+    </aside>
+  </div>
+{/if}
 
 {#if showSettings}
   <div
@@ -1541,6 +1678,76 @@
     resize: vertical;
   }
   .tags-row {
+    margin-top: 0.5rem;
+  }
+  .tag-filter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin: 0.5rem 0;
+  }
+  .entry-list {
+    list-style: none;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .entry-item {
+    width: 100%;
+    text-align: left;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 0.5rem 0.6rem;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .entry-item:hover {
+    border-color: #c7d2fe;
+    background: #f8faff;
+  }
+  .entry-meta {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    font-size: 0.7rem;
+    color: #6b7280;
+  }
+  .entry-kind {
+    background: #eef2ff;
+    color: #4338ca;
+    border-radius: 4px;
+    padding: 0 0.3rem;
+  }
+  .entry-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin: 0.15rem 0;
+  }
+  .entry-tag {
+    font-size: 0.68rem;
+    color: #2563eb;
+  }
+  .entry-preview {
+    font-size: 0.8rem;
+    color: #374151;
+    line-height: 1.4;
+  }
+  .entry-view {
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 0.6rem;
+    font-family: inherit;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    max-height: 60vh;
+    overflow: auto;
     margin-top: 0.5rem;
   }
   .tags-input {

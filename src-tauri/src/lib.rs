@@ -12,6 +12,8 @@ pub mod model;
 pub mod record;
 pub mod refine;
 pub mod stt;
+// 保管庫エントリの一覧・解析（S4.3 Phase1: アプリ内の横断導線）。
+pub mod vault;
 // Windows タスクバーのサムネイルツールバー/オーバーレイ。Windowsのみ。
 #[cfg(windows)]
 mod taskbar;
@@ -210,6 +212,13 @@ fn save_document(
     let path = dir.join(name);
     std::fs::write(&path, body).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().to_string())
+}
+
+/// 保管庫エントリ(.txt/.md)を一覧する（S4.3 Phase1）。created 降順。
+#[tauri::command]
+fn list_entries(app: tauri::AppHandle) -> Result<Vec<vault::EntrySummary>, String> {
+    let dir = resolve_save_dir(&current_settings(&app))?;
+    vault::list_entries(&dir)
 }
 
 /// 保管庫フォルダを OS のファイルマネージャで開く（S4.1 R6）。無ければ作成してから開く。
@@ -960,6 +969,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             save_note,
             open_vault,
+            list_entries,
             transcribe_file,
             list_audio_sources,
             start_recording,
