@@ -16,6 +16,7 @@
   import { modal } from "./lib/a11y";
   import { displayShortcut, accelFromEvent } from "./lib/shortcut";
   import { kindLabel, parseTags } from "./lib/entry";
+  import { validateRefineConfig } from "./lib/provider-config";
   import {
     type Provider,
     type SttProvider,
@@ -705,22 +706,15 @@
   // 文字起こしを整形（思考整理・要約）する＝コア価値。選択中プロバイダの鍵が必要。
   // プロバイダが整形可能な設定になっているか（鍵/AWS資格情報）。未設定なら理由文を返す。
   function refineConfigError(): string | null {
-    if (LOCAL_PROVIDERS.includes(provider)) return null; // Ollamaは鍵不要
-    if (AWS_PROVIDERS.includes(provider)) {
-      if (!awsRegion.trim()) return "AWSリージョンを設定してください。";
-      if (provider === "claude-aws" && !awsWorkspaceId.trim())
-        return "Claude Platform on AWS には workspace_id が必要です。";
-      if (awsAuthMode === "sigv4") {
-        if (!awsAccessKey.trim() || !awsSecretKey.trim())
-          return "AWSアクセスキー/シークレットを設定してください。";
-      } else if (!apiKeys[provider].trim()) {
-        return `${PROVIDER_LABELS[provider]} のAPIキーが必要です。`;
-      }
-      return null;
-    }
-    return apiKeys[provider].trim()
-      ? null
-      : `整形には ${PROVIDER_LABELS[provider]} のAPIキーが必要です。`;
+    return validateRefineConfig({
+      provider,
+      apiKey: apiKeys[provider],
+      awsRegion,
+      awsWorkspaceId,
+      awsAuthMode,
+      awsAccessKey,
+      awsSecretKey,
+    });
   }
 
   // refine_text に渡す追加引数（AWS時のみ資格情報。非AWSは undefined＝後方互換）。
