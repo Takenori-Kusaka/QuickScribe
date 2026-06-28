@@ -24,3 +24,7 @@ tmp/
 # CI で cargo-about が生成する第三者ライセンス帰属（配布物にのみ同梱・非コミット）
 src-tauri/THIRD-PARTY-NOTICES.txt
 tmp_issues.json
+
+# Playwright（スクショ自動生成）の一時成果物
+test-results/
+playwright-report/

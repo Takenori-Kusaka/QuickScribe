@@ -1,0 +1,44 @@
+name: Screenshots
+
+# README/サイト用スクリーンショットを自動生成して docs/assets を更新する。
+# フロント(Svelte)を Vite で起動し Playwright でヘッドレス描画(Tauri APIはモック)。
+# Rust/cargo/MSVC・マイク不要で ubuntu ランナー完結。
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Install Playwright (Chromium)
+        run: npx playwright install --with-deps chromium
+
+      - name: Generate screenshots
+        run: npm run screenshots
+
+      - name: Commit updated screenshots
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain docs/assets/screenshot-main.png docs/assets/screenshot-vault.png)" ]; then
+            git add docs/assets/screenshot-main.png docs/assets/screenshot-vault.png
+            git commit -m "chore(assets): スクリーンショット自動更新 [skip ci]"
+            git push
+          else
+            echo "No screenshot changes."
+          fi

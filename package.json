@@ -11,6 +11,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
     "e2e": "wdio run e2e/wdio.conf.cjs",
+    "screenshots": "playwright test",
     "icons": "tauri icon assets/brand/icon-source.png",
     "tauri": "tauri"
   },
@@ -23,6 +24,7 @@
     "@tauri-apps/plugin-updater": "^2.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@sveltejs/vite-plugin-svelte": "^4.0.0",
     "@tauri-apps/cli": "^2.1.0",
     "@wdio/cli": "^9.0.0",
