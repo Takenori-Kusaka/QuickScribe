@@ -1,0 +1,14 @@
+{
+  "main": {
+    "tagline": "思考整理・自己理解のためのボイスジャーナル",
+    "record_start": "録音開始",
+    "record_stop": "停止",
+    "from_file": "音声ファイルから文字起こし",
+    "from_memo": "メモ/テキストから整形",
+    "formats_hint": "対応形式: 音声 {exts}（最大 {max}MB）・テキスト txt / md"
+  },
+  "header": {
+    "journal": "ジャーナル",
+    "settings": "設定"
+  }
+}
