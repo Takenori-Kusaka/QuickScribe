@@ -35,7 +35,7 @@
 
 条件付き GO。「技術の新しさ」で売るなら NO-GO（OpenWhispr 等が技術ピースを実装済み、
 Windows 2026 がOS統合予定）。勝機は **用途特化 × 統合体験** にのみ存在する。
-詳細: [competitive research](research/competitive-landscape.md)（作成中・[#399](https://github.com/Takenori-Kusaka/QuickScribe/issues/399)）。
+詳細: [競合ランドスケープ分析](research/competitive-landscape.md)（一次情報・2026-06-28）。
 
 ## 想定スコープ外（現時点）
 
