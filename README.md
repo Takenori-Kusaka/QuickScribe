@@ -61,6 +61,8 @@ QuickScribe は**プライバシーを中核に設計**されています。
 - 文字起こし: ローカル whisper.cpp 既定（クラウドエンジンも選択可）— [ADR-0002](docs/adr/0002-stt-engine-strategy.md)
 - 整形: 複数LLMプロバイダ抽象（Gemini/Anthropic/OpenAI/Ollama/Bedrock 等）
 
+設計の詳細は [docs/design.md](docs/design.md)（アーキテクチャ＋データフロー）、非機能要件は [docs/non-functional-requirements.md](docs/non-functional-requirements.md) を参照。
+
 ## 開発
 
 前提: Node 20+, Rust stable, および各OSのTauri依存（Linuxは webkit2gtk-4.1 等）。
