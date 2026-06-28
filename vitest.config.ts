@@ -15,6 +15,14 @@ export default defineConfig({
       include: ["src/**/*.ts"],
       exclude: ["src/**/*.test.ts", "src/main.ts", "src/vite-env.d.ts", "e2e/**"],
       all: true,
+      // ゲート化（#402）。現状 lib カバレッジは ~81%。回帰を防ぐ下限を設定し、
+      // App.svelte の lib 抽出を進めながら段階的に引き上げる。
+      thresholds: {
+        lines: 75,
+        statements: 75,
+        functions: 85,
+        branches: 85,
+      },
     },
   },
 });
