@@ -815,7 +815,7 @@
     if (!refined) return;
     try {
       await navigator.clipboard.writeText(refined);
-      copyMsg = "コピーしました";
+      copyMsg = $_("results.copied");
       setTimeout(() => (copyMsg = ""), 1500);
     } catch (e) {
       console.error("copy failed", e);
@@ -987,8 +987,8 @@
         <div class="header-actions">
           <button
             class="nav-btn"
-            title="ジャーナル（過去のエントリを一覧・検索・横断発見）"
-            aria-label="ジャーナル"
+            title={$_("header.journal_title")}
+            aria-label={$_("header.journal")}
             onclick={openEntriesPanel}
           >
             <svg
@@ -1009,8 +1009,8 @@
           <button
             class="gear"
             data-testid="settings-btn"
-            title="設定"
-            aria-label="設定"
+            title={$_("header.settings")}
+            aria-label={$_("header.settings")}
             onclick={() => (showSettings = !showSettings)}
           >
             <svg
@@ -1118,12 +1118,12 @@
     {#if transcript}
       <section class="card">
         <div class="card-head">
-          <h2>文字起こし</h2>
+          <h2>{$_("results.transcript")}</h2>
           <div class="refine-controls">
             <!-- スタイルは設定画面で選ぶ。ここでは「どのスタイルで整形するか」の表示のみ
                (マウスオーバーでモードの解説を表示)。 -->
             <span class="style-indicator" title={currentStyle.desc}>
-              整形スタイル: <strong>{currentStyle.label}</strong>
+              {$_("results.style_label")} <strong>{currentStyle.label}</strong>
             </span>
             <button
               class="btn small ghost"
@@ -1131,10 +1131,10 @@
               onclick={suggestCorrections}
               disabled={checkingTerms || refining}
             >
-              {checkingTerms ? "用語を確認中…" : "✓ 用語チェック"}
+              {checkingTerms ? $_("results.term_checking") : $_("results.term_check")}
             </button>
             <button class="btn small" onclick={() => refineNow()} disabled={refining}>
-              {refining ? "整形中…" : "✨ 整形する"}
+              {refining ? $_("results.refining") : $_("results.refine")}
             </button>
           </div>
         </div>
@@ -1202,11 +1202,11 @@
     {/if}
     {#if refined}
       <section class="card refined">
-        <h2>整形（思考整理）</h2>
+        <h2>{$_("results.refined_title")}</h2>
         <div class="scroll">{refined}</div>
         <!-- 段階的深掘り(S3.5): 結果から別スタイルで整形し直す(再文字起こし不要＝逐語⇄要約⇄ブレストを行き来)。 -->
         <div class="restyle-row">
-          <span class="restyle-label">別のスタイルで整形し直す:</span>
+          <span class="restyle-label">{$_("results.restyle_label")}</span>
           {#each allStyles as s}
             <button
               type="button"
@@ -1218,7 +1218,7 @@
             >
           {/each}
           <button type="button" class="chip copy" onclick={copyRefined} disabled={refining}>
-            {copyMsg || "コピー"}
+            {copyMsg || $_("results.copy")}
           </button>
           <button
             type="button"
@@ -1240,7 +1240,7 @@
                 d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"
               />
             </svg>
-            出力先を開く
+            {$_("results.open_output")}
           </button>
         </div>
       </section>
@@ -1270,7 +1270,9 @@
     >
       <div class="settings-head">
         <h2 id="vault-title">ジャーナル{viewingEntry ? `：${viewingEntry.name}` : ""}</h2>
-        <button class="close" aria-label="閉じる" onclick={() => (showEntries = false)}>×</button>
+        <button class="close" aria-label={$_("header.close")} onclick={() => (showEntries = false)}
+          >×</button
+        >
       </div>
 
       {#if discoveryResult !== null}
@@ -1366,7 +1368,9 @@
     >
       <div class="settings-head">
         <h2 id="settings-title">設定</h2>
-        <button class="close" aria-label="閉じる" onclick={() => (showSettings = false)}>×</button>
+        <button class="close" aria-label={$_("header.close")} onclick={() => (showSettings = false)}
+          >×</button
+        >
       </div>
       <label>
         整形プロバイダ
