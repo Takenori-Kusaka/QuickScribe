@@ -12,6 +12,7 @@
   import { onMount } from "svelte";
   import { estimateRemaining, formatRemaining } from "./lib/note";
   import { parseCorrections, applyCorrections, type Correction } from "./lib/corrections";
+  import { errorText } from "./lib/errors";
   import {
     type Provider,
     type SttProvider,
@@ -76,7 +77,7 @@
     try {
       entries = await invoke<EntrySummary[]>("list_entries");
     } catch (e) {
-      error = `ジャーナルの読み込みに失敗しました: ${e}`;
+      error = `ジャーナルの読み込みに失敗しました: ${errorText(e)}`;
       entries = [];
     } finally {
       entriesLoading = false;
@@ -169,7 +170,7 @@
       delete args.tags;
       discoveryResult = await invoke<string>("refine_text", args);
     } catch (e) {
-      error = `横断発見に失敗しました: ${e}`;
+      error = `横断発見に失敗しました: ${errorText(e)}`;
     } finally {
       discovering = false;
     }
@@ -244,7 +245,7 @@
       // OSの実際の登録状態に同期（失敗時のずれを防ぐ）。
       autoStart = await isAutostartEnabled();
     } catch (e) {
-      error = `自動起動の設定に失敗しました: ${e}`;
+      error = `自動起動の設定に失敗しました: ${errorText(e)}`;
       autoStart = await isAutostartEnabled().catch(() => autoStart);
     }
   }
@@ -564,7 +565,7 @@
     try {
       await invoke("open_vault");
     } catch (e) {
-      error = `出力先フォルダを開けませんでした: ${e}`;
+      error = `出力先フォルダを開けませんでした: ${errorText(e)}`;
     }
   }
   function saveSettings() {
@@ -660,7 +661,7 @@
       void invoke("set_taskbar_shortcut", { display: displayShortcut(recordShortcut) });
       shortcutMsg = `ホットキーを設定しました: ${displayShortcut(recordShortcut)}`;
     } catch (e) {
-      shortcutMsg = String(e);
+      shortcutMsg = `ホットキーを設定できませんでした: ${errorText(e)}`;
     }
   }
 
@@ -721,7 +722,7 @@
       updateState = "ready";
     } catch (e) {
       console.error("update check failed", e);
-      updateMsg = manual ? `更新確認に失敗: ${e}` : "";
+      updateMsg = manual ? `更新確認に失敗: ${errorText(e)}` : "";
     }
   }
 
@@ -751,7 +752,7 @@
       });
       transcript = text;
     } catch (e) {
-      error = String(e);
+      error = `文字起こしに失敗しました: ${errorText(e)}`;
     } finally {
       busy = false;
       status = "";
@@ -829,7 +830,7 @@
       refined = await invoke<string>("refine_text", refineArgs(styleOverride));
       refinedStyle = styleOverride ?? refineStyle; // どのスタイルで整形したか(再整形チップの強調用)。
     } catch (e) {
-      error = String(e);
+      error = `整形に失敗しました: ${errorText(e)}`;
     } finally {
       refining = false;
     }
@@ -866,7 +867,7 @@
       const raw = await invoke<string>("refine_text", args);
       corrections = parseCorrections(raw);
     } catch (e) {
-      error = `用語チェックに失敗しました: ${e}`;
+      error = `用語チェックに失敗しました: ${errorText(e)}`;
     } finally {
       checkingTerms = false;
     }
@@ -908,7 +909,7 @@
       segments = [];
       await refineNow();
     } catch (e) {
-      error = String(e);
+      error = `メモの整形に失敗しました: ${errorText(e)}`;
     }
   }
 
@@ -933,7 +934,7 @@
         eta = "";
         transcribeStartMs = null;
       } catch (e) {
-        error = String(e);
+        error = `録音を開始できませんでした: ${errorText(e)}`;
       }
     } else {
       recording = false;
@@ -947,7 +948,7 @@
         await invoke("stop_recording", { timestamps: includeTimestamps });
       } catch (e) {
         transcribing = false;
-        error = String(e);
+        error = `録音の停止に失敗しました: ${errorText(e)}`;
       }
     }
   }
@@ -1680,7 +1681,7 @@
           </p>
         {:else}
           <label>
-            モデル（S2.2）
+            モデル
             <select bind:value={whisperModel}>
               {#each whisperModels as m}
                 <option value={m.id}>{m.label}</option>
