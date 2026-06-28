@@ -91,6 +91,9 @@ npm run tauri dev # 開発起動
 [MIT License](LICENSE)（[ADR-0008](docs/adr/0008-licensing-and-distribution.md)）。
 
 本アプリは whisper.cpp（MIT）・libopus（BSD-3-Clause）・Tauri（MIT/Apache-2.0）等の
-オープンソースを利用しており、配布物には第三者ライセンスの帰属表記
-（`THIRD-PARTY-NOTICES`）を同梱します。同ファイルは CI で `cargo-about` により
-依存関係から自動生成されます。
+オープンソースを利用しています。第三者ライセンスの帰属表記:
+
+- **Rust / ネイティブ依存**: `THIRD-PARTY-NOTICES`（CI で `cargo-about` により自動生成・配布物に同梱）。
+- **フロントエンド（npm）依存**: [THIRD-PARTY-NOTICES-frontend.md](THIRD-PARTY-NOTICES-frontend.md)（`npm run licenses` で生成。CI でドリフト検査）。
+
+いずれも MIT / Apache-2.0 等のパーミッシブライセンス（コピーレフトなし）です。

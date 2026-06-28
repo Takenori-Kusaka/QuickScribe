@@ -37,6 +37,12 @@ export default ts.config(
     },
   },
   {
+    // Node スクリプト（CJS）。
+    files: ["scripts/**/*.cjs"],
+    languageOptions: { globals: { ...globals.node } },
+    rules: { "@typescript-eslint/no-require-imports": "off", "no-undef": "off" },
+  },
+  {
     // WebdriverIO e2e（mocha+wdioグローバル / CJS設定）。
     files: ["e2e/**/*.{js,cjs}"],
     languageOptions: {
