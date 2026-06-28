@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "quickscribe",
+      "changelog-path": "CHANGELOG.md",
+      "include-component-in-tag": false,
+      "draft": false,
+      "prerelease": false
+    }
+  },
+  "changelog-sections": [
+    { "type": "feat", "section": "✨ 新機能 / Features" },
+    { "type": "fix", "section": "🐛 修正 / Bug Fixes" },
+    { "type": "perf", "section": "⚡ パフォーマンス / Performance" },
+    { "type": "refactor", "section": "♻️ リファクタ / Refactor" },
+    { "type": "docs", "section": "📝 ドキュメント / Docs", "hidden": false },
+    { "type": "test", "section": "✅ テスト / Tests", "hidden": true },
+    { "type": "chore", "section": "🔧 雑務 / Chore", "hidden": true },
+    { "type": "ci", "section": "👷 CI", "hidden": true }
+  ]
+}
