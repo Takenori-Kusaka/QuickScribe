@@ -1,6 +1,6 @@
 # ADR-0005: アプリケーション技術スタック
 
-- Status: Proposed（レビュー反映済み・改訂2版。Accept前ゲートは下記スパイクの通過）
+- Status: Accepted（v0.6.x で Tauri 2 + Svelte 5 + Rust を全面採用済み。当初スパイクは通過し本番実装に反映）
 - Date: 2026-06-16
 - Deciders: Takenori Kusaka
 - Relates to: [ADR-0002](0002-stt-engine-strategy.md), [ADR-0003](0003-reject-google-docs-automation.md), [ADR-0004](0004-product-positioning-voice-journal.md), [ADR-0006](0006-scope-completeness-policy.md)
