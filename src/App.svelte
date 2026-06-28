@@ -32,6 +32,8 @@
     MODEL_TTL_MS,
     DISCOVERY_MAX,
     DEFAULT_SHORTCUT,
+    MAX_INPUT_MB,
+    SUPPORTED_AUDIO_EXTS,
   } from "./lib/constants";
 
   let recording = $state(false);
@@ -742,7 +744,7 @@
     transcribeStartMs = null;
     const selected = await open({
       multiple: false,
-      filters: [{ name: "音声ファイル", extensions: ["mp3", "wav", "m4a", "flac", "ogg", "aac"] }],
+      filters: [{ name: "音声ファイル", extensions: SUPPORTED_AUDIO_EXTS }],
     });
     if (typeof selected !== "string") return;
     busy = true;
@@ -1156,6 +1158,9 @@
       </button>
     </div>
 
+    <p class="hint">
+      対応形式: 音声 {SUPPORTED_AUDIO_EXTS.join(" / ")}（最大 {MAX_INPUT_MB}MB）・テキスト txt / md
+    </p>
     <p class="hint">
       録音ホットキー: <code>{displayShortcut(recordShortcut)}</code>（設定で変更可）
     </p>

@@ -402,6 +402,22 @@ fn transcribe_blocking(
     Ok(text)
 }
 
+/// 入力ファイルのサイズ上限（メモリ膨張・長時間ブロックの防止 / #397）。
+pub const MAX_INPUT_BYTES: u64 = 500 * 1024 * 1024; // 500 MB
+
+/// 入力サイズが上限内かを検証する。超過時はユーザー向けの理由（次の一手つき）を返す。
+pub fn check_input_size(len: u64) -> Result<(), String> {
+    if len > MAX_INPUT_BYTES {
+        let mb = |b: u64| (b as f64) / (1024.0 * 1024.0);
+        return Err(format!(
+            "ファイルが大きすぎます（約{:.0}MB）。上限は{:.0}MBです。録音を分割してお試しください。",
+            mb(len),
+            mb(MAX_INPUT_BYTES),
+        ));
+    }
+    Ok(())
+}
+
 /// 音声ファイルから文字起こしし、結果を保存して返す（S1.6 ファイル入力）。
 /// 非同期＋別スレッド実行でUIをブロックしない。
 #[tauri::command]
@@ -411,8 +427,13 @@ async fn transcribe_file(
     timestamps: bool,
 ) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        let p = std::path::Path::new(&path);
+        // 巨大ファイルは復号前にサイズで弾く（無警告の長時間ブロック/メモリ膨張を防ぐ）。
+        if let Ok(meta) = std::fs::metadata(p) {
+            check_input_size(meta.len())?;
+        }
         let _ = app.emit("status", "音声を読み込み中…");
-        let audio = stt::decode_to_16k_mono(std::path::Path::new(&path))?;
+        let audio = stt::decode_to_16k_mono(p)?;
         transcribe_blocking(&app, &audio, timestamps)
     })
     .await
@@ -782,6 +803,15 @@ fn delete_secret(key: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn check_input_size_accepts_within_limit_and_rejects_over() {
+        assert!(check_input_size(0).is_ok());
+        assert!(check_input_size(MAX_INPUT_BYTES).is_ok());
+        let err = check_input_size(MAX_INPUT_BYTES + 1).unwrap_err();
+        assert!(err.contains("大きすぎます"), "ユーザー向け理由を含む: {err}");
+        assert!(err.contains("録音を分割"), "次の一手を含む: {err}");
+    }
 
     #[test]
     fn filename_prefix_distinguishes_kinds() {

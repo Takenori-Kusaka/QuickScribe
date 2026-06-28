@@ -115,3 +115,9 @@ export const DISCOVERY_MAX = 30;
 
 // 録音トグルの既定グローバルショートカット（ADR-0014）。
 export const DEFAULT_SHORTCUT = "CommandOrControl+Shift+R";
+
+// 入力ファイルのサイズ上限(MB)。Rust側 lib.rs::MAX_INPUT_BYTES と一致させること（#397）。
+export const MAX_INPUT_MB = 500;
+
+// 対応する音声ファイル形式（ファイル選択フィルタ・UI通知で共用 / S1.6）。
+export const SUPPORTED_AUDIO_EXTS = ["mp3", "wav", "m4a", "flac", "ogg", "aac"];
