@@ -38,6 +38,11 @@ jobs:
         run: npm run lint
       - name: Prettier (format check)
         run: npm run format:check
+      - name: Frontend license notices up to date (#394)
+        run: |
+          npm run licenses
+          git diff --exit-code THIRD-PARTY-NOTICES-frontend.md \
+            || { echo "::error::THIRD-PARTY-NOTICES-frontend.md が古いです。'npm run licenses' を実行してコミットしてください。"; exit 1; }
 
   build:
     name: build (${{ matrix.os }})

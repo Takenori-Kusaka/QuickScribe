@@ -16,6 +16,7 @@
     "coverage": "vitest run --coverage",
     "e2e": "wdio run e2e/wdio.conf.cjs",
     "screenshots": "playwright test",
+    "licenses": "node scripts/generate-frontend-notices.cjs",
     "icons": "tauri icon assets/brand/icon-source.png",
     "tauri": "tauri"
   },
@@ -41,6 +42,7 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-svelte": "^3.20.0",
     "globals": "^17.7.0",
+    "license-checker-rseidelsohn": "^4.4.2",
     "pngjs": "^7.0.0",
     "prettier": "^3.9.1",
     "prettier-plugin-svelte": "^4.1.1",
