@@ -108,7 +108,7 @@
     try {
       entries = await invoke<EntrySummary[]>("list_entries");
     } catch (e) {
-      error = `保管庫の読み込みに失敗しました: ${e}`;
+      error = `ジャーナルの読み込みに失敗しました: ${e}`;
       entries = [];
     } finally {
       entriesLoading = false;
@@ -617,12 +617,12 @@
     const d = await open({ directory: true, multiple: false });
     if (typeof d === "string") saveDir = d;
   }
-  // 保管庫フォルダをOSのファイルマネージャで開く（S4.1 R6）。
+  // 出力先フォルダをOSのファイルマネージャで開く（S4.1 R6）。
   async function openVault() {
     try {
       await invoke("open_vault");
     } catch (e) {
-      error = `保管庫を開けませんでした: ${e}`;
+      error = `出力先フォルダを開けませんでした: ${e}`;
     }
   }
   function saveSettings() {
@@ -1114,20 +1114,16 @@
       <h1>QuickScribe</h1>
       <div class="header-actions">
         <button
-          class="gear"
-          title="保管庫（過去のエントリを一覧・検索・横断発見）"
-          aria-label="保管庫"
+          class="nav-btn"
+          title="ジャーナル（過去のエントリを一覧・検索・横断発見）"
+          aria-label="ジャーナル"
           onclick={openEntriesPanel}
         >
-          📁
-        </button>
-        <button
-          class="gear"
-          title="出力先フォルダを開く（録音・整形の保存先をエクスプローラー等で開きます）"
-          aria-label="出力先フォルダを開く"
-          onclick={openVault}
-        >
-          📂
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2 6h4" /><path d="M2 10h4" /><path d="M2 14h4" /><path d="M2 18h4" />
+            <rect width="16" height="20" x="4" y="2" rx="2" /><path d="M16 2v20" />
+          </svg>
+          <span>ジャーナル</span>
         </button>
         <button
           class="gear"
@@ -1136,7 +1132,10 @@
           aria-label="設定"
           onclick={() => (showSettings = !showSettings)}
         >
-          ⚙
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
         </button>
       </div>
     </div>
@@ -1309,6 +1308,16 @@
         <button type="button" class="chip copy" onclick={copyRefined} disabled={refining}>
           {copyMsg || "コピー"}
         </button>
+        <button
+          type="button"
+          class="chip"
+          onclick={openVault}
+          title="保存先フォルダをエクスプローラー等で開く">
+          <svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
+          </svg>
+          出力先を開く
+        </button>
       </div>
     </section>
   {/if}
@@ -1329,7 +1338,7 @@
   >
     <aside class="settings vault-panel">
       <div class="settings-head">
-        <h2>保管庫{viewingEntry ? `：${viewingEntry.name}` : ""}</h2>
+        <h2>ジャーナル{viewingEntry ? `：${viewingEntry.name}` : ""}</h2>
         <button class="close" aria-label="閉じる" onclick={() => (showEntries = false)}>×</button>
       </div>
 
@@ -1380,7 +1389,7 @@
         {:else if filteredEntries.length === 0}
           <p class="tip">
             {entries.length === 0
-              ? "まだエントリがありません。録音・整形すると保管庫に保存されます。"
+              ? "まだエントリがありません。録音・整形するとジャーナルに保存されます。"
               : "条件に合うエントリがありません。"}
           </p>
         {:else}
@@ -1724,7 +1733,7 @@
         <div class="dir-row">
           <span class="tip">保存先: {saveDir || "既定（ドキュメント/QuickScribe）"}</span>
           <button class="btn small ghost" onclick={pickSaveDir}>変更</button>
-          <button class="btn small ghost" onclick={openVault}>保管庫を開く</button>
+          <button class="btn small ghost" onclick={openVault}>出力先フォルダを開く</button>
         </div>
         <label>
           出力形式（生の文字起こし）
@@ -1818,19 +1827,58 @@
     right: 0;
     display: flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.5rem;
   }
+  /* 主要アクション: ジャーナル（アイコン＋ラベル）。補助操作より視覚的に格上げ。 */
+  .nav-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: #eef2ff;
+    color: #4338ca;
+    border: 1px solid #e0e7ff;
+    border-radius: 8px;
+    padding: 0.4rem 0.7rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .nav-btn:hover {
+    background: #e0e7ff;
+    border-color: #c7d2fe;
+  }
+  .nav-btn .ic {
+    width: 1.05rem;
+    height: 1.05rem;
+  }
+  /* 補助操作: 設定（アイコンのみ）。 */
   .gear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: none;
     border: none;
-    font-size: 1.2rem;
     cursor: pointer;
-    opacity: 0.6;
+    opacity: 0.55;
+    color: #4b5563;
     line-height: 1;
-    padding: 0.15rem;
+    padding: 0.3rem;
+    border-radius: 8px;
+  }
+  .gear .ic {
+    width: 1.2rem;
+    height: 1.2rem;
   }
   .gear:hover {
     opacity: 1;
+    background: #f3f4f6;
+  }
+  .ic-sm {
+    width: 0.9rem;
+    height: 0.9rem;
+    vertical-align: -0.13rem;
+    margin-right: 0.15rem;
   }
   .tagline {
     color: #6b7280;
@@ -2008,27 +2056,39 @@
     gap: 0.4rem;
     margin-top: 0.5rem;
   }
+  /* ジャーナル(旧:保管庫)パネル: 一次情報の余白指針(幅~560/内24/8pxグリッド)を反映し呼吸感を持たせる。 */
+  .vault-panel {
+    max-width: 560px;
+    padding: 1.5rem;
+  }
+  .vault-panel .settings-head {
+    margin-bottom: 1rem;
+  }
+  .vault-panel .tags-input {
+    height: 2.6rem;
+    margin-bottom: 0.5rem;
+  }
   .tag-filter {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.3rem;
-    margin: 0.5rem 0;
+    gap: 0.4rem;
+    margin: 0.75rem 0;
   }
   .entry-list {
     list-style: none;
-    margin: 0.5rem 0 0;
+    margin: 1rem 0 0;
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: 0.75rem;
   }
   .entry-item {
     width: 100%;
     text-align: left;
     background: #fff;
     border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 0.5rem 0.6rem;
+    border-radius: 10px;
+    padding: 0.85rem 1rem;
     cursor: pointer;
     font-family: inherit;
   }
@@ -2040,8 +2100,9 @@
     display: flex;
     gap: 0.5rem;
     align-items: center;
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     color: #6b7280;
+    margin-bottom: 0.3rem;
   }
   .entry-kind {
     background: #eef2ff;
@@ -2060,9 +2121,9 @@
     color: #2563eb;
   }
   .entry-preview {
-    font-size: 0.8rem;
+    font-size: 0.82rem;
     color: #374151;
-    line-height: 1.4;
+    line-height: 1.5;
   }
   .entry-view {
     white-space: pre-wrap;
