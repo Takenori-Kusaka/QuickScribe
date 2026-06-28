@@ -12,6 +12,25 @@
   import { onMount } from "svelte";
   import { estimateRemaining, formatRemaining } from "./lib/note";
   import { parseCorrections, applyCorrections, type Correction } from "./lib/corrections";
+  import {
+    type Provider,
+    type SttProvider,
+    type CustomStyle,
+    ALL_PROVIDERS,
+    PROVIDER_LABELS,
+    LOCAL_PROVIDERS,
+    AWS_PROVIDERS,
+    FALLBACK_MODELS,
+    KEY_PLACEHOLDERS,
+    STT_LABELS,
+    STT_CLOUD,
+    STT_KEY_PLACEHOLDERS,
+    STT_MODEL_PLACEHOLDERS,
+    REFINE_STYLES,
+    MODEL_TTL_MS,
+    DISCOVERY_MAX,
+    DEFAULT_SHORTCUT,
+  } from "./lib/constants";
 
   let recording = $state(false);
   let error = $state<string | null>(null);
@@ -33,48 +52,7 @@
   // 設定（localStorageに保存。秘密情報はローカル端末内のみ）。
   // 整形プロバイダ: Gemini / Anthropic / OpenAI / ローカル(Ollama) ＋
   // AWS Bedrock / Claude Platform on AWS(ADR-0011)。BYO鍵/資格情報 / ADR-0005。
-  type Provider = "gemini" | "anthropic" | "openai" | "ollama" | "bedrock" | "claude-aws";
-  const PROVIDER_LABELS: Record<Provider, string> = {
-    gemini: "Gemini",
-    anthropic: "Anthropic (Claude)",
-    openai: "OpenAI",
-    ollama: "ローカル (Ollama)",
-    bedrock: "AWS Bedrock",
-    "claude-aws": "Claude Platform on AWS",
-  };
-  // 鍵不要のローカルプロバイダ（端末内完結＝差別化「ローカルプライバシー」/ S3.4）。
-  const LOCAL_PROVIDERS: Provider[] = ["ollama"];
-  // AWS系(region＋認証が必要。SigV4 or APIキー / ADR-0011)。
-  const AWS_PROVIDERS: Provider[] = ["bedrock", "claude-aws"];
-  // モデルは「実行時に各社のモデル一覧APIから最新ミドルレンジを解決」する（ビルド時固定にしない）。
-  // 取得失敗時のフォールバック表示（ローリングlatestエイリアス優先 / ADR-0007 deep research）。
-  // AWSはモデル一覧APIが別系統のため自動解決せず、フォールバック/手入力を使う。
-  const FALLBACK_MODELS: Record<Provider, string> = {
-    gemini: "gemini-flash-latest",
-    anthropic: "claude-sonnet-4-6",
-    openai: "gpt-4o",
-    ollama: "llama3.1",
-    bedrock: "anthropic.claude-sonnet-4-6",
-    "claude-aws": "claude-sonnet-4-6",
-  };
-  const KEY_PLACEHOLDERS: Record<Provider, string> = {
-    gemini: "AIza...",
-    anthropic: "sk-ant-...",
-    openai: "sk-...",
-    ollama: "",
-    bedrock: "Bedrock APIキー(Bearer) ※SigV4時は不要",
-    "claude-aws": "Anthropic APIキー ※SigV4時は不要",
-  };
-  const ALL_PROVIDERS: Provider[] = [
-    "gemini",
-    "anthropic",
-    "openai",
-    "ollama",
-    "bedrock",
-    "claude-aws",
-  ];
-  // 解決済みモデルのキャッシュ寿命（24時間）。これを過ぎたら再取得する。
-  const MODEL_TTL_MS = 24 * 60 * 60 * 1000;
+  // プロバイダ定義・定数は src/lib/constants.ts に集約(SSOT / #401 Phase0)。
 
   let showSettings = $state(false);
 
@@ -150,7 +128,6 @@
   }
 
   // 横断発見（S4.3 Phase2）。絞り込んだ過去エントリ群をAIで読み解く。
-  const DISCOVERY_MAX = 30; // プロンプト肥大を避けるため上限。
   const DISCOVERY_INSTRUCTION = [
     "- これは過去の複数のジャーナル（日付付き）です。横断して読み解いてください。",
     "- 繰り返し現れるテーマ・関心、感情やトーンの変化・傾向、未解決の問い、次の一歩の候補を抽出する",
@@ -233,7 +210,6 @@
 
   // 録音トグルのグローバルホットキー。内部・保存・登録は Tauri アクセラレータ表記
   // ("CommandOrControl+Shift+R")だが、表示は実行環境に合わせて Ctrl/Cmd に変換する。
-  const DEFAULT_SHORTCUT = "CommandOrControl+Shift+R";
   let recordShortcut = $state<string>(DEFAULT_SHORTCUT);
   let shortcutMsg = $state<string>("");
   // 録音モード（S1.5 / ADR-0014）: toggle=1押しで開始/停止 / momentary=押している間だけ録音。
@@ -358,27 +334,7 @@
   }
   // 文字起こし(STT)プロバイダ（S2.4 / ADR-0016）。既定はローカルwhisper（プライバシー）。
   // クラウドは音声を端末外へ送信＝明示選択時のみ。鍵はkeyring保管。
-  type SttProvider = "local" | "groq" | "openai" | "deepgram" | "azure";
-  const STT_LABELS: Record<SttProvider, string> = {
-    local: "ローカル (whisper・端末内完結)",
-    groq: "Groq (whisper-large-v3-turbo・高速・安価)",
-    openai: "OpenAI (gpt-4o-transcribe)",
-    deepgram: "Deepgram (nova-3)",
-    azure: "Azure AI Speech (fast transcription)",
-  };
-  const STT_CLOUD: SttProvider[] = ["groq", "openai", "deepgram", "azure"];
-  const STT_KEY_PLACEHOLDERS: Record<string, string> = {
-    groq: "gsk_...",
-    openai: "sk-...",
-    deepgram: "Deepgram APIキー",
-    azure: "Azure Speech リソースキー",
-  };
-  const STT_MODEL_PLACEHOLDERS: Record<string, string> = {
-    groq: "whisper-large-v3-turbo",
-    openai: "gpt-4o-transcribe",
-    deepgram: "nova-3",
-    azure: "（不要）",
-  };
+  // STTプロバイダ定義は src/lib/constants.ts に集約(SSOT / #401 Phase0)。
   let sttProvider = $state<SttProvider>("local");
   let sttModel = $state<string>(""); // クラウドのモデルID（空=プロバイダ既定）
   let sttAzureResource = $state<string>(""); // Azureのリソース名（azure時のみ）
@@ -417,27 +373,7 @@
   // 整形スタイル(コア価値: 逐語⇄要約⇄ブレストを行き来 / S3.3)。
   // desc は各モードの短い解説(設定のtips・処理画面のツールチップに使う。refine.rs の指示と一致)。
   let refineStyle = $state<string>("structured");
-  const REFINE_STYLES: { value: string; label: string; desc: string }[] = [
-    {
-      value: "structured",
-      label: "構造化",
-      desc: "見出しと箇条書きで要点を整理。ニュアンスは残します（既定）。",
-    },
-    {
-      value: "verbatim",
-      label: "逐語",
-      desc: "言い淀みや繰り返しも極力そのまま。最小限の読みやすさ調整のみ。",
-    },
-    { value: "summary", label: "要約", desc: "全体を短く要約し、重要な要点を3〜5個に絞ります。" },
-    {
-      value: "brainstorm",
-      label: "ブレスト",
-      desc: "内容から問い・観点・次の一歩を広げ、発想を促します。",
-    },
-  ];
-  // ユーザー定義のカスタム整形パターン（S3.3）。value は "custom:<id>"。
-  // instruction は LLM へ渡す指示ブロック（捏造禁止・journalタグ境界はバックエンド共通で不変）。
-  type CustomStyle = { id: string; label: string; instruction: string };
+  // 整形スタイル(REFINE_STYLES)・カスタム型は src/lib/constants.ts に集約(SSOT / #401 Phase0)。
   let customStyles = $state<CustomStyle[]>([]);
   // 組み込み＋カスタムを1つの選択肢リストに統合（チップ・設定ドロップダウン・解説で共用）。
   const allStyles = $derived([
