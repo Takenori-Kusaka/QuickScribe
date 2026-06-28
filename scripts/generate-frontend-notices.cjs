@@ -30,8 +30,13 @@ if (!prod[svelteKey]) {
 
 // 自分自身（ルートパッケージ）は帰属対象外。
 const selfName = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).name;
+
+// プラットフォーム固有のビルドツール用バイナリ（@esbuild/<os>-<arch> 等）は
+// OS依存で非決定的になり、かつ配布物(WebView dist)に含まれないため除外する。
+const PLATFORM_BINARY = /^@(esbuild|rollup|swc|napi-rs|unrs)\//i;
+
 const entries = Object.entries(prod)
-  .filter(([name]) => !name.startsWith(`${selfName}@`))
+  .filter(([name]) => !name.startsWith(`${selfName}@`) && !PLATFORM_BINARY.test(name))
   .sort(([a], [b]) => a.localeCompare(b));
 const clean = (s) =>
   String(s || "")

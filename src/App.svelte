@@ -20,6 +20,7 @@
   import { buildRefineArgs } from "./lib/refine-args";
   import { isModelCacheFresh } from "./lib/model-cache";
   import { selectDiscoveryTargets, buildDiscoveryText } from "./lib/discovery";
+  import { _ } from "svelte-i18n";
   import {
     type Provider,
     type SttProvider,
@@ -1003,7 +1004,7 @@
               <path d="M2 6h4" /><path d="M2 10h4" /><path d="M2 14h4" /><path d="M2 18h4" />
               <rect width="16" height="20" x="4" y="2" rx="2" /><path d="M16 2v20" />
             </svg>
-            <span>ジャーナル</span>
+            <span>{$_("header.journal")}</span>
           </button>
           <button
             class="gear"
@@ -1030,7 +1031,7 @@
           </button>
         </div>
       </div>
-      <p class="tagline">思考整理・自己理解のためのボイスジャーナル</p>
+      <p class="tagline">{$_("main.tagline")}</p>
     </header>
 
     {#if updateState === "downloading"}
@@ -1048,7 +1049,7 @@
     <div class="actions">
       <button class="btn primary" class:recording data-testid="record-btn" onclick={toggle}>
         <span class="dot" class:on={recording}></span>
-        {recording ? "停止" : "録音開始"}
+        {recording ? $_("main.record_stop") : $_("main.record_start")}
       </button>
 
       <button
@@ -1063,7 +1064,7 @@
             d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Zm5 9a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"
           />
         </svg>
-        音声ファイルから文字起こし
+        {$_("main.from_file")}
       </button>
 
       <button
@@ -1078,12 +1079,14 @@
             d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Zm0 2 4 4h-4V4ZM8 13h8v2H8v-2Zm0 4h8v2H8v-2Z"
           />
         </svg>
-        メモ/テキストから整形
+        {$_("main.from_memo")}
       </button>
     </div>
 
     <p class="hint">
-      対応形式: 音声 {SUPPORTED_AUDIO_EXTS.join(" / ")}（最大 {MAX_INPUT_MB}MB）・テキスト txt / md
+      {$_("main.formats_hint", {
+        values: { exts: SUPPORTED_AUDIO_EXTS.join(" / "), max: MAX_INPUT_MB },
+      })}
     </p>
     <p class="hint">
       録音ホットキー: <code>{displayShortcut(recordShortcut, IS_MAC)}</code>（設定で変更可）
