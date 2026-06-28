@@ -18,6 +18,8 @@
   import { kindLabel } from "./lib/entry";
   import { validateRefineConfig } from "./lib/provider-config";
   import { buildRefineArgs } from "./lib/refine-args";
+  import { isModelCacheFresh } from "./lib/model-cache";
+  import { selectDiscoveryTargets, buildDiscoveryText } from "./lib/discovery";
   import {
     type Provider,
     type SttProvider,
@@ -144,8 +146,8 @@
       showSettings = true;
       return;
     }
-    const targets = filteredEntries.slice(0, DISCOVERY_MAX);
-    discoveryTruncated = filteredEntries.length > DISCOVERY_MAX;
+    const { targets, truncated } = selectDiscoveryTargets(filteredEntries, DISCOVERY_MAX);
+    discoveryTruncated = truncated;
     if (targets.length < 2) {
       error = "横断発見には2件以上のエントリが必要です（タグ/検索で絞ってからお試しください）。";
       return;
@@ -155,14 +157,13 @@
     discoveryResult = null;
     try {
       await resolveCurrentModel();
-      const parts: string[] = [];
+      const items = [];
       for (const e of targets) {
         const content = await invoke<string>("read_text_file", { path: e.path });
-        const tagStr = e.tags.map((t) => `#${t}`).join(" ");
-        parts.push(`### ${e.created} ${tagStr}\n${content}`);
+        items.push({ created: e.created, tags: e.tags, content });
       }
       const args = refineArgs();
-      args.text = parts.join("\n\n---\n\n");
+      args.text = buildDiscoveryText(items);
       args.customInstruction = DISCOVERY_INSTRUCTION;
       args.save = false; // 発見結果は一時表示（保管庫を汚さない）。
       delete args.tags;
@@ -618,7 +619,7 @@
     if (AWS_PROVIDERS.includes(p)) return;
     if (!apiKeys[p].trim()) return;
     const at = Number(localStorage.getItem(`resolvedModelAt:${p}`) || 0);
-    if (!force && resolvedModel[p] && Date.now() - at < MODEL_TTL_MS) return;
+    if (!force && isModelCacheFresh(resolvedModel[p], at, Date.now(), MODEL_TTL_MS)) return;
     resolvingModel = true;
     try {
       const m = await invoke<string>("resolve_model", {
