@@ -21,19 +21,20 @@
 - ドキュメント(#390): ADR索引(0010-0017追記)・ADR-0005=Accepted・署名方針をSignPath無料に単一化・vision現行化・**design.md**(アーキ/データフロー図)・**non-functional-requirements.md** 新設。
 - ライセンス(#394): `THIRD-PARTY-NOTICES-frontend.md`生成(`npm run licenses`)＋CIドリフト検査＋README導線。
 - 設定UX(#404): タスクバー/自動起動の誤分類を「アプリ全般」へ修正。
-- テスト: vitest 14→25＋Playwright 4(スクショ2＋a11y Esc 2)。新lib(constants/errors/a11y)カバレッジ良好。
+- リリース(#400): **release-please→v0.6.4 を実配信**(ノート＋7プラットフォームバイナリ)。
+- ライセンス/競合: npm帰属(#394)・競合分析(#399)済。
+- **#402 カバレッジ(進行中・lib抽出群)**: shortcut/entry/provider-config/refine-args/model-cache/discovery を `src/lib` へ抽出。**lib カバレッジ 82.7%・CIゲート稼働**(vitest thresholds lines75/branches85)。テスト 14→**61**＋Playwright 4。残=App.svelte本体はコンポーネントテスト基盤(@testing-library/svelte)が必要。
+- **#403 perfベンチ(動作確認済)**: `.github/workflows/perf.yml`(workflow_dispatch/release)で RTF/RSS 計測→アーティファクト。初回実測 **RTF=0.857**(<1.0達成) を `docs/perf/baseline.md` 記録。
 
 ### ⏳ 残り（A案フル達成へ）
-- **大物（各々独立・数日規模・集中セッション向き）**:
-  - [#401](https://github.com/Takenori-Kusaka/QuickScribe/issues/401) **i18n多言語(en/zh/es/ja)**: 基盤未導入・日本語ハードコード約300-350文字列。Phase0(SSOT)済→i18n基盤+ja化→Rustエラーのコード化→en→zh/es。13-20人日。
-  - [#402](https://github.com/Takenori-Kusaka/QuickScribe/issues/402) **カバレッジ80%**: 計測基盤は導入済(Phase1)。本体=App.svelte(2500行)の純ロジックを`src/lib`へ抽出してテスト→80%ゲート。6-10人日。
-  - [#403](https://github.com/Takenori-Kusaka/QuickScribe/issues/403) **perfベンチCI**: RTF/起動/メモリ/日本語精度([#26])・`perf.yml`(手動/メジャー)・回帰ゲート。7-11人日。
-- **中規模**: [#399](https://github.com/Takenori-Kusaka/QuickScribe/issues/399) 競合分析(`docs/research/competitive-landscape.md`・vision:38リンク先) / #404後続(設定アコーディオン・頻度順) / #397後続(初回オンボーディング) / #391 残(制限的CSP・モデルSHA256・devDeps更新)。
-- **コード品質後続**: #392/#393 残(Rust clippy/rustfmt CI・missing_docs・refine/stt重複排除・App.svelte分割・Provider enum・entry.rs・TSDoc)。
+- **最大の未着手=[#401](https://github.com/Takenori-Kusaka/QuickScribe/issues/401) i18n多言語(en/zh/es/ja)**: 基盤未導入・日本語ハードコード約300-350文字列。Phase0(SSOT)済→i18n基盤+ja化→**Rustエラーのコード化**→en→zh/es。13-20人日。**専用セッション推奨**。
+- #402後続(App.svelte本体のコンポーネントテスト) / #403後続(日本語精度#26・起動時間・回帰ゲート)。
+- **中規模**: #404後続(設定アコーディオン) / #397後続(初回オンボ) / #391残(制限的CSP・モデルSHA256・devDeps更新)。
+- **コード品質後続**: #392/#393残(Rust clippy/rustfmt CI・missing_docs・refine/stt重複排除・App.svelte分割・Provider enum・entry.rs・TSDoc)。
 
 ## 2. ユーザーの判断待ち（保留中）
-- **Release PR [#418](https://github.com/Takenori-Kusaka/QuickScribe/pull/418)「chore(main): release 0.6.4」**: マージ＝v0.6.4リリース（release.ymlがバイナリ配信）。タイミングはユーザー判断。**次回リリース時に tauri-action が release-please のノートを上書きしないか要確認**（上書き時は release.yml の releaseBody を一行調整）。
-- **Dependabot PR群**（#416 vite/vitest等・#360-365 actions/cargo/tauri-js）: 順次レビュー・マージ可。devDeps脆弱性(critical含む)は全てランタイム無影響。
+- **release-please 完全自動化=[#427](https://github.com/Takenori-Kusaka/QuickScribe/issues/427)**: release-please は GITHUB_TOKEN のため Release PR にCIが走らず・タグで release.yml が起動しない。v0.6.4 は**管理者マージ＋タグ再push＋ノート復元**で手動補助した。**恒久対策=PAT/App トークンを release-please に渡す**(ユーザー作業)。また tauri-action が release-please のノートを上書きするため、release.yml の releaseBody 調整も要対応。
+- **Dependabot PR群**（#416 vite/vitestメジャー・#360-365 actions/cargo/tauri-js）: 古い基底で要リベース。Actions更新(#360/361/362)はrebase要求済。cpalメジャー(#364)等は#391で制御更新推奨。devDeps脆弱性(critical含む)は全てランタイム無影響。
 - **SignPath署名**（[#386](https://github.com/Takenori-Kusaka/QuickScribe/pull/386) Draftに組込手順）: 審査待ち。承認メール(@signpath.org)到着→実値化→テストタグ検証。詳細メモ=memory `signpath-signing-status`。署名順序の論点(Authenticode→updater署名再生成)注意。
 - **Sponsors**（[#405](https://github.com/Takenori-Kusaka/QuickScribe/issues/405)）: FUNDING.yml設定済、アカウント側Sponsors登録の確認のみ（メンテナ作業）。
 
