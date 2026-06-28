@@ -1,0 +1,109 @@
+name: perf-bench
+
+# 非機能（パフォーマンス）ベンチ（#403）。ローカル whisper の文字起こし RTF（実時間比）と
+# ピークメモリ(RSS)を固定音源で計測し、結果をアーティファクト＋ジョブサマリに残す。
+# 手動(workflow_dispatch)＋リリース公開時に実行。CI(PR)は重くしないため分離。
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+env:
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+  CARGO_NET_RETRY: "10"
+  CARGO_HTTP_MULTIPLEXING: "false"
+
+jobs:
+  transcribe-rtf:
+    name: 文字起こし RTF / メモリ (Linux)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies (whisper build + espeak-ng + ffmpeg)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
+            libxdo-dev build-essential file clang libclang-dev cmake \
+            libasound2-dev pkg-config espeak-ng ffmpeg time
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Generate icons (tauri generate_context にアイコンが必要)
+        run: npm run icons
+
+      - name: Cache whisper model
+        id: cache-model
+        uses: actions/cache@v4
+        with:
+          path: models/ggml-tiny.bin
+          key: ggml-tiny-bin-v1
+      - name: Download tiny whisper model
+        if: steps.cache-model.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p models
+          curl -L --fail --retry 5 --retry-delay 15 --retry-all-errors \
+            -o models/ggml-tiny.bin \
+            https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
+
+      - name: Generate fixed bench audio (~固定長)
+        run: |
+          # 一定量の既知発話を生成（RTF を安定させるため文章を長めに）。
+          espeak-ng "This is a performance benchmark for QuickScribe. \
+            The quick brown fox jumps over the lazy dog. \
+            Speech recognition latency is measured as a real time factor. \
+            We repeat this paragraph to obtain a stable measurement window. \
+            The quick brown fox jumps over the lazy dog again and again." \
+            -s 150 -w bench.wav
+          DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 bench.wav)
+          echo "AUDIO_DURATION=$DUR" >> "$GITHUB_ENV"
+          echo "音源長: ${DUR}s"
+
+      - name: Build test binary (compile excluded from timing)
+        run: cargo test --manifest-path src-tauri/Cargo.toml --test transcribe_integration --no-run
+
+      - name: Measure transcription (RTF + peak RSS)
+        env:
+          QS_MODEL_PATH: ${{ github.workspace }}/models/ggml-tiny.bin
+          QS_AUDIO_PATH: ${{ github.workspace }}/bench.wav
+        run: |
+          /usr/bin/time -v cargo test --manifest-path src-tauri/Cargo.toml \
+            --test transcribe_integration -- --nocapture 2> time.txt || { cat time.txt; exit 1; }
+          ELAPSED_RAW=$(grep "Elapsed (wall clock)" time.txt | awk '{print $NF}')
+          MAXRSS_KB=$(grep "Maximum resident set size" time.txt | awk '{print $NF}')
+          # m:ss(.ss) または h:mm:ss を秒へ。
+          ELAPSED_S=$(echo "$ELAPSED_RAW" | awk -F: '{ if (NF==3) print $1*3600+$2*60+$3; else print $1*60+$2 }')
+          RTF=$(awk -v e="$ELAPSED_S" -v d="$AUDIO_DURATION" 'BEGIN{ if (d>0) printf "%.3f", e/d; else print "n/a" }')
+          MAXRSS_MB=$(awk -v k="$MAXRSS_KB" 'BEGIN{ printf "%.1f", k/1024 }')
+          {
+            echo "# QuickScribe 文字起こしベンチ (ggml-tiny / Linux x64 AVX2)"
+            echo ""
+            echo "| 指標 | 値 |"
+            echo "|---|---|"
+            echo "| 音源長 | ${AUDIO_DURATION}s |"
+            echo "| 経過(計測区間, コンパイル除く) | ${ELAPSED_S}s |"
+            echo "| **RTF (実時間比)** | **${RTF}** |"
+            echo "| ピークメモリ (RSS) | ${MAXRSS_MB} MB |"
+            echo ""
+            echo "_注: cargo test 実行のオーバーヘッドを含む概算。RTF<1.0 が実時間以内の目安。_"
+          } | tee perf-report.md
+          cat perf-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload perf report
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-report
+          path: perf-report.md
+          if-no-files-found: error
