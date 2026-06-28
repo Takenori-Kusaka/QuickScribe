@@ -13,6 +13,7 @@
   import { estimateRemaining, formatRemaining } from "./lib/note";
   import { parseCorrections, applyCorrections, type Correction } from "./lib/corrections";
   import { errorText } from "./lib/errors";
+  import { modal } from "./lib/a11y";
   import {
     type Provider,
     type SttProvider,
@@ -1051,7 +1052,7 @@
   });
 </script>
 
-<main>
+<main inert={showSettings || showEntries}>
   <div class="content">
     <header>
       <div class="title-row">
@@ -1327,9 +1328,16 @@
       if (e.target === e.currentTarget) showEntries = false;
     }}
   >
-    <aside class="settings vault-panel">
+    <div
+      class="settings vault-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="vault-title"
+      tabindex="-1"
+      use:modal={{ onClose: () => (showEntries = false) }}
+    >
       <div class="settings-head">
-        <h2>ジャーナル{viewingEntry ? `：${viewingEntry.name}` : ""}</h2>
+        <h2 id="vault-title">ジャーナル{viewingEntry ? `：${viewingEntry.name}` : ""}</h2>
         <button class="close" aria-label="閉じる" onclick={() => (showEntries = false)}>×</button>
       </div>
 
@@ -1404,7 +1412,7 @@
           </ul>
         {/if}
       {/if}
-    </aside>
+    </div>
   </div>
 {/if}
 
@@ -1416,9 +1424,16 @@
       if (e.target === e.currentTarget) showSettings = false;
     }}
   >
-    <aside class="settings">
+    <div
+      class="settings"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-title"
+      tabindex="-1"
+      use:modal={{ onClose: () => (showSettings = false) }}
+    >
       <div class="settings-head">
-        <h2>設定</h2>
+        <h2 id="settings-title">設定</h2>
         <button class="close" aria-label="閉じる" onclick={() => (showSettings = false)}>×</button>
       </div>
       <label>
@@ -1778,7 +1793,7 @@
         <button class="btn small ghost" onclick={() => checkForUpdate(true)}>更新を確認</button>
       </div>
       {#if updateMsg}<p class="muted">{updateMsg}</p>{/if}
-    </aside>
+    </div>
   </div>
 {/if}
 
@@ -1911,7 +1926,8 @@
     margin-right: 0.15rem;
   }
   .tagline {
-    color: #6b7280;
+    /* 薄いグレー背景上でも AA(4.5:1) を満たす濃さ (#395)。 */
+    color: #4b5563;
     font-size: 0.8rem;
     margin: 0.25rem 0 0;
     text-align: center;
@@ -2343,7 +2359,7 @@
   }
 
   .hint {
-    color: #9ca3af;
+    color: #6b7280;
     font-size: 0.72rem;
     text-align: center;
     margin: 0.7rem 0 1.1rem;
@@ -2437,7 +2453,7 @@
   }
   .restyle-label {
     font-size: 0.74rem;
-    color: #9ca3af;
+    color: #6b7280;
   }
   .chip {
     font-size: 0.76rem;
@@ -2534,5 +2550,16 @@
     border-radius: 10px;
     padding: 0.6rem 0.8rem;
     margin-top: 0.9rem;
+  }
+
+  /* OSの「視差効果を減らす/動きを減らす」設定を尊重する (#395 / 各社指針)。 */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
   }
 </style>
