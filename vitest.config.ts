@@ -13,12 +13,7 @@ export default defineConfig({
       // App.svelte 等の .svelte はコンポーネントテスト基盤が未整備のため対象外
       // (#402 Phase2 で App.svelte をlib抽出→計測対象化する)。
       include: ["src/**/*.ts"],
-      exclude: [
-        "src/**/*.test.ts",
-        "src/main.ts",
-        "src/vite-env.d.ts",
-        "e2e/**",
-      ],
+      exclude: ["src/**/*.test.ts", "src/main.ts", "src/vite-env.d.ts", "e2e/**"],
       all: true,
     },
   },
