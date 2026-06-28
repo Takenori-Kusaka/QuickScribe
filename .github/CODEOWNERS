@@ -1,0 +1,9 @@
+# コードオーナー（レビュー自動指名 / ブランチ保護の「コードオーナーレビュー必須」と連動 / #406）。
+# 現状は個人メンテナのため全体を割当。コントリビュータ増加時にパス単位で分割する。
+* @Takenori-Kusaka
+
+# 主要領域（将来の分担用に明示）。
+/src-tauri/ @Takenori-Kusaka
+/src/ @Takenori-Kusaka
+/docs/adr/ @Takenori-Kusaka
+/.github/ @Takenori-Kusaka
