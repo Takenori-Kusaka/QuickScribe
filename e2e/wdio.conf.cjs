@@ -42,11 +42,9 @@ exports.config = {
   // セッション開始前に tauri-driver（WebDriver中継）を起動し、ポート待受まで少し待つ
   beforeSession: () =>
     new Promise((resolve) => {
-      tauriDriver = spawn(
-        path.resolve(os.homedir(), ".cargo", "bin", "tauri-driver"),
-        [],
-        { stdio: [null, process.stdout, process.stderr] },
-      );
+      tauriDriver = spawn(path.resolve(os.homedir(), ".cargo", "bin", "tauri-driver"), [], {
+        stdio: [null, process.stdout, process.stderr],
+      });
       setTimeout(resolve, 2000);
     }),
 

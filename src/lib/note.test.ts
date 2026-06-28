@@ -1,10 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  elapsedSeconds,
-  buildNoteContent,
-  estimateRemaining,
-  formatRemaining,
-} from "./note";
+import { elapsedSeconds, buildNoteContent, estimateRemaining, formatRemaining } from "./note";
 
 describe("elapsedSeconds", () => {
   it("ミリ秒差を秒に丸める", () => {
