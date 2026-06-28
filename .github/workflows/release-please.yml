@@ -1,0 +1,22 @@
+name: release-please
+
+# リリースノート自動化（#400）。main への Conventional Commits を集計し、
+# CHANGELOG.md と版を更新する「Release PR」を維持する。Release PR をマージすると
+# タグ vX.Y.Z を作成し、カテゴリ別ノート付きの GitHub Release を公開する。
+# そのタグ push が既存の release.yml（バイナリビルド/配布）を起動する。
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

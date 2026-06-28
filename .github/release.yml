@@ -1,0 +1,14 @@
+# GitHub 自動生成リリースノートのカテゴリ設定（補助 / #400）。
+# release-please が主だが、手動で「Generate release notes」する場合の分類にも使う。
+changelog:
+  categories:
+    - title: ✨ 新機能 / Features
+      labels: ["feat", "enhancement", "feature"]
+    - title: 🐛 修正 / Bug Fixes
+      labels: ["fix", "bug"]
+    - title: ⚡ パフォーマンス / Performance
+      labels: ["perf", "performance"]
+    - title: 📝 ドキュメント / Docs
+      labels: ["docs", "documentation"]
+    - title: 🔧 その他の変更 / Other Changes
+      labels: ["*"]
