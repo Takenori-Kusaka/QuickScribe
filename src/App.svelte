@@ -11,11 +11,7 @@
   } from "@tauri-apps/plugin-autostart";
   import { onMount } from "svelte";
   import { estimateRemaining, formatRemaining } from "./lib/note";
-  import {
-    parseCorrections,
-    applyCorrections,
-    type Correction,
-  } from "./lib/corrections";
+  import { parseCorrections, applyCorrections, type Correction } from "./lib/corrections";
 
   let recording = $state(false);
   let error = $state<string | null>(null);
@@ -37,13 +33,7 @@
   // 設定（localStorageに保存。秘密情報はローカル端末内のみ）。
   // 整形プロバイダ: Gemini / Anthropic / OpenAI / ローカル(Ollama) ＋
   // AWS Bedrock / Claude Platform on AWS(ADR-0011)。BYO鍵/資格情報 / ADR-0005。
-  type Provider =
-    | "gemini"
-    | "anthropic"
-    | "openai"
-    | "ollama"
-    | "bedrock"
-    | "claude-aws";
+  type Provider = "gemini" | "anthropic" | "openai" | "ollama" | "bedrock" | "claude-aws";
   const PROVIDER_LABELS: Record<Provider, string> = {
     gemini: "Gemini",
     anthropic: "Anthropic (Claude)",
@@ -127,16 +117,14 @@
   // 全エントリのタグ集合（絞り込みチップ用・出現頻度降順）。
   const allTags = $derived.by(() => {
     const count = new Map<string, number>();
-    for (const e of entries)
-      for (const t of e.tags) count.set(t, (count.get(t) ?? 0) + 1);
+    for (const e of entries) for (const t of e.tags) count.set(t, (count.get(t) ?? 0) + 1);
     return [...count.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
   });
   // 検索語(name/preview/tags)＋選択タグ(AND)で絞り込んだ一覧。
   const filteredEntries = $derived.by(() => {
     const q = entrySearch.trim().toLowerCase();
     return entries.filter((e) => {
-      if (selectedTags.length > 0 && !selectedTags.every((t) => e.tags.includes(t)))
-        return false;
+      if (selectedTags.length > 0 && !selectedTags.every((t) => e.tags.includes(t))) return false;
       if (!q) return true;
       const hay = `${e.name} ${e.preview} ${e.tags.join(" ")}`.toLowerCase();
       return hay.includes(q);
@@ -183,8 +171,7 @@
     const targets = filteredEntries.slice(0, DISCOVERY_MAX);
     discoveryTruncated = filteredEntries.length > DISCOVERY_MAX;
     if (targets.length < 2) {
-      error =
-        "横断発見には2件以上のエントリが必要です（タグ/検索で絞ってからお試しください）。";
+      error = "横断発見には2件以上のエントリが必要です（タグ/検索で絞ってからお試しください）。";
       return;
     }
     error = null;
@@ -214,11 +201,21 @@
   let provider = $state<Provider>("gemini");
   // プロバイダごとに鍵を保持する（切替時に再入力不要）。
   let apiKeys = $state<Record<Provider, string>>({
-    gemini: "", anthropic: "", openai: "", ollama: "", bedrock: "", "claude-aws": "",
+    gemini: "",
+    anthropic: "",
+    openai: "",
+    ollama: "",
+    bedrock: "",
+    "claude-aws": "",
   });
   // 実行時に解決した最新モデルID（表示・整形に使用）。
   let resolvedModel = $state<Record<Provider, string>>({
-    gemini: "", anthropic: "", openai: "", ollama: "", bedrock: "", "claude-aws": "",
+    gemini: "",
+    anthropic: "",
+    openai: "",
+    ollama: "",
+    bedrock: "",
+    "claude-aws": "",
   });
   let resolvingModel = $state(false);
   let updateMsg = $state<string>("");
@@ -390,16 +387,17 @@
   let whisperModels = $state<{ id: string; label: string }[]>([]);
   async function loadWhisperModels() {
     try {
-      whisperModels = await invoke<{ id: string; label: string }[]>(
-        "list_whisper_models",
-      );
+      whisperModels = await invoke<{ id: string; label: string }[]>("list_whisper_models");
     } catch (e) {
       console.error("list_whisper_models failed", e);
     }
   }
   // クラウドSTTのAPIキー（プロバイダごと）。keyringに "sttKey:<provider>" で保管。
   let sttKeys = $state<Record<string, string>>({
-    groq: "", openai: "", deepgram: "", azure: "",
+    groq: "",
+    openai: "",
+    deepgram: "",
+    azure: "",
   });
   // STT設定をバックエンドへ反映。ローカルは whisperModel、クラウドは sttModel を model として渡す。
   async function syncSttSettings() {
@@ -420,10 +418,22 @@
   // desc は各モードの短い解説(設定のtips・処理画面のツールチップに使う。refine.rs の指示と一致)。
   let refineStyle = $state<string>("structured");
   const REFINE_STYLES: { value: string; label: string; desc: string }[] = [
-    { value: "structured", label: "構造化", desc: "見出しと箇条書きで要点を整理。ニュアンスは残します（既定）。" },
-    { value: "verbatim", label: "逐語", desc: "言い淀みや繰り返しも極力そのまま。最小限の読みやすさ調整のみ。" },
+    {
+      value: "structured",
+      label: "構造化",
+      desc: "見出しと箇条書きで要点を整理。ニュアンスは残します（既定）。",
+    },
+    {
+      value: "verbatim",
+      label: "逐語",
+      desc: "言い淀みや繰り返しも極力そのまま。最小限の読みやすさ調整のみ。",
+    },
     { value: "summary", label: "要約", desc: "全体を短く要約し、重要な要点を3〜5個に絞ります。" },
-    { value: "brainstorm", label: "ブレスト", desc: "内容から問い・観点・次の一歩を広げ、発想を促します。" },
+    {
+      value: "brainstorm",
+      label: "ブレスト",
+      desc: "内容から問い・観点・次の一歩を広げ、発想を促します。",
+    },
   ];
   // ユーザー定義のカスタム整形パターン（S3.3）。value は "custom:<id>"。
   // instruction は LLM へ渡す指示ブロック（捏造禁止・journalタグ境界はバックエンド共通で不変）。
@@ -439,9 +449,7 @@
     })),
   ]);
   // 現在選択中のスタイル(処理画面の表示・解説に使う)。未知値は既定にフォールバック。
-  const currentStyle = $derived(
-    allStyles.find((s) => s.value === refineStyle) ?? allStyles[0],
-  );
+  const currentStyle = $derived(allStyles.find((s) => s.value === refineStyle) ?? allStyles[0]);
 
   // カスタムパターンの編集フォーム状態（新規追加）。
   let newCustomLabel = $state<string>("");
@@ -480,8 +488,7 @@
       resolvedModel[p] = localStorage.getItem(`resolvedModel:${p}`) ?? "";
     }
     recordShortcut = localStorage.getItem("recordShortcut") || DEFAULT_SHORTCUT;
-    recordMode =
-      localStorage.getItem("recordMode") === "momentary" ? "momentary" : "toggle";
+    recordMode = localStorage.getItem("recordMode") === "momentary" ? "momentary" : "toggle";
     includeTimestamps = localStorage.getItem("includeTimestamps") !== "false";
     autoPipeline = localStorage.getItem("autoPipeline") === "true";
     keepText = localStorage.getItem("keepText") !== "false";
@@ -490,8 +497,7 @@
     saveDir = localStorage.getItem("saveDir") || "";
     outputFormat = localStorage.getItem("outputFormat") || "txt";
     refineStyle = localStorage.getItem("refineStyle") || "structured";
-    sttProvider =
-      (localStorage.getItem("sttProvider") as SttProvider) || "local";
+    sttProvider = (localStorage.getItem("sttProvider") as SttProvider) || "local";
     sttModel = localStorage.getItem("sttModel") || "";
     sttAzureResource = localStorage.getItem("sttAzureResource") || "";
     whisperModel = localStorage.getItem("whisperModel") || "base";
@@ -669,7 +675,8 @@
     if (e.altKey) parts.push("Alt");
     let key: string;
     if (k.length === 1) key = k.toUpperCase();
-    else if (k.startsWith("Arrow")) key = k.slice(5); // ArrowUp -> Up
+    else if (k.startsWith("Arrow"))
+      key = k.slice(5); // ArrowUp -> Up
     else key = k; // F1..F12, Space, Enter 等
     parts.push(key);
     if (parts.length < 2) return null; // 修飾キー無しは誤爆防止のため不可
@@ -797,9 +804,7 @@
     transcribeStartMs = null;
     const selected = await open({
       multiple: false,
-      filters: [
-        { name: "音声ファイル", extensions: ["mp3", "wav", "m4a", "flac", "ogg", "aac"] },
-      ],
+      filters: [{ name: "音声ファイル", extensions: ["mp3", "wav", "m4a", "flac", "ogg", "aac"] }],
     });
     if (typeof selected !== "string") return;
     busy = true;
@@ -833,7 +838,9 @@
       }
       return null;
     }
-    return apiKeys[provider].trim() ? null : `整形には ${PROVIDER_LABELS[provider]} のAPIキーが必要です。`;
+    return apiKeys[provider].trim()
+      ? null
+      : `整形には ${PROVIDER_LABELS[provider]} のAPIキーが必要です。`;
   }
 
   // refine_text に渡す追加引数（AWS時のみ資格情報。非AWSは undefined＝後方互換）。
@@ -1109,222 +1116,269 @@
 
 <main>
   <div class="content">
-  <header>
-    <div class="title-row">
-      <h1>QuickScribe</h1>
-      <div class="header-actions">
-        <button
-          class="nav-btn"
-          title="ジャーナル（過去のエントリを一覧・検索・横断発見）"
-          aria-label="ジャーナル"
-          onclick={openEntriesPanel}
-        >
-          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M2 6h4" /><path d="M2 10h4" /><path d="M2 14h4" /><path d="M2 18h4" />
-            <rect width="16" height="20" x="4" y="2" rx="2" /><path d="M16 2v20" />
-          </svg>
-          <span>ジャーナル</span>
-        </button>
-        <button
-          class="gear"
-          data-testid="settings-btn"
-          title="設定"
-          aria-label="設定"
-          onclick={() => (showSettings = !showSettings)}
-        >
-          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-            <circle cx="12" cy="12" r="3" />
-          </svg>
-        </button>
-      </div>
-    </div>
-    <p class="tagline">思考整理・自己理解のためのボイスジャーナル</p>
-  </header>
-
-  {#if updateState === "downloading"}
-    <div class="update-banner">
-      <span class="spinner" aria-hidden="true"></span>
-      新バージョン {updateVersion} を背景でダウンロード中… {updatePct}%
-    </div>
-  {:else if updateState === "ready"}
-    <div class="update-banner ready">
-      <span>新バージョン {updateVersion} の準備ができました。</span>
-      <button class="btn-restart" onclick={restartNow}>再起動して更新</button>
-    </div>
-  {/if}
-
-  <div class="actions">
-    <button class="btn primary" class:recording data-testid="record-btn" onclick={toggle}>
-      <span class="dot" class:on={recording}></span>
-      {recording ? "停止" : "録音開始"}
-    </button>
-
-    <button
-      class="btn secondary"
-      data-testid="file-btn"
-      onclick={transcribeFromFile}
-      disabled={busy}
-    >
-      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-        <path
-          fill="currentColor"
-          d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Zm5 9a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"
-        />
-      </svg>
-      音声ファイルから文字起こし
-    </button>
-
-    <button
-      class="btn secondary"
-      data-testid="memo-btn"
-      onclick={refineFromMemo}
-      disabled={refining}
-    >
-      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-        <path
-          fill="currentColor"
-          d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Zm0 2 4 4h-4V4ZM8 13h8v2H8v-2Zm0 4h8v2H8v-2Z"
-        />
-      </svg>
-      メモ/テキストから整形
-    </button>
-  </div>
-
-  <p class="hint">録音ホットキー: <code>{displayShortcut(recordShortcut)}</code>（設定で変更可）</p>
-
-  {#if busy || transcribing || status}
-    <div class="panel">
-      <div class="status-row">
-        <span class="spinner" aria-hidden="true"></span>
-        <span class="status-text">{status || "処理中…"}</span>
-      </div>
-      {#if progress > 0}
-        <div class="progress" role="progressbar" aria-valuenow={progress}>
-          <div class="bar" style="width: {progress}%"></div>
-        </div>
-        <div class="progress-meta">
-          <span class="pct">{progress}%</span>
-          {#if eta}<span class="eta">{eta}</span>{/if}
-        </div>
-      {/if}
-      {#if segments.length}
-        <div class="segments">
-          {#each segments as seg}<span>{seg}</span>{/each}
-        </div>
-      {/if}
-    </div>
-  {/if}
-
-  {#if transcript}
-    <section class="card">
-      <div class="card-head">
-        <h2>文字起こし</h2>
-        <div class="refine-controls">
-          <!-- スタイルは設定画面で選ぶ。ここでは「どのスタイルで整形するか」の表示のみ
-               (マウスオーバーでモードの解説を表示)。 -->
-          <span class="style-indicator" title={currentStyle.desc}>
-            整形スタイル: <strong>{currentStyle.label}</strong>
-          </span>
+    <header>
+      <div class="title-row">
+        <h1>QuickScribe</h1>
+        <div class="header-actions">
           <button
-            class="btn small ghost"
-            title="誤変換が疑われる用語をAIが検出し、置換を提案します（整形の前に手修正を緩和）"
-            onclick={suggestCorrections}
-            disabled={checkingTerms || refining}>
-            {checkingTerms ? "用語を確認中…" : "✓ 用語チェック"}
+            class="nav-btn"
+            title="ジャーナル（過去のエントリを一覧・検索・横断発見）"
+            aria-label="ジャーナル"
+            onclick={openEntriesPanel}
+          >
+            <svg
+              class="ic"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M2 6h4" /><path d="M2 10h4" /><path d="M2 14h4" /><path d="M2 18h4" />
+              <rect width="16" height="20" x="4" y="2" rx="2" /><path d="M16 2v20" />
+            </svg>
+            <span>ジャーナル</span>
           </button>
-          <button class="btn small" onclick={() => refineNow()} disabled={refining}>
-            {refining ? "整形中…" : "✨ 整形する"}
+          <button
+            class="gear"
+            data-testid="settings-btn"
+            title="設定"
+            aria-label="設定"
+            onclick={() => (showSettings = !showSettings)}
+          >
+            <svg
+              class="ic"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path
+                d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
+              />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
           </button>
         </div>
       </div>
-      <div class="scroll">{transcript}</div>
+      <p class="tagline">思考整理・自己理解のためのボイスジャーナル</p>
+    </header>
 
-      <!-- 用語補正フェーズ: 誤変換疑いの候補を確認→置換（置換しない選択肢付き）。 -->
-      {#if corrections !== null}
-        {#if corrections.length === 0}
-          <p class="tip">誤変換の疑いがある用語は見つかりませんでした。</p>
-        {:else}
-          <div class="corrections">
-            <div class="corrections-head">
-              <span>誤変換の疑い（{corrections.length}件）— 置換する語にチェック、提案は編集可</span>
-              <button
-                type="button"
-                class="btn small ghost"
-                onclick={() => corrections && corrections.forEach((c) => (c.replace = false))}>
-                すべて置換しない
-              </button>
-            </div>
-            <ul class="correction-list">
-              {#each corrections as c}
-                <li class="correction-item">
-                  <label class="correction-check">
-                    <input type="checkbox" bind:checked={c.replace} />
-                    <span class="correction-orig">{c.original}</span>
-                    <span class="correction-arrow">→</span>
-                  </label>
-                  <input class="correction-sugg" type="text" bind:value={c.suggestion} />
-                  {#if c.reason}<span class="correction-reason" title={c.reason}>{c.reason}</span>{/if}
-                </li>
-              {/each}
-            </ul>
-            <div class="corrections-actions">
-              <button class="btn small" onclick={applyCorrectionsToTranscript}>選んだ用語を置換して更新</button>
-              <button class="btn small ghost" onclick={() => (corrections = null)}>閉じる（置換しない）</button>
-            </div>
+    {#if updateState === "downloading"}
+      <div class="update-banner">
+        <span class="spinner" aria-hidden="true"></span>
+        新バージョン {updateVersion} を背景でダウンロード中… {updatePct}%
+      </div>
+    {:else if updateState === "ready"}
+      <div class="update-banner ready">
+        <span>新バージョン {updateVersion} の準備ができました。</span>
+        <button class="btn-restart" onclick={restartNow}>再起動して更新</button>
+      </div>
+    {/if}
+
+    <div class="actions">
+      <button class="btn primary" class:recording data-testid="record-btn" onclick={toggle}>
+        <span class="dot" class:on={recording}></span>
+        {recording ? "停止" : "録音開始"}
+      </button>
+
+      <button
+        class="btn secondary"
+        data-testid="file-btn"
+        onclick={transcribeFromFile}
+        disabled={busy}
+      >
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Zm5 9a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"
+          />
+        </svg>
+        音声ファイルから文字起こし
+      </button>
+
+      <button
+        class="btn secondary"
+        data-testid="memo-btn"
+        onclick={refineFromMemo}
+        disabled={refining}
+      >
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Zm0 2 4 4h-4V4ZM8 13h8v2H8v-2Zm0 4h8v2H8v-2Z"
+          />
+        </svg>
+        メモ/テキストから整形
+      </button>
+    </div>
+
+    <p class="hint">
+      録音ホットキー: <code>{displayShortcut(recordShortcut)}</code>（設定で変更可）
+    </p>
+
+    {#if busy || transcribing || status}
+      <div class="panel">
+        <div class="status-row">
+          <span class="spinner" aria-hidden="true"></span>
+          <span class="status-text">{status || "処理中…"}</span>
+        </div>
+        {#if progress > 0}
+          <div class="progress" role="progressbar" aria-valuenow={progress}>
+            <div class="bar" style="width: {progress}%"></div>
+          </div>
+          <div class="progress-meta">
+            <span class="pct">{progress}%</span>
+            {#if eta}<span class="eta">{eta}</span>{/if}
           </div>
         {/if}
-      {/if}
-      <!-- 内省タグ(S4.3): 整形・保存時にメタデータとして付与。後から束ねて見返す入口。 -->
-      <div class="tags-row">
-        <input
-          class="tags-input"
-          type="text"
-          bind:value={entryTags}
-          placeholder="タグ（任意・カンマ区切り 例: 仕事, 不安, アイデア）" />
+        {#if segments.length}
+          <div class="segments">
+            {#each segments as seg}<span>{seg}</span>{/each}
+          </div>
+        {/if}
       </div>
-    </section>
-  {/if}
+    {/if}
 
-  {#if refining}
-    <p class="muted center"><span class="spinner" aria-hidden="true"></span> AIが思考を整理しています…</p>
-  {/if}
-  {#if refined}
-    <section class="card refined">
-      <h2>整形（思考整理）</h2>
-      <div class="scroll">{refined}</div>
-      <!-- 段階的深掘り(S3.5): 結果から別スタイルで整形し直す(再文字起こし不要＝逐語⇄要約⇄ブレストを行き来)。 -->
-      <div class="restyle-row">
-        <span class="restyle-label">別のスタイルで整形し直す:</span>
-        {#each allStyles as s}
+    {#if transcript}
+      <section class="card">
+        <div class="card-head">
+          <h2>文字起こし</h2>
+          <div class="refine-controls">
+            <!-- スタイルは設定画面で選ぶ。ここでは「どのスタイルで整形するか」の表示のみ
+               (マウスオーバーでモードの解説を表示)。 -->
+            <span class="style-indicator" title={currentStyle.desc}>
+              整形スタイル: <strong>{currentStyle.label}</strong>
+            </span>
+            <button
+              class="btn small ghost"
+              title="誤変換が疑われる用語をAIが検出し、置換を提案します（整形の前に手修正を緩和）"
+              onclick={suggestCorrections}
+              disabled={checkingTerms || refining}
+            >
+              {checkingTerms ? "用語を確認中…" : "✓ 用語チェック"}
+            </button>
+            <button class="btn small" onclick={() => refineNow()} disabled={refining}>
+              {refining ? "整形中…" : "✨ 整形する"}
+            </button>
+          </div>
+        </div>
+        <div class="scroll">{transcript}</div>
+
+        <!-- 用語補正フェーズ: 誤変換疑いの候補を確認→置換（置換しない選択肢付き）。 -->
+        {#if corrections !== null}
+          {#if corrections.length === 0}
+            <p class="tip">誤変換の疑いがある用語は見つかりませんでした。</p>
+          {:else}
+            <div class="corrections">
+              <div class="corrections-head">
+                <span
+                  >誤変換の疑い（{corrections.length}件）— 置換する語にチェック、提案は編集可</span
+                >
+                <button
+                  type="button"
+                  class="btn small ghost"
+                  onclick={() => corrections && corrections.forEach((c) => (c.replace = false))}
+                >
+                  すべて置換しない
+                </button>
+              </div>
+              <ul class="correction-list">
+                {#each corrections as c}
+                  <li class="correction-item">
+                    <label class="correction-check">
+                      <input type="checkbox" bind:checked={c.replace} />
+                      <span class="correction-orig">{c.original}</span>
+                      <span class="correction-arrow">→</span>
+                    </label>
+                    <input class="correction-sugg" type="text" bind:value={c.suggestion} />
+                    {#if c.reason}<span class="correction-reason" title={c.reason}>{c.reason}</span
+                      >{/if}
+                  </li>
+                {/each}
+              </ul>
+              <div class="corrections-actions">
+                <button class="btn small" onclick={applyCorrectionsToTranscript}
+                  >選んだ用語を置換して更新</button
+                >
+                <button class="btn small ghost" onclick={() => (corrections = null)}
+                  >閉じる（置換しない）</button
+                >
+              </div>
+            </div>
+          {/if}
+        {/if}
+        <!-- 内省タグ(S4.3): 整形・保存時にメタデータとして付与。後から束ねて見返す入口。 -->
+        <div class="tags-row">
+          <input
+            class="tags-input"
+            type="text"
+            bind:value={entryTags}
+            placeholder="タグ（任意・カンマ区切り 例: 仕事, 不安, アイデア）"
+          />
+        </div>
+      </section>
+    {/if}
+
+    {#if refining}
+      <p class="muted center">
+        <span class="spinner" aria-hidden="true"></span> AIが思考を整理しています…
+      </p>
+    {/if}
+    {#if refined}
+      <section class="card refined">
+        <h2>整形（思考整理）</h2>
+        <div class="scroll">{refined}</div>
+        <!-- 段階的深掘り(S3.5): 結果から別スタイルで整形し直す(再文字起こし不要＝逐語⇄要約⇄ブレストを行き来)。 -->
+        <div class="restyle-row">
+          <span class="restyle-label">別のスタイルで整形し直す:</span>
+          {#each allStyles as s}
+            <button
+              type="button"
+              class="chip"
+              class:active={refinedStyle === s.value}
+              title={s.desc}
+              disabled={refining}
+              onclick={() => refineNow(s.value)}>{s.label}</button
+            >
+          {/each}
+          <button type="button" class="chip copy" onclick={copyRefined} disabled={refining}>
+            {copyMsg || "コピー"}
+          </button>
           <button
             type="button"
             class="chip"
-            class:active={refinedStyle === s.value}
-            title={s.desc}
-            disabled={refining}
-            onclick={() => refineNow(s.value)}>{s.label}</button>
-        {/each}
-        <button type="button" class="chip copy" onclick={copyRefined} disabled={refining}>
-          {copyMsg || "コピー"}
-        </button>
-        <button
-          type="button"
-          class="chip"
-          onclick={openVault}
-          title="保存先フォルダをエクスプローラー等で開く">
-          <svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
-          </svg>
-          出力先を開く
-        </button>
-      </div>
-    </section>
-  {/if}
+            onclick={openVault}
+            title="保存先フォルダをエクスプローラー等で開く"
+          >
+            <svg
+              class="ic-sm"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path
+                d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"
+              />
+            </svg>
+            出力先を開く
+          </button>
+        </div>
+      </section>
+    {/if}
 
-  {#if error}
-    <p class="error">{error}</p>
-  {/if}
+    {#if error}
+      <p class="error">{error}</p>
+    {/if}
   </div>
 </main>
 
@@ -1343,7 +1397,9 @@
       </div>
 
       {#if discoveryResult !== null}
-        <button class="btn small ghost" onclick={() => (discoveryResult = null)}>← 一覧へ戻る</button>
+        <button class="btn small ghost" onclick={() => (discoveryResult = null)}
+          >← 一覧へ戻る</button
+        >
         <p class="tip">
           絞り込んだ{Math.min(filteredEntries.length, 30)}件{discoveryTruncated
             ? `（先頭30件のみ・全${filteredEntries.length}件）`
@@ -1358,7 +1414,8 @@
           class="tags-input"
           type="text"
           bind:value={entrySearch}
-          placeholder="🔎 本文・タグ・ファイル名で検索" />
+          placeholder="🔎 本文・タグ・ファイル名で検索"
+        />
         {#if allTags.length > 0}
           <div class="tag-filter">
             {#each allTags as t}
@@ -1366,16 +1423,13 @@
                 type="button"
                 class="chip"
                 class:active={selectedTags.includes(t)}
-                onclick={() => toggleTagFilter(t)}>#{t}</button>
+                onclick={() => toggleTagFilter(t)}>#{t}</button
+              >
             {/each}
           </div>
         {/if}
         {#if filteredEntries.length >= 2}
-          <button
-            type="button"
-            class="btn small"
-            disabled={discovering}
-            onclick={discoverAcross}>
+          <button type="button" class="btn small" disabled={discovering} onclick={discoverAcross}>
             {discovering
               ? "AIが横断的に読み解いています…"
               : `✨ この${filteredEntries.length}件から横断発見`}
@@ -1402,7 +1456,9 @@
                     {#if e.kind}<span class="entry-kind">{kindLabel(e.kind)}</span>{/if}
                   </div>
                   {#if e.tags.length > 0}
-                    <div class="entry-tags">{#each e.tags as t}<span class="entry-tag">#{t}</span>{/each}</div>
+                    <div class="entry-tags">
+                      {#each e.tags as t}<span class="entry-tag">#{t}</span>{/each}
+                    </div>
                   {/if}
                   <div class="entry-preview">{e.preview}</div>
                 </button>
@@ -1426,9 +1482,7 @@
     <aside class="settings">
       <div class="settings-head">
         <h2>設定</h2>
-        <button class="close" aria-label="閉じる" onclick={() => (showSettings = false)}
-          >×</button
-        >
+        <button class="close" aria-label="閉じる" onclick={() => (showSettings = false)}>×</button>
       </div>
       <label>
         整形プロバイダ
@@ -1443,8 +1497,10 @@
       </label>
       {#if LOCAL_PROVIDERS.includes(provider)}
         <p class="muted">
-          ローカル (Ollama) は鍵不要で端末内完結（思考の生データを外に出しません）。
-          事前に <code>ollama serve</code> の起動とモデル取得（例: <code>ollama pull llama3.1</code>）が必要です。
+          ローカル (Ollama) は鍵不要で端末内完結（思考の生データを外に出しません）。 事前に <code
+            >ollama serve</code
+          >
+          の起動とモデル取得（例: <code>ollama pull llama3.1</code>）が必要です。
         </p>
       {:else if AWS_PROVIDERS.includes(provider)}
         <!-- AWSプロバイダ(Bedrock / Claude Platform on AWS) / ADR-0011。SigV4 or APIキー。 -->
@@ -1455,13 +1511,23 @@
         {#if provider === "claude-aws"}
           <label>
             workspace_id（Claude Platform on AWS で必須）
-            <input type="text" bind:value={awsWorkspaceId} placeholder="wrkspc_..." autocomplete="off" />
+            <input
+              type="text"
+              bind:value={awsWorkspaceId}
+              placeholder="wrkspc_..."
+              autocomplete="off"
+            />
           </label>
         {/if}
         {#if provider === "bedrock"}
           <label>
             BedrockモデルID（リージョン/アカウント依存・空で既定）
-            <input type="text" bind:value={bedrockModel} placeholder="anthropic.claude-sonnet-4-6" autocomplete="off" />
+            <input
+              type="text"
+              bind:value={bedrockModel}
+              placeholder="anthropic.claude-sonnet-4-6"
+              autocomplete="off"
+            />
           </label>
         {/if}
         <label>
@@ -1474,7 +1540,12 @@
         {#if awsAuthMode === "sigv4"}
           <label>
             AWSアクセスキーID
-            <input type="password" bind:value={awsAccessKey} placeholder="AKIA..." autocomplete="off" />
+            <input
+              type="password"
+              bind:value={awsAccessKey}
+              placeholder="AKIA..."
+              autocomplete="off"
+            />
           </label>
           <label>
             AWSシークレットアクセスキー
@@ -1482,7 +1553,12 @@
           </label>
           <label>
             セッショントークン（一時credのときのみ・任意）
-            <input type="password" bind:value={awsSessionToken} placeholder="（任意）" autocomplete="off" />
+            <input
+              type="password"
+              bind:value={awsSessionToken}
+              placeholder="（任意）"
+              autocomplete="off"
+            />
           </label>
         {:else}
           <label>
@@ -1539,7 +1615,8 @@
                 <button
                   type="button"
                   class="btn small ghost"
-                  onclick={() => removeCustomStyle(c.id)}>削除</button>
+                  onclick={() => removeCustomStyle(c.id)}>削除</button
+                >
               </li>
             {/each}
           </ul>
@@ -1548,7 +1625,8 @@
           class="custom-name-input"
           type="text"
           bind:value={newCustomLabel}
-          placeholder="パターン名（例: 議事録、日報、感情ラベル付け）" />
+          placeholder="パターン名（例: 議事録、日報、感情ラベル付け）"
+        />
         <textarea
           class="custom-instruction-input"
           bind:value={newCustomInstruction}
@@ -1580,7 +1658,9 @@
         </button>
         <button type="button" class="btn small ghost" onclick={resetShortcut}>既定に戻す</button>
       </div>
-      <p class="tip">「{displayShortcut(recordShortcut)}」をクリックして、登録したいキーを押します。</p>
+      <p class="tip">
+        「{displayShortcut(recordShortcut)}」をクリックして、登録したいキーを押します。
+      </p>
       {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
 
       <div class="meta-group">
@@ -1592,7 +1672,9 @@
           </select>
         </div>
         <p class="tip">
-          「押している間だけ録音」は、物理ボタン（マウス・フットスイッチ等）やホットキーを<strong>押し続けている間だけ</strong>録音します。離すと停止します（会議の発言・とっさの一言向け）。
+          「押している間だけ録音」は、物理ボタン（マウス・フットスイッチ等）やホットキーを<strong
+            >押し続けている間だけ</strong
+          >録音します。離すと停止します（会議の発言・とっさの一言向け）。
         </p>
       </div>
 
@@ -1613,7 +1695,8 @@
           </button>
         </div>
         <p class="tip">
-          録音元を選びます。「システム音: …」はその出力で再生中の音（相手の声・再生音）を録音。「マイク＋システム音」は自分の声と相手の声を同時に録音します（会議・通話向け）。次回の録音開始から反映されます。
+          録音元を選びます。「システム音:
+          …」はその出力で再生中の音（相手の声・再生音）を録音。「マイク＋システム音」は自分の声と相手の声を同時に録音します（会議・通話向け）。次回の録音開始から反映されます。
         </p>
       </div>
 
@@ -1632,7 +1715,8 @@
             <input
               type="password"
               bind:value={sttKeys[sttProvider]}
-              placeholder={STT_KEY_PLACEHOLDERS[sttProvider]} />
+              placeholder={STT_KEY_PLACEHOLDERS[sttProvider]}
+            />
           </label>
           {#if sttProvider === "azure"}
             <label>
@@ -1640,7 +1724,8 @@
               <input
                 type="text"
                 bind:value={sttAzureResource}
-                placeholder="例: myspeechresource（.cognitiveservices.azure.com の前）" />
+                placeholder="例: myspeechresource（.cognitiveservices.azure.com の前）"
+              />
             </label>
           {/if}
           {#if sttProvider !== "azure"}
@@ -1649,11 +1734,13 @@
               <input
                 type="text"
                 bind:value={sttModel}
-                placeholder={STT_MODEL_PLACEHOLDERS[sttProvider]} />
+                placeholder={STT_MODEL_PLACEHOLDERS[sttProvider]}
+              />
             </label>
           {/if}
           <p class="tip warn">
-            ⚠ クラウド文字起こしは<strong>音声を端末外（{STT_LABELS[sttProvider]}）へ送信</strong>します。各社は既定でAPI音声を学習利用しないと明言していますが、プライバシー重視なら「ローカル」をお使いください。鍵はこの端末の安全な保管領域に保存されます。
+            ⚠ クラウド文字起こしは<strong>音声を端末外（{STT_LABELS[sttProvider]}）へ送信</strong
+            >します。各社は既定でAPI音声を学習利用しないと明言していますが、プライバシー重視なら「ローカル」をお使いください。鍵はこの端末の安全な保管領域に保存されます。
           </p>
         {:else}
           <label>
@@ -1665,7 +1752,9 @@
             </select>
           </label>
           <p class="tip">
-            ローカルの whisper で端末内完結（音声は外部送信されません）。日本語中心なら <strong>kotoba-whisper</strong> が高精度です。選んだモデルは初回録音時に自動ダウンロードします（大きいモデルは時間がかかります）。
+            ローカルの whisper で端末内完結（音声は外部送信されません）。日本語中心なら <strong
+              >kotoba-whisper</strong
+            > が高精度です。選んだモデルは初回録音時に自動ダウンロードします（大きいモデルは時間がかかります）。
           </p>
         {/if}
       </div>
@@ -1676,9 +1765,7 @@
           <input type="checkbox" bind:checked={includeTimestamps} />
           タイムスタンプを含める
         </label>
-        <p class="tip">
-          いつ何を話したかの時刻を残し、AIが話の流れを踏まえて整理します。
-        </p>
+        <p class="tip">いつ何を話したかの時刻を残し、AIが話の流れを踏まえて整理します。</p>
         <label class="check">
           <input type="checkbox" bind:checked={autoPipeline} />
           停止後、文字起こしから整形まで自動実行する
@@ -1704,7 +1791,8 @@
           PCのログイン時に自動起動する
         </label>
         <p class="tip">
-          OSにログインすると QuickScribe を自動で起動し、トレイに常駐します（ウィンドウは出ません）。
+          OSにログインすると QuickScribe
+          を自動で起動し、トレイに常駐します（ウィンドウは出ません）。
         </p>
       </div>
 
@@ -1726,9 +1814,7 @@
               <option value="wav">WAV（無圧縮・確実）</option>
             </select>
           </label>
-          <p class="tip">
-            Opusは小容量でジャーナル向き。WAVは無圧縮で容量大ですが確実です。
-          </p>
+          <p class="tip">Opusは小容量でジャーナル向き。WAVは無圧縮で容量大ですが確実です。</p>
         {/if}
         <div class="dir-row">
           <span class="tip">保存先: {saveDir || "既定（ドキュメント/QuickScribe）"}</span>
@@ -1743,7 +1829,10 @@
           </select>
         </label>
         <p class="tip">
-          生の文字起こしの保存形式です。Markdownは先頭に作成日時・種別・タグを付けます。<strong>整形結果は構造化Markdownのため常に .md で保存</strong>されます。ファイル名も <code>transcript-…</code>（生）/ <code>refined-…</code>（整形）で区別されます。
+          生の文字起こしの保存形式です。Markdownは先頭に作成日時・種別・タグを付けます。<strong
+            >整形結果は構造化Markdownのため常に .md で保存</strong
+          >されます。ファイル名も <code>transcript-…</code>（生）/
+          <code>refined-…</code>（整形）で区別されます。
         </p>
       </div>
 
@@ -1767,7 +1856,11 @@
   }
   main {
     font-family:
-      "Segoe UI", system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP",
+      "Segoe UI",
+      system-ui,
+      -apple-system,
+      "Hiragino Kaku Gothic ProN",
+      "Noto Sans JP",
       sans-serif;
     color: #1f2330;
     padding: 1.25rem 1.25rem 1.75rem;
