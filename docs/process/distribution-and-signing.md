@@ -90,8 +90,8 @@
 
 ---
 
-## 推奨ロードマップ（コスト最小で普及を上げる順）
-1. **Microsoft Trusted Signing** で Windows コード署名（最も体感に効く・安価）。→ SmartScreen警告解消。
+## 推奨ロードマップ（コストゼロで普及を上げる順 / [ADR-0008](../adr/0008-licensing-and-distribution.md) 準拠）
+1. **SignPath Foundation（無償OSS署名）** で Windows コード署名。→ SmartScreen警告解消・費用ゼロ。（申請=審査制。有料の Microsoft Trusted Signing / SSL.com eSigner は**不採用**＝経緯は §#50・planning 3.6 参照）
 2. **winget** 自動PR（署名後だと審査が楽）。→ Windows導入容易化。
-3. **ブランチ保護**（無料・即時）。
+3. **ブランチ保護**（無料・適用済）。
 4. Flathub（Linuxユーザーが増えたら）。
