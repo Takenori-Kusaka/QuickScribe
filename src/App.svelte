@@ -15,8 +15,9 @@
   import { errorText } from "./lib/errors";
   import { modal } from "./lib/a11y";
   import { displayShortcut, accelFromEvent } from "./lib/shortcut";
-  import { kindLabel, parseTags } from "./lib/entry";
+  import { kindLabel } from "./lib/entry";
   import { validateRefineConfig } from "./lib/provider-config";
+  import { buildRefineArgs } from "./lib/refine-args";
   import {
     type Provider,
     type SttProvider,
@@ -720,34 +721,22 @@
   // refine_text に渡す追加引数（AWS時のみ資格情報。非AWSは undefined＝後方互換）。
   // styleOverride: 結果から別スタイルで整形し直す時に既定スタイルを上書きする(S3.5・行き来)。
   function refineArgs(styleOverride?: string) {
-    const base: Record<string, unknown> = {
-      text: transcript,
+    return buildRefineArgs({
+      transcript,
       provider,
       apiKey: apiKeys[provider],
-      // 解決済みモデル（空ならバックエンドがフォールバック既定を補完）。Bedrockは手入力モデル。
-      model: provider === "bedrock" ? bedrockModel : resolvedModel[provider],
+      bedrockModel,
+      resolvedModel: resolvedModel[provider],
       style: styleOverride ?? refineStyle,
-    };
-    // カスタムパターン選択時は指示文をバックエンドへ渡す（style既定指示の代わりに使われる）。
-    const styleVal = (styleOverride ?? refineStyle) as string;
-    if (styleVal.startsWith("custom:")) {
-      const cs = customStyles.find((c) => `custom:${c.id}` === styleVal);
-      base.customInstruction = cs?.instruction ?? null;
-    }
-    // 内省タグ（S4.3）。保存時にメタデータとして付与。
-    const tags = parseTags(entryTags);
-    if (tags.length > 0) base.tags = tags;
-    if (AWS_PROVIDERS.includes(provider)) {
-      base.region = awsRegion.trim();
-      base.workspaceId = awsWorkspaceId.trim();
-      base.authMode = awsAuthMode;
-      if (awsAuthMode === "sigv4") {
-        base.awsAccessKey = awsAccessKey.trim();
-        base.awsSecretKey = awsSecretKey.trim();
-        base.awsSessionToken = awsSessionToken.trim() || null;
-      }
-    }
-    return base;
+      customStyles,
+      entryTags,
+      awsRegion,
+      awsWorkspaceId,
+      awsAuthMode,
+      awsAccessKey,
+      awsSecretKey,
+      awsSessionToken,
+    });
   }
 
   async function refineNow(styleOverride?: string) {
