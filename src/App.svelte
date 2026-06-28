@@ -14,6 +14,8 @@
   import { parseCorrections, applyCorrections, type Correction } from "./lib/corrections";
   import { errorText } from "./lib/errors";
   import { modal } from "./lib/a11y";
+  import { displayShortcut, accelFromEvent } from "./lib/shortcut";
+  import { kindLabel, parseTags } from "./lib/entry";
   import {
     type Provider,
     type SttProvider,
@@ -113,15 +115,6 @@
     });
   });
   // エントリ種別の日本語ラベル（生の文字起こし/整形済み/メモ）。
-  function kindLabel(kind: string): string {
-    return kind === "transcript"
-      ? "文字起こし"
-      : kind === "refined"
-        ? "整形済み"
-        : kind === "note"
-          ? "メモ"
-          : kind;
-  }
   async function openEntry(e: EntrySummary) {
     try {
       const content = await invoke<string>("read_text_file", { path: e.path });
@@ -286,29 +279,6 @@
       console.error("set_taskbar_widget failed", e);
     }
   }
-  function displayShortcut(accel: string): string {
-    return accel
-      .split("+")
-      .map((t) => {
-        switch (t) {
-          case "CommandOrControl":
-          case "CmdOrCtrl":
-            return IS_MAC ? "Cmd" : "Ctrl";
-          case "Control":
-            return "Ctrl";
-          case "Super":
-          case "Meta":
-          case "Command":
-            return IS_MAC ? "Cmd" : "Win";
-          case "Alt":
-            return IS_MAC ? "Option" : "Alt";
-          default:
-            return t;
-        }
-      })
-      .join("+");
-  }
-
   // 文字起こしメタデータ設定。タイムスタンプは既定ON（整形AIが時間関係を解釈できる）。
   let includeTimestamps = $state<boolean>(true);
   // 停止後に文字起こし→整形まで自動実行する（一気通貫）。
@@ -323,19 +293,6 @@
   let outputFormat = $state<string>("txt");
   // 内省タグ（S4.3）。エントリ保存時にメタデータとして付与（カンマ/空白区切りで入力）。
   let entryTags = $state<string>("");
-  // 入力文字列をタグ配列へ（カンマ/全角カンマ/空白区切り・重複/空除去・先頭#除去）。
-  function parseTags(s: string): string[] {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const raw of s.split(/[,、\s]+/)) {
-      const t = raw.trim().replace(/^#+/, "");
-      if (t && !seen.has(t)) {
-        seen.add(t);
-        out.push(t);
-      }
-    }
-    return out;
-  }
   // 文字起こし(STT)プロバイダ（S2.4 / ADR-0016）。既定はローカルwhisper（プライバシー）。
   // クラウドは音声を端末外へ送信＝明示選択時のみ。鍵はkeyring保管。
   // STTプロバイダ定義は src/lib/constants.ts に集約(SSOT / #401 Phase0)。
@@ -606,23 +563,6 @@
   }
 
   // キー入力イベントから Tauri アクセラレータ表記を組み立てる（修飾キー＋1キー）。
-  function accelFromEvent(e: KeyboardEvent): string | null {
-    const k = e.key;
-    if (["Control", "Shift", "Alt", "Meta"].includes(k)) return null; // 修飾キー単体は無視
-    const parts: string[] = [];
-    if (e.ctrlKey || e.metaKey) parts.push("CommandOrControl");
-    if (e.shiftKey) parts.push("Shift");
-    if (e.altKey) parts.push("Alt");
-    let key: string;
-    if (k.length === 1) key = k.toUpperCase();
-    else if (k.startsWith("Arrow"))
-      key = k.slice(5); // ArrowUp -> Up
-    else key = k; // F1..F12, Space, Enter 等
-    parts.push(key);
-    if (parts.length < 2) return null; // 修飾キー無しは誤爆防止のため不可
-    return parts.join("+");
-  }
-
   // ホットキー設定UX: 「変更」ボタンでキャプチャモードに入り、押したキーで登録する
   // （VSCode/OBS/ゲーム等の定石。待機表示・Escキャンセル・修飾キー単体は待機継続）。
   function startCapture() {
@@ -661,8 +601,8 @@
     try {
       await invoke("set_record_shortcut", { accelerator: recordShortcut });
       localStorage.setItem("recordShortcut", recordShortcut);
-      void invoke("set_taskbar_shortcut", { display: displayShortcut(recordShortcut) });
-      shortcutMsg = `ホットキーを設定しました: ${displayShortcut(recordShortcut)}`;
+      void invoke("set_taskbar_shortcut", { display: displayShortcut(recordShortcut, IS_MAC) });
+      shortcutMsg = `ホットキーを設定しました: ${displayShortcut(recordShortcut, IS_MAC)}`;
     } catch (e) {
       shortcutMsg = `ホットキーを設定できませんでした: ${errorText(e)}`;
     }
@@ -1162,7 +1102,7 @@
       対応形式: 音声 {SUPPORTED_AUDIO_EXTS.join(" / ")}（最大 {MAX_INPUT_MB}MB）・テキスト txt / md
     </p>
     <p class="hint">
-      録音ホットキー: <code>{displayShortcut(recordShortcut)}</code>（設定で変更可）
+      録音ホットキー: <code>{displayShortcut(recordShortcut, IS_MAC)}</code>（設定で変更可）
     </p>
 
     {#if busy || transcribing || status}
@@ -1610,13 +1550,13 @@
           {#if capturing}
             キーを押してください…（Escでキャンセル）
           {:else}
-            {displayShortcut(recordShortcut)}
+            {displayShortcut(recordShortcut, IS_MAC)}
           {/if}
         </button>
         <button type="button" class="btn small ghost" onclick={resetShortcut}>既定に戻す</button>
       </div>
       <p class="tip">
-        「{displayShortcut(recordShortcut)}」をクリックして、登録したいキーを押します。
+        「{displayShortcut(recordShortcut, IS_MAC)}」をクリックして、登録したいキーを押します。
       </p>
       {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
 
