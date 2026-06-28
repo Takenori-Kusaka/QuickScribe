@@ -1,27 +1,27 @@
-# スクリーンショット手順（README/サイト用）
+# スクリーンショットの自動生成（CI）と暫定プレースホルダ
 
-> Status: Reference（2026-06-28）。READMEの視覚素材は **GIFではなくスクリーンショット**とする（Decider判断・2026-06-28）。
-> 撮影後、`docs/assets/screenshot.png` に置けば README プレースホルダ `<!-- SCREENSHOT ... -->` に差し込み、サイトにも反映する。
+> Status: Plan（2026-06-28）。README/サイト用のUIスクリーンショットは **CIで自動生成**し、リリースごとに `docs/assets/` を更新する方針。実スクショは v1.0.0 から。それまでは暫定プレースホルダを使う。
 
-## 0. 方針
-- 動くデモGIFは作らない（製品へのキャプチャ機構の組み込みもしない＝コア設計「リッチすぎると簡便でなくするな」を守る）。
-- 1〜2枚の静止スクリーンショットで「録音→文字起こし→整形」の世界観を伝える。
+## 方針（なぜ自動化できるか）
+QuickScribe のフロントは Svelte（純Web UI）。Tauri の `invoke` 以外はブラウザだけで描画できる。したがって:
 
-## 1. 撮影（あなた／実機）
-- Windows: `Win + Shift + S`（切り取り＆スケッチ）でウィンドウ範囲を撮影、または `Alt + PrtScn` でアクティブウィンドウ。
-- 推奨カット（1枚に絞るなら整形後の画面）:
-  1. **整形結果が表示された状態**（コア価値が一番伝わる）。
-  2. （任意）録音中／文字起こし直後の画面をもう1枚。
+1. **Vite dev** でフロントを起動（Rust/cargo/MSVC/マイク **不要**）。
+2. **Playwright（ヘッドレス Chromium）** で開く。`@tauri-apps/api` の `invoke` を**モック**し、保管庫一覧などにダミーデータを返す。
+3. 主要画面（メイン／保管庫）を**決め打ちの状態に遷移させて `page.screenshot()`**。
+4. 生成画像を `docs/assets/` に出力。リリース時に自動コミット（または artifact）。
 
-## 2. 体裁
-- ウィンドウは既定サイズ。背景・保管庫一覧に**個人情報が映らない**ようダミー内容で。
-- 幅 1000〜1400px 程度。PNG。必要なら軽くトリミング。
-- 文字が読める鮮明さで。
+→ ubuntu ランナーで完結。Tauri WebView も Chromium系のため見た目はほぼ一致（README用途に十分）。
 
-## 3. 提出・反映
-- `docs/assets/`（無ければ作成）に `screenshot.png`（任意で `screenshot-2.png`）を置く。
-- 「置いた」と伝えてもらえれば、README プレースホルダとサイト（index/guide）へ差し込み、#55 をクローズする。
+## 実装計画（別issue）
+- `tests/screenshots/` に Playwright スクリプト（`capture.ts`）。Tauri IPCモック層（`mock-invoke.ts`）でエントリ一覧・設定・整形結果のフィクスチャを注入。
+- `package.json` に `screenshots` スクリプト（vite起動→playwright実行）。
+- `.github/workflows/screenshots.yml`: リリース（または手動 workflow_dispatch）で実行し `docs/assets/screenshot-*.png` を更新するPRを作成 or 直コミット。
+- 撮る画面: ①メイン（録音→文字起こし→整形結果）②保管庫（一覧＋横断発見）。UI改修（アイコン/保管庫レイアウト）確定後に実態へ合わせる。
 
-## 4. プライバシー確認（撮影前チェック）
-- [ ] 実APIキー・個人ファイル名・メール等が映っていない。
-- [ ] 保管庫の他エントリ一覧に私的内容が映っていない（デモ用ダミーで撮るのが安全）。
+## 暫定プレースホルダ（現状）
+- `docs/assets/screenshot-main.placeholder.png` — メイン画面（録音→文字起こし→整形）。
+- `docs/assets/screenshot-vault.placeholder.png` — 保管庫/ライブラリ（一覧＋横断発見）。
+- README はメインのプレースホルダを表示中。v1.0.0で自動生成画像に差し替える。
+
+## プライバシー
+- 自動生成はすべて**ダミーデータ**で描画（実ジャーナル・実APIキーを使わない）。漏えいリスクなし。

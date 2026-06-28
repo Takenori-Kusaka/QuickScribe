@@ -13,8 +13,9 @@
 > 企画・設計の背景は [docs/vision.md](docs/vision.md) と [docs/adr/](docs/adr/) を参照。
 > 使い方の詳細・ダウンロードは **[ドキュメントサイト](https://takenori-kusaka.github.io/QuickScribe/)** へ。
 
-<!-- SCREENSHOT: アプリ画面のスクリーンショットを docs/assets/screenshot.png として追加し、ここに差し込む（GIFは作らない方針）。
-     例: ![QuickScribe スクリーンショット](docs/assets/screenshot.png) -->
+![QuickScribe メイン画面（プレースホルダ）](docs/assets/screenshot-main.placeholder.png)
+
+> 📸 上記は**プレースホルダ画像**です。実スクリーンショットは v1.0.0 リリース時に **CI で自動生成**して差し替えます（Vite + Playwright でフロントをヘッドレス描画・Tauri IPCをモック）。
 
 
 ## QuickScribe とは
