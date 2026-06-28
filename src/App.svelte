@@ -1730,27 +1730,6 @@
         <p class="tip">
           録音を止めると、文字起こし→AI整形まで一気に実行します（整形プロバイダの鍵が必要）。
         </p>
-        {#if IS_WINDOWS}
-          <label class="check">
-            <input type="checkbox" bind:checked={taskbarWidget} />
-            タスクバーに録音ウィジェットを表示する
-          </label>
-          <p class="tip">
-            タスクバー上の録音/停止・ウィンドウ表示ボタン（Windows）。OFFにすると非表示になります。
-          </p>
-        {/if}
-        <label class="check">
-          <input
-            type="checkbox"
-            bind:checked={autoStart}
-            onchange={() => void onAutoStartChange()}
-          />
-          PCのログイン時に自動起動する
-        </label>
-        <p class="tip">
-          OSにログインすると QuickScribe
-          を自動で起動し、トレイに常駐します（ウィンドウは出ません）。
-        </p>
       </div>
 
       <div class="meta-group">
@@ -1790,6 +1769,31 @@
             >整形結果は構造化Markdownのため常に .md で保存</strong
           >されます。ファイル名も <code>transcript-…</code>（生）/
           <code>refined-…</code>（整形）で区別されます。
+        </p>
+      </div>
+
+      <div class="meta-group">
+        <span class="meta-title">アプリ全般</span>
+        {#if IS_WINDOWS}
+          <label class="check">
+            <input type="checkbox" bind:checked={taskbarWidget} />
+            タスクバーに録音ウィジェットを表示する
+          </label>
+          <p class="tip">
+            タスクバー上の録音/停止・ウィンドウ表示ボタン（Windows）。OFFにすると非表示になります。
+          </p>
+        {/if}
+        <label class="check">
+          <input
+            type="checkbox"
+            bind:checked={autoStart}
+            onchange={() => void onAutoStartChange()}
+          />
+          PCのログイン時に自動起動する
+        </label>
+        <p class="tip">
+          OSにログインすると QuickScribe
+          を自動で起動し、トレイに常駐します（ウィンドウは出ません）。
         </p>
       </div>
 
