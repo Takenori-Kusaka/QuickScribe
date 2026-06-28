@@ -80,7 +80,22 @@ jobs:
         run: npm run check
 
       - name: Frontend unit tests (vitest)
+        if: matrix.os == 'windows-latest'
         run: npm test
+
+      # v1.0.0 カバレッジ計測の可視化(#402 Phase1)。現状は src/lib の純ロジックを計測し
+      # レポートをアーティファクト保存(ゲートは段階導入)。Rust側 llvm-cov は後続フェーズ。
+      - name: Frontend coverage (ubuntu)
+        if: matrix.os == 'ubuntu-22.04'
+        run: npm run coverage
+
+      - name: Upload coverage report
+        if: matrix.os == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: coverage/
+          if-no-files-found: error
 
       - name: Rust unit tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
