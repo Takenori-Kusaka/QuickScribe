@@ -28,3 +28,6 @@ tmp_issues.json
 # Playwright（スクショ自動生成）の一時成果物
 test-results/
 playwright-report/
+
+# カバレッジレポート（CIアーティファクトで保存・非コミット）
+coverage/
