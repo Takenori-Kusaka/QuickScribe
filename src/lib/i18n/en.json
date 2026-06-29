@@ -104,7 +104,8 @@
     "tip_output_3": " (raw) / ",
     "tip_output_4": " (refined).",
     "tip_taskbar": "Record/stop and show-window buttons on the taskbar (Windows). Turn off to hide them.",
-    "tip_autostart": "Starts QuickScribe automatically when you log in to the OS and keeps it in the tray (no window appears)."
+    "tip_autostart": "Starts QuickScribe automatically when you log in to the OS and keeps it in the tray (no window appears).",
+    "shortcut_modifier_required": "Combine with a modifier key (Ctrl/Alt/Shift) and press."
   },
   "vault": {
     "back_to_list": "← Back to list",
@@ -116,7 +117,8 @@
     "discovery_truncated": " (first 30 of {total})",
     "loading": "Loading…",
     "empty": "No entries yet. Recording and refining will save to your journal.",
-    "no_match": "No entries match your filter."
+    "no_match": "No entries match your filter.",
+    "title_viewing": "Journal: {name}"
   },
   "results": {
     "transcript": "Transcription",
@@ -129,7 +131,33 @@
     "restyle_label": "Re-refine in another style:",
     "copy": "Copy",
     "copied": "Copied",
-    "open_output": "Open output folder"
+    "open_output": "Open output folder",
+    "processing": "Processing…",
+    "refining_status": "The AI is organizing your thoughts…",
+    "term_check_title": "The AI detects terms suspected of misrecognition and proposes replacements (eases manual fixes before refining).",
+    "open_output_title": "Open the save folder in your file manager.",
+    "tags_placeholder": "Tags (optional, comma-separated, e.g. work, anxiety, idea)",
+    "kind_transcript": "Transcript",
+    "kind_refined": "Refined",
+    "kind_note": "Note"
+  },
+  "corrections": {
+    "none_found": "No terms suspected of misrecognition were found.",
+    "head": "Suspected misrecognitions ({n}) — check the ones to replace; suggestions are editable",
+    "clear_all": "Replace none",
+    "apply": "Replace selected terms and update",
+    "close": "Close (replace none)",
+    "replaced": "Replaced {n} term(s)"
+  },
+  "update": {
+    "downloading": "Downloading new version {version} in the background… {pct}%",
+    "checking": "Checking for updates…",
+    "latest": "You are on the latest version.",
+    "check_failed": "Update check failed: {detail}"
+  },
+  "dialog": {
+    "audio_files": "Audio files",
+    "text_memo": "Text/memo"
   },
   "errors": {
     "journal_load": "Failed to load journal: {detail}",

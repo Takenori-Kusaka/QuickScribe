@@ -104,7 +104,8 @@
     "tip_output_3": "（生）/ ",
     "tip_output_4": "（整形）で区別されます。",
     "tip_taskbar": "タスクバー上の録音/停止・ウィンドウ表示ボタン（Windows）。OFFにすると非表示になります。",
-    "tip_autostart": "OSにログインすると QuickScribe を自動で起動し、トレイに常駐します（ウィンドウは出ません）。"
+    "tip_autostart": "OSにログインすると QuickScribe を自動で起動し、トレイに常駐します（ウィンドウは出ません）。",
+    "shortcut_modifier_required": "修飾キー（Ctrl/Alt/Shift）と組み合わせて押してください"
   },
   "vault": {
     "back_to_list": "← 一覧へ戻る",
@@ -116,7 +117,8 @@
     "discovery_truncated": "（先頭30件のみ・全{total}件）",
     "loading": "読み込み中…",
     "empty": "まだエントリがありません。録音・整形するとジャーナルに保存されます。",
-    "no_match": "条件に合うエントリがありません。"
+    "no_match": "条件に合うエントリがありません。",
+    "title_viewing": "ジャーナル：{name}"
   },
   "results": {
     "transcript": "文字起こし",
@@ -129,7 +131,33 @@
     "restyle_label": "別のスタイルで整形し直す:",
     "copy": "コピー",
     "copied": "コピーしました",
-    "open_output": "出力先を開く"
+    "open_output": "出力先を開く",
+    "processing": "処理中…",
+    "refining_status": "AIが思考を整理しています…",
+    "term_check_title": "誤変換が疑われる用語をAIが検出し、置換を提案します（整形の前に手修正を緩和）",
+    "open_output_title": "保存先フォルダをエクスプローラー等で開く",
+    "tags_placeholder": "タグ（任意・カンマ区切り 例: 仕事, 不安, アイデア）",
+    "kind_transcript": "文字起こし",
+    "kind_refined": "整形済み",
+    "kind_note": "メモ"
+  },
+  "corrections": {
+    "none_found": "誤変換の疑いがある用語は見つかりませんでした。",
+    "head": "誤変換の疑い（{n}件）— 置換する語にチェック、提案は編集可",
+    "clear_all": "すべて置換しない",
+    "apply": "選んだ用語を置換して更新",
+    "close": "閉じる（置換しない）",
+    "replaced": "用語を{n}件置換しました"
+  },
+  "update": {
+    "downloading": "新バージョン {version} を背景でダウンロード中… {pct}%",
+    "checking": "更新を確認中…",
+    "latest": "お使いのバージョンは最新です。",
+    "check_failed": "更新確認に失敗: {detail}"
+  },
+  "dialog": {
+    "audio_files": "音声ファイル",
+    "text_memo": "テキスト/メモ"
   },
   "errors": {
     "journal_load": "ジャーナルの読み込みに失敗しました: {detail}",
