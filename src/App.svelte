@@ -1406,7 +1406,7 @@
         </label>
         {#if provider === "claude-aws"}
           <label>
-            workspace_id（Claude Platform on AWS で必須）
+            {$_("settings.label_workspace_id")}
             <input
               type="text"
               bind:value={awsWorkspaceId}
@@ -1417,7 +1417,7 @@
         {/if}
         {#if provider === "bedrock"}
           <label>
-            BedrockモデルID（リージョン/アカウント依存・空で既定）
+            {$_("settings.label_bedrock_model")}
             <input
               type="text"
               bind:value={bedrockModel}
@@ -1435,7 +1435,7 @@
         </label>
         {#if awsAuthMode === "sigv4"}
           <label>
-            AWSアクセスキーID
+            {$_("settings.label_aws_access_key")}
             <input
               type="password"
               bind:value={awsAccessKey}
@@ -1444,11 +1444,11 @@
             />
           </label>
           <label>
-            AWSシークレットアクセスキー
+            {$_("settings.label_aws_secret_key")}
             <input type="password" bind:value={awsSecretKey} placeholder="..." autocomplete="off" />
           </label>
           <label>
-            セッショントークン（一時credのときのみ・任意）
+            {$_("settings.label_aws_session")}
             <input
               type="password"
               bind:value={awsSessionToken}
@@ -1458,7 +1458,7 @@
           </label>
         {:else}
           <label>
-            {PROVIDER_LABELS[provider]} APIキー（端末内のみ保存）
+            {$_("settings.api_key_save", { values: { provider: PROVIDER_LABELS[provider] } })}
             <input
               type="password"
               bind:value={apiKeys[provider]}
@@ -1467,10 +1467,10 @@
             />
           </label>
         {/if}
-        <p class="muted">秘密情報は端末内に保存します（思考の生データを外に出しません）。</p>
+        <p class="muted">{$_("settings.secret_local_note")}</p>
       {:else}
         <label>
-          {PROVIDER_LABELS[provider]} APIキー（整形に使用・端末内のみ保存）
+          {$_("settings.api_key_refine", { values: { provider: PROVIDER_LABELS[provider] } })}
           <input
             type="password"
             bind:value={apiKeys[provider]}
@@ -1609,7 +1609,7 @@
         </div>
         {#if STT_CLOUD.includes(sttProvider)}
           <label>
-            APIキー（{STT_LABELS[sttProvider]}）
+            {$_("settings.stt_api_key", { values: { provider: STT_LABELS[sttProvider] } })}
             <input
               type="password"
               bind:value={sttKeys[sttProvider]}
@@ -1618,7 +1618,7 @@
           </label>
           {#if sttProvider === "azure"}
             <label>
-              Azure リソース名
+              {$_("settings.azure_resource")}
               <input
                 type="text"
                 bind:value={sttAzureResource}
@@ -1628,7 +1628,7 @@
           {/if}
           {#if sttProvider !== "azure"}
             <label>
-              モデル（任意・空で既定）
+              {$_("settings.stt_model_optional")}
               <input
                 type="text"
                 bind:value={sttModel}
@@ -1642,7 +1642,7 @@
           </p>
         {:else}
           <label>
-            モデル
+            {$_("settings.stt_model")}
             <select bind:value={whisperModel}>
               {#each whisperModels as m}
                 <option value={m.id}>{m.label}</option>
@@ -1663,14 +1663,12 @@
           <input type="checkbox" bind:checked={includeTimestamps} />
           {$_("settings.include_timestamps")}
         </label>
-        <p class="tip">いつ何を話したかの時刻を残し、AIが話の流れを踏まえて整理します。</p>
+        <p class="tip">{$_("settings.tip_timestamps")}</p>
         <label class="check">
           <input type="checkbox" bind:checked={autoPipeline} />
           {$_("settings.auto_pipeline")}
         </label>
-        <p class="tip">
-          録音を止めると、文字起こし→AI整形まで一気に実行します（整形プロバイダの鍵が必要）。
-        </p>
+        <p class="tip">{$_("settings.tip_auto_pipeline")}</p>
       </details>
 
       <details class="meta-group" open>
@@ -1691,7 +1689,7 @@
               <option value="wav">{$_("settings.fmt_wav")}</option>
             </select>
           </label>
-          <p class="tip">Opusは小容量でジャーナル向き。WAVは無圧縮で容量大ですが確実です。</p>
+          <p class="tip">{$_("settings.tip_audio_format")}</p>
         {/if}
         <div class="dir-row">
           <span class="tip"

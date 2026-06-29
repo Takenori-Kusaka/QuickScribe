@@ -54,7 +54,22 @@
     "fmt_opus": "Opus (compact, modern / .opus)",
     "fmt_wav": "WAV (uncompressed, reliable)",
     "out_txt": "Plain text (.txt, body only)",
-    "out_md": "Markdown (.md, with date/type metadata)"
+    "out_md": "Markdown (.md, with date/type metadata)",
+    "label_workspace_id": "workspace_id (required for Claude Platform on AWS)",
+    "label_bedrock_model": "Bedrock model ID (region/account dependent, empty for default)",
+    "label_aws_access_key": "AWS access key ID",
+    "label_aws_secret_key": "AWS secret access key",
+    "label_aws_session": "Session token (only for temporary credentials, optional)",
+    "secret_local_note": "Secrets are stored on this device (your raw thoughts never leave it).",
+    "api_key_save": "{provider} API key (stored on device only)",
+    "api_key_refine": "{provider} API key (used for refine, stored on device only)",
+    "stt_api_key": "API key ({provider})",
+    "azure_resource": "Azure resource name",
+    "stt_model_optional": "Model (optional, empty for default)",
+    "stt_model": "Model",
+    "tip_timestamps": "Keeps the time of what you said so the AI can organize with the flow in mind.",
+    "tip_auto_pipeline": "When you stop recording, transcription runs straight through AI refine (a refine provider key is required).",
+    "tip_audio_format": "Opus is compact and journal-friendly. WAV is uncompressed and reliable but large."
   },
   "vault": {
     "back_to_list": "← Back to list",

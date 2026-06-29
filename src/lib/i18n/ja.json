@@ -54,7 +54,22 @@
     "fmt_opus": "Opus（高圧縮・モダン / .opus）",
     "fmt_wav": "WAV（無圧縮・確実）",
     "out_txt": "プレーンテキスト（.txt・本文のみ）",
-    "out_md": "Markdown（.md・日時/種別などのメタデータ付き）"
+    "out_md": "Markdown（.md・日時/種別などのメタデータ付き）",
+    "label_workspace_id": "workspace_id（Claude Platform on AWS で必須）",
+    "label_bedrock_model": "BedrockモデルID（リージョン/アカウント依存・空で既定）",
+    "label_aws_access_key": "AWSアクセスキーID",
+    "label_aws_secret_key": "AWSシークレットアクセスキー",
+    "label_aws_session": "セッショントークン（一時credのときのみ・任意）",
+    "secret_local_note": "秘密情報は端末内に保存します（思考の生データを外に出しません）。",
+    "api_key_save": "{provider} APIキー（端末内のみ保存）",
+    "api_key_refine": "{provider} APIキー（整形に使用・端末内のみ保存）",
+    "stt_api_key": "APIキー（{provider}）",
+    "azure_resource": "Azure リソース名",
+    "stt_model_optional": "モデル（任意・空で既定）",
+    "stt_model": "モデル",
+    "tip_timestamps": "いつ何を話したかの時刻を残し、AIが話の流れを踏まえて整理します。",
+    "tip_auto_pipeline": "録音を止めると、文字起こし→AI整形まで一気に実行します（整形プロバイダの鍵が必要）。",
+    "tip_audio_format": "Opusは小容量でジャーナル向き。WAVは無圧縮で容量大ですが確実です。"
   },
   "vault": {
     "back_to_list": "← 一覧へ戻る",
