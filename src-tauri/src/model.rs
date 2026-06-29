@@ -6,6 +6,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 
 /// 選択可能な whisper モデルのカタログ項目。
 pub struct WhisperModel {
@@ -17,6 +18,11 @@ pub struct WhisperModel {
     pub filename: &'static str,
     /// ダウンロードURL（HuggingFace resolve）。
     pub url: &'static str,
+    /// 期待される SHA256（HuggingFace LFS の oid＝ファイル内容の sha256）。
+    /// ダウンロード後に照合し、改ざん/破損モデルを排除する(#391)。
+    pub sha256: &'static str,
+    /// 期待されるバイトサイズ（破損・途中切れの早期検出）。
+    pub size: u64,
 }
 
 /// モデルカタログ（既定 base を先頭に）。日本語特化 kotoba-whisper を含む。
@@ -26,36 +32,48 @@ pub const MODELS: &[WhisperModel] = &[
         label: "標準 base（日本語と速度のバランス・約142MB / 既定）",
         filename: "ggml-base.bin",
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+        sha256: "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
+        size: 147951465,
     },
     WhisperModel {
         id: "tiny",
         label: "最速 tiny（低精度・約75MB）",
         filename: "ggml-tiny.bin",
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
+        sha256: "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
+        size: 77691713,
     },
     WhisperModel {
         id: "small",
         label: "高精度寄り small（約466MB）",
         filename: "ggml-small.bin",
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
+        sha256: "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
+        size: 487601967,
     },
     WhisperModel {
         id: "medium",
         label: "高精度 medium（約1.5GB・低速）",
         filename: "ggml-medium.bin",
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin",
+        sha256: "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208",
+        size: 1533763059,
     },
     WhisperModel {
         id: "kotoba-q5",
         label: "日本語特化 kotoba-whisper 量子化（約538MB・推奨）",
         filename: "ggml-kotoba-whisper-v2.0-q5_0.bin",
         url: "https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0-q5_0.bin",
+        sha256: "4a3b92192b5d3578ff854a5876213e2e27af0c2d357492c2d14271e82c303658",
+        size: 537819875,
     },
     WhisperModel {
         id: "kotoba",
         label: "日本語特化 kotoba-whisper 高精度（約1.5GB）",
         filename: "ggml-kotoba-whisper-v2.0.bin",
         url: "https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0.bin",
+        sha256: "eff70a8a236e731abba774ba71e1f6d0fce53302137208c32207e694e0bf4546",
+        size: 1519521155,
     },
 ];
 
@@ -111,7 +129,7 @@ pub fn ensure_model_id<F: FnMut(u64, Option<u64>)>(
         return Ok(path);
     }
     std::fs::create_dir_all(model_dir()).map_err(|e| e.to_string())?;
-    download_to(m.url, &path, on_progress)?;
+    download_to(m.url, &path, m.sha256, m.size, on_progress)?;
     Ok(path)
 }
 
@@ -121,9 +139,14 @@ pub fn ensure_model<F: FnMut(u64, Option<u64>)>(on_progress: F) -> Result<PathBu
 }
 
 /// URL から path へダウンロードする（.part に書いてから rename＝壊れたモデルを残さない）。
+/// ダウンロード中に SHA256 を逐次計算し、完了後に期待値・サイズと照合する(#391)。
+/// 不一致なら .part を削除してエラーにし、改ざん/破損モデルを残さない。
+/// expected_sha256 が空文字のときはハッシュ照合をスキップ（expected_size==0 も同様）。
 fn download_to<F: FnMut(u64, Option<u64>)>(
     url: &str,
     path: &PathBuf,
+    expected_sha256: &str,
+    expected_size: u64,
     mut on_progress: F,
 ) -> Result<(), String> {
     let resp = ureq::get(url)
@@ -134,6 +157,7 @@ fn download_to<F: FnMut(u64, Option<u64>)>(
     let tmp = path.with_extension("part");
     let mut reader = resp.into_reader();
     let mut file = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
+    let mut hasher = Sha256::new();
     let mut buf = [0u8; 65536];
     let mut downloaded: u64 = 0;
     loop {
@@ -142,12 +166,41 @@ fn download_to<F: FnMut(u64, Option<u64>)>(
             break;
         }
         file.write_all(&buf[..n]).map_err(|e| e.to_string())?;
+        hasher.update(&buf[..n]);
         downloaded += n as u64;
         on_progress(downloaded, total);
     }
     file.sync_all().ok();
     drop(file);
+
+    // 整合性検証(#391): サイズ + SHA256 を照合。破損・途中切れ・改ざんを検出する。
+    let actual = hex::encode(hasher.finalize());
+    if let Err(e) = verify_integrity(downloaded, &actual, expected_size, expected_sha256) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
     std::fs::rename(&tmp, path).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// ダウンロード結果のサイズ・SHA256 を期待値と照合する（純関数＝テスト可能）。
+/// expected_size==0 はサイズ照合を、expected_sha256 が空はハッシュ照合をスキップ。
+fn verify_integrity(
+    actual_size: u64,
+    actual_sha256: &str,
+    expected_size: u64,
+    expected_sha256: &str,
+) -> Result<(), String> {
+    if expected_size != 0 && actual_size != expected_size {
+        return Err(format!(
+            "モデルのサイズが一致しません（破損の可能性）。期待 {expected_size} バイト / 実際 {actual_size} バイト"
+        ));
+    }
+    if !expected_sha256.is_empty() && !actual_sha256.eq_ignore_ascii_case(expected_sha256) {
+        return Err(format!(
+            "モデルのSHA256が一致しません（改ざん・破損の可能性）。期待 {expected_sha256} / 実際 {actual_sha256}"
+        ));
+    }
     Ok(())
 }
 
@@ -177,5 +230,43 @@ mod tests {
         let l = list_models();
         assert_eq!(l[0].id, "base");
         assert!(l.iter().any(|m| m.id == "kotoba"));
+    }
+
+    #[test]
+    fn catalog_entries_have_valid_sha256_and_size() {
+        for m in MODELS {
+            assert_eq!(m.sha256.len(), 64, "{} の sha256 は64桁hex", m.id);
+            assert!(
+                m.sha256.chars().all(|c| c.is_ascii_hexdigit()),
+                "{} の sha256 はhexのみ",
+                m.id
+            );
+            assert!(m.size > 0, "{} の size は正", m.id);
+        }
+    }
+
+    #[test]
+    fn sha256_matches_known_vector() {
+        // NIST 既知ベクトル: SHA256("abc")。
+        let actual = hex::encode(Sha256::digest(b"abc"));
+        assert_eq!(
+            actual,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[test]
+    fn verify_integrity_accepts_match_and_skips() {
+        // 完全一致。
+        assert!(verify_integrity(10, "ABCD", 10, "abcd").is_ok());
+        // 期待値が空/0なら該当照合をスキップ。
+        assert!(verify_integrity(10, "abcd", 0, "").is_ok());
+        assert!(verify_integrity(10, "abcd", 0, "abcd").is_ok());
+    }
+
+    #[test]
+    fn verify_integrity_rejects_size_and_hash_mismatch() {
+        assert!(verify_integrity(9, "abcd", 10, "abcd").is_err()); // サイズ不一致
+        assert!(verify_integrity(10, "dead", 10, "beef").is_err()); // ハッシュ不一致
     }
 }
