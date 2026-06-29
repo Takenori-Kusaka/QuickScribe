@@ -66,7 +66,7 @@ jobs:
         run: npx tauri build --config src-tauri/tauri.release.conf.json
 
       - name: Upload installer artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: quickscribe-windows-test-build
           path: |

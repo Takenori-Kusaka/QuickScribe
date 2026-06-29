@@ -102,7 +102,7 @@ jobs:
           cat perf-report.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload perf report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: perf-report
           path: perf-report.md
