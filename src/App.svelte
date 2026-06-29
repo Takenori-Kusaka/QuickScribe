@@ -1736,6 +1736,8 @@
           >
             <option value="ja">日本語</option>
             <option value="en">English</option>
+            <option value="zh">简体中文</option>
+            <option value="es">Español</option>
           </select>
         </label>
         {#if IS_WINDOWS}
