@@ -5,7 +5,8 @@
     "record_stop": "Stop",
     "from_file": "Transcribe from audio file",
     "from_memo": "Refine from memo / text",
-    "formats_hint": "Supported: audio {exts} (max {max}MB) · text txt / md"
+    "formats_hint": "Supported: audio {exts} (max {max}MB) · text txt / md",
+    "hotkey_hint": "Recording hotkey: {key} (change in Settings)"
   },
   "header": {
     "journal": "Journal",
@@ -44,7 +45,16 @@
     "audio_format": "Audio format",
     "output_format": "Output format (raw transcription)",
     "taskbar_widget": "Show recording widget in the taskbar",
-    "autostart": "Launch on system login"
+    "autostart": "Launch on system login",
+    "reload": "Reload",
+    "mode_toggle": "Toggle (press once to start, again to stop)",
+    "mode_momentary": "Hold to record (push-to-talk)",
+    "source_default_mic": "OS default microphone",
+    "source_mix": "Mic + system audio (default output / simultaneous)",
+    "fmt_opus": "Opus (compact, modern / .opus)",
+    "fmt_wav": "WAV (uncompressed, reliable)",
+    "out_txt": "Plain text (.txt, body only)",
+    "out_md": "Markdown (.md, with date/type metadata)"
   },
   "vault": {
     "back_to_list": "← Back to list",

@@ -5,7 +5,8 @@
     "record_stop": "停止",
     "from_file": "音声ファイルから文字起こし",
     "from_memo": "メモ/テキストから整形",
-    "formats_hint": "対応形式: 音声 {exts}（最大 {max}MB）・テキスト txt / md"
+    "formats_hint": "対応形式: 音声 {exts}（最大 {max}MB）・テキスト txt / md",
+    "hotkey_hint": "録音ホットキー: {key}（設定で変更可）"
   },
   "header": {
     "journal": "ジャーナル",
@@ -44,7 +45,16 @@
     "audio_format": "音声形式",
     "output_format": "出力形式（生の文字起こし）",
     "taskbar_widget": "タスクバーに録音ウィジェットを表示する",
-    "autostart": "PCのログイン時に自動起動する"
+    "autostart": "PCのログイン時に自動起動する",
+    "reload": "再読込",
+    "mode_toggle": "トグル（1回押すと開始 / もう1回で停止）",
+    "mode_momentary": "押している間だけ録音（ホールド）",
+    "source_default_mic": "OS既定のマイク",
+    "source_mix": "マイク＋システム音（既定の出力 / 同時録音）",
+    "fmt_opus": "Opus（高圧縮・モダン / .opus）",
+    "fmt_wav": "WAV（無圧縮・確実）",
+    "out_txt": "プレーンテキスト（.txt・本文のみ）",
+    "out_md": "Markdown（.md・日時/種別などのメタデータ付き）"
   },
   "vault": {
     "back_to_list": "← 一覧へ戻る",

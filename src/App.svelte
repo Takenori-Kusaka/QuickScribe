@@ -1089,7 +1089,7 @@
       })}
     </p>
     <p class="hint">
-      録音ホットキー: <code>{displayShortcut(recordShortcut, IS_MAC)}</code>（設定で変更可）
+      {$_("main.hotkey_hint", { values: { key: displayShortcut(recordShortcut, IS_MAC) } })}
     </p>
 
     {#if busy || transcribing || status}
@@ -1563,8 +1563,8 @@
         <summary class="meta-title">{$_("settings.group_record_mode")}</summary>
         <div class="device-row">
           <select bind:value={recordMode}>
-            <option value="toggle">トグル（1回押すと開始 / もう1回で停止）</option>
-            <option value="momentary">押している間だけ録音（ホールド）</option>
+            <option value="toggle">{$_("settings.mode_toggle")}</option>
+            <option value="momentary">{$_("settings.mode_momentary")}</option>
           </select>
         </div>
         <p class="tip">
@@ -1578,16 +1578,16 @@
         <summary class="meta-title">{$_("settings.group_record_source")}</summary>
         <div class="device-row">
           <select value={`${inputDeviceKind}|${inputDevice}`} onchange={onSourceChange}>
-            <option value="input|">OS既定のマイク</option>
+            <option value="input|">{$_("settings.source_default_mic")}</option>
             {#if IS_WINDOWS}
-              <option value="mix|">マイク＋システム音（既定の出力 / 同時録音）</option>
+              <option value="mix|">{$_("settings.source_mix")}</option>
             {/if}
             {#each audioSources as s}
               <option value={`${s.kind}|${s.id}`}>{s.label}</option>
             {/each}
           </select>
           <button type="button" class="btn small ghost" onclick={() => void loadAudioSources()}>
-            再読込
+            {$_("settings.reload")}
           </button>
         </div>
         <p class="tip">
@@ -1685,8 +1685,8 @@
           <label>
             {$_("settings.audio_format")}
             <select bind:value={audioFormat}>
-              <option value="opus">Opus（高圧縮・モダン / .opus）</option>
-              <option value="wav">WAV（無圧縮・確実）</option>
+              <option value="opus">{$_("settings.fmt_opus")}</option>
+              <option value="wav">{$_("settings.fmt_wav")}</option>
             </select>
           </label>
           <p class="tip">Opusは小容量でジャーナル向き。WAVは無圧縮で容量大ですが確実です。</p>
@@ -1703,8 +1703,8 @@
         <label>
           {$_("settings.output_format")}
           <select bind:value={outputFormat}>
-            <option value="txt">プレーンテキスト（.txt・本文のみ）</option>
-            <option value="md">Markdown（.md・日時/種別などのメタデータ付き）</option>
+            <option value="txt">{$_("settings.out_txt")}</option>
+            <option value="md">{$_("settings.out_md")}</option>
           </select>
         </label>
         <p class="tip">
