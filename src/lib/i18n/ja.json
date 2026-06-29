@@ -28,7 +28,22 @@
     "change": "変更",
     "open_output": "出力先フォルダを開く",
     "save": "保存",
-    "check_update": "更新を確認"
+    "check_update": "更新を確認",
+    "label_refine_provider": "整形プロバイダ",
+    "label_aws_region": "AWSリージョン",
+    "label_auth_mode": "認証方式",
+    "label_refine_style": "整形スタイル（録音後の自動整形にも適用されます）",
+    "add_custom": "カスタムパターンを追加",
+    "press_key": "キーを押してください…（Escでキャンセル）",
+    "reset_default": "既定に戻す",
+    "include_timestamps": "タイムスタンプを含める",
+    "auto_pipeline": "停止後、文字起こしから整形まで自動実行する",
+    "keep_text": "文字起こしテキストを保存（.txt）",
+    "save_audio": "録音音声を保存",
+    "audio_format": "音声形式",
+    "output_format": "出力形式（生の文字起こし）",
+    "taskbar_widget": "タスクバーに録音ウィジェットを表示する",
+    "autostart": "PCのログイン時に自動起動する"
   },
   "vault": {
     "back_to_list": "← 一覧へ戻る",
