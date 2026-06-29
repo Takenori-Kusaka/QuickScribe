@@ -44,6 +44,43 @@ jobs:
           git diff --exit-code THIRD-PARTY-NOTICES-frontend.md \
             || { echo "::error::THIRD-PARTY-NOTICES-frontend.md が古いです。'npm run licenses' を実行してコミットしてください。"; exit 1; }
 
+  # Rust 静的解析（#392/#393）。段階導入: まずは可視化(continue-on-error)で運用し、
+  # 既存の clippy 警告・rustfmt 差分を洗い出してから strict 化する(ADR-0006 段階実装)。
+  # strict 化時に continue-on-error を外し、必須ステータスチェックへ昇格する。
+  rust-lint:
+    name: rust-lint (clippy/rustfmt)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Install Linux dependencies (clippy needs to compile)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libxdo-dev \
+            build-essential \
+            file \
+            clang \
+            libclang-dev \
+            cmake \
+            libasound2-dev \
+            pkg-config
+      - name: rustfmt (format check)
+        continue-on-error: true
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+      - name: clippy (lint)
+        continue-on-error: true
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
   build:
     name: build (${{ matrix.os }})
     strategy:
