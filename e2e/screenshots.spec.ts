@@ -8,6 +8,7 @@ test.beforeEach(async ({ page }) => {
   // 整形プロバイダをローカル(Ollama=鍵不要)にして refine を通す。
   await page.addInitScript(() => {
     localStorage.setItem("provider", "ollama");
+    localStorage.setItem("locale", "ja"); // 日本語UIで決定的に検証（OS言語に依存させない）。
   });
 });
 
@@ -42,6 +43,15 @@ test("ジャーナル（過去エントリ一覧・横断発見）", async ({ pa
   await expect(panel.locator(".entry-item").first()).toBeVisible();
 
   await panel.screenshot({ path: "docs/assets/screenshot-vault.png" });
+});
+
+test("メイン画面（英語ロケール / OS言語デフォルト検証）", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("locale", "en"));
+  await page.goto("/");
+  // en カタログのキーが反映されること。
+  await expect(page.getByRole("button", { name: "Start recording" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Journal" })).toBeVisible();
+  await page.screenshot({ path: "docs/assets/screenshot-main-en.png", fullPage: true });
 });
 
 test("設定パネル（カテゴリ/アコーディオン）", async ({ page }) => {

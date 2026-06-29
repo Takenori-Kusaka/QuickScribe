@@ -15,6 +15,7 @@
   },
   "settings": {
     "title": "設定",
+    "language": "言語",
     "group_custom_style": "カスタム整形パターン",
     "group_hotkey": "録音開始/停止のホットキー",
     "group_record_mode": "録音モード",
