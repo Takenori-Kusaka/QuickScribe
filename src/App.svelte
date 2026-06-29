@@ -20,7 +20,8 @@
   import { buildRefineArgs } from "./lib/refine-args";
   import { isModelCacheFresh } from "./lib/model-cache";
   import { selectDiscoveryTargets, buildDiscoveryText } from "./lib/discovery";
-  import { _ } from "svelte-i18n";
+  import { _, locale } from "svelte-i18n";
+  import { LOCALE_STORAGE_KEY } from "./lib/i18n";
   import {
     type Provider,
     type SttProvider,
@@ -1716,6 +1717,19 @@
 
       <details class="meta-group">
         <summary class="meta-title">{$_("settings.group_app")}</summary>
+        <label>
+          {$_("settings.language")}
+          <select
+            value={($locale ?? "ja").split("-")[0]}
+            onchange={(e) => {
+              locale.set(e.currentTarget.value);
+              localStorage.setItem(LOCALE_STORAGE_KEY, e.currentTarget.value);
+            }}
+          >
+            <option value="ja">日本語</option>
+            <option value="en">English</option>
+          </select>
+        </label>
         {#if IS_WINDOWS}
           <label class="check">
             <input type="checkbox" bind:checked={taskbarWidget} />

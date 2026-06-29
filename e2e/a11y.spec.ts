@@ -6,6 +6,7 @@ import { test, expect } from "@playwright/test";
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("provider", "ollama");
+    localStorage.setItem("locale", "ja"); // 日本語UIで決定的に検証。
   });
 });
 
