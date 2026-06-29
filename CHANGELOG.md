@@ -5,6 +5,19 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [0.8.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v0.7.0...v0.8.0) (2026-06-29)
+
+
+### ✨ 新機能 / Features
+
+* **i18n:** 設定の詳細ラベル15項目をキー化 ([#401](https://github.com/Takenori-Kusaka/QuickScribe/issues/401) Phase1) ([#442](https://github.com/Takenori-Kusaka/QuickScribe/issues/442)) ([f2a1cd9](https://github.com/Takenori-Kusaka/QuickScribe/commit/f2a1cd9c95ae7d9132169a166a42529746a77783))
+* **i18n:** 設定画面の見出し・主要ラベルをキー化 ([#401](https://github.com/Takenori-Kusaka/QuickScribe/issues/401) Phase1) ([#438](https://github.com/Takenori-Kusaka/QuickScribe/issues/438)) ([e68d36a](https://github.com/Takenori-Kusaka/QuickScribe/commit/e68d36ae48cf92487ff562a38df0916138847b1a))
+
+
+### 🐛 修正 / Bug Fixes
+
+* **ui:** ヘッダのジャーナルをアイコンのみ＋ツールチップ化(重なり解消) ([#440](https://github.com/Takenori-Kusaka/QuickScribe/issues/440)) ([0c1754f](https://github.com/Takenori-Kusaka/QuickScribe/commit/0c1754f2327707ffd0d845d507541d1459136778))
+
 ## [0.7.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v0.6.4...v0.7.0) (2026-06-29)
 
 
