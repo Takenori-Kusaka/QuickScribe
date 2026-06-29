@@ -1452,6 +1452,141 @@
           >×</button
         >
       </div>
+      <span class="meta-title">{$_("settings.group_hotkey")}</span>
+      <div class="hotkey-row">
+        <button
+          type="button"
+          class="hotkey-capture"
+          class:capturing
+          onclick={startCapture}
+          onkeydown={onCaptureKeydown}
+          onblur={cancelCapture}
+        >
+          {#if capturing}
+            {$_("settings.press_key")}
+          {:else}
+            {displayShortcut(recordShortcut, IS_MAC)}
+          {/if}
+        </button>
+        <button type="button" class="btn small ghost" onclick={resetShortcut}
+          >{$_("settings.reset_default")}</button
+        >
+      </div>
+      <p class="tip">
+        {$_("settings.tip_hotkey", { values: { key: displayShortcut(recordShortcut, IS_MAC) } })}
+      </p>
+      {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
+
+      <details class="meta-group" open>
+        <summary class="meta-title">{$_("settings.group_record_mode")}</summary>
+        <div class="device-row">
+          <select bind:value={recordMode}>
+            <option value="toggle">{$_("settings.mode_toggle")}</option>
+            <option value="momentary">{$_("settings.mode_momentary")}</option>
+          </select>
+        </div>
+        <p class="tip">
+          {$_("settings.tip_momentary_1")}<strong>{$_("settings.tip_momentary_strong")}</strong>{$_(
+            "settings.tip_momentary_2",
+          )}
+        </p>
+      </details>
+
+      <details class="meta-group">
+        <summary class="meta-title">{$_("settings.group_record_source")}</summary>
+        <div class="device-row">
+          <select value={`${inputDeviceKind}|${inputDevice}`} onchange={onSourceChange}>
+            <option value="input|">{$_("settings.source_default_mic")}</option>
+            {#if IS_WINDOWS}
+              <option value="mix|">{$_("settings.source_mix")}</option>
+            {/if}
+            {#each audioSources as s}
+              <option value={`${s.kind}|${s.id}`}>{s.label}</option>
+            {/each}
+          </select>
+          <button type="button" class="btn small ghost" onclick={() => void loadAudioSources()}>
+            {$_("settings.reload")}
+          </button>
+        </div>
+        <p class="tip">{$_("settings.tip_record_source")}</p>
+      </details>
+
+      <details class="meta-group" open>
+        <summary class="meta-title">{$_("settings.group_stt")}</summary>
+        <div class="device-row">
+          <select bind:value={sttProvider}>
+            {#each Object.keys(STT_LABELS) as p}
+              <option value={p}>{STT_LABELS[p as SttProvider]}</option>
+            {/each}
+          </select>
+        </div>
+        {#if STT_CLOUD.includes(sttProvider)}
+          <label>
+            {$_("settings.stt_api_key", { values: { provider: STT_LABELS[sttProvider] } })}
+            <input
+              type="password"
+              bind:value={sttKeys[sttProvider]}
+              placeholder={STT_KEY_PLACEHOLDERS[sttProvider]}
+            />
+          </label>
+          {#if sttProvider === "azure"}
+            <label>
+              {$_("settings.azure_resource")}
+              <input
+                type="text"
+                bind:value={sttAzureResource}
+                placeholder={$_("settings.azure_resource_ph")}
+              />
+            </label>
+          {/if}
+          {#if sttProvider !== "azure"}
+            <label>
+              {$_("settings.stt_model_optional")}
+              <input
+                type="text"
+                bind:value={sttModel}
+                placeholder={STT_MODEL_PLACEHOLDERS[sttProvider]}
+              />
+            </label>
+          {/if}
+          <p class="tip warn">
+            {$_("settings.tip_stt_warn_1")}<strong
+              >{$_("settings.tip_stt_warn_strong", {
+                values: { provider: STT_LABELS[sttProvider] },
+              })}</strong
+            >{$_("settings.tip_stt_warn_2")}
+          </p>
+        {:else}
+          <label>
+            {$_("settings.stt_model")}
+            <select bind:value={whisperModel}>
+              {#each whisperModels as m}
+                <option value={m.id}>{m.label}</option>
+              {/each}
+            </select>
+          </label>
+          <p class="tip">
+            {$_("settings.tip_whisper_1")}<strong>kotoba-whisper</strong>{$_(
+              "settings.tip_whisper_2",
+            )}
+          </p>
+        {/if}
+      </details>
+
+      <details class="meta-group">
+        <summary class="meta-title">{$_("settings.group_transcribe_meta")}</summary>
+        <label class="check">
+          <input type="checkbox" bind:checked={includeTimestamps} />
+          {$_("settings.include_timestamps")}
+        </label>
+        <p class="tip">{$_("settings.tip_timestamps")}</p>
+        <label class="check">
+          <input type="checkbox" bind:checked={autoPipeline} />
+          {$_("settings.auto_pipeline")}
+        </label>
+        <p class="tip">{$_("settings.tip_auto_pipeline")}</p>
+      </details>
+
       <label>
         {$_("settings.label_refine_provider")}
         <select bind:value={provider} onchange={() => resolveCurrentModel()}>
@@ -1611,140 +1746,6 @@
           {$_("settings.add_custom")}
         </button>
         <p class="tip">{$_("settings.tip_custom")}</p>
-      </details>
-      <span class="meta-title">{$_("settings.group_hotkey")}</span>
-      <div class="hotkey-row">
-        <button
-          type="button"
-          class="hotkey-capture"
-          class:capturing
-          onclick={startCapture}
-          onkeydown={onCaptureKeydown}
-          onblur={cancelCapture}
-        >
-          {#if capturing}
-            {$_("settings.press_key")}
-          {:else}
-            {displayShortcut(recordShortcut, IS_MAC)}
-          {/if}
-        </button>
-        <button type="button" class="btn small ghost" onclick={resetShortcut}
-          >{$_("settings.reset_default")}</button
-        >
-      </div>
-      <p class="tip">
-        {$_("settings.tip_hotkey", { values: { key: displayShortcut(recordShortcut, IS_MAC) } })}
-      </p>
-      {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
-
-      <details class="meta-group" open>
-        <summary class="meta-title">{$_("settings.group_record_mode")}</summary>
-        <div class="device-row">
-          <select bind:value={recordMode}>
-            <option value="toggle">{$_("settings.mode_toggle")}</option>
-            <option value="momentary">{$_("settings.mode_momentary")}</option>
-          </select>
-        </div>
-        <p class="tip">
-          {$_("settings.tip_momentary_1")}<strong>{$_("settings.tip_momentary_strong")}</strong>{$_(
-            "settings.tip_momentary_2",
-          )}
-        </p>
-      </details>
-
-      <details class="meta-group">
-        <summary class="meta-title">{$_("settings.group_record_source")}</summary>
-        <div class="device-row">
-          <select value={`${inputDeviceKind}|${inputDevice}`} onchange={onSourceChange}>
-            <option value="input|">{$_("settings.source_default_mic")}</option>
-            {#if IS_WINDOWS}
-              <option value="mix|">{$_("settings.source_mix")}</option>
-            {/if}
-            {#each audioSources as s}
-              <option value={`${s.kind}|${s.id}`}>{s.label}</option>
-            {/each}
-          </select>
-          <button type="button" class="btn small ghost" onclick={() => void loadAudioSources()}>
-            {$_("settings.reload")}
-          </button>
-        </div>
-        <p class="tip">{$_("settings.tip_record_source")}</p>
-      </details>
-
-      <details class="meta-group" open>
-        <summary class="meta-title">{$_("settings.group_stt")}</summary>
-        <div class="device-row">
-          <select bind:value={sttProvider}>
-            {#each Object.keys(STT_LABELS) as p}
-              <option value={p}>{STT_LABELS[p as SttProvider]}</option>
-            {/each}
-          </select>
-        </div>
-        {#if STT_CLOUD.includes(sttProvider)}
-          <label>
-            {$_("settings.stt_api_key", { values: { provider: STT_LABELS[sttProvider] } })}
-            <input
-              type="password"
-              bind:value={sttKeys[sttProvider]}
-              placeholder={STT_KEY_PLACEHOLDERS[sttProvider]}
-            />
-          </label>
-          {#if sttProvider === "azure"}
-            <label>
-              {$_("settings.azure_resource")}
-              <input
-                type="text"
-                bind:value={sttAzureResource}
-                placeholder={$_("settings.azure_resource_ph")}
-              />
-            </label>
-          {/if}
-          {#if sttProvider !== "azure"}
-            <label>
-              {$_("settings.stt_model_optional")}
-              <input
-                type="text"
-                bind:value={sttModel}
-                placeholder={STT_MODEL_PLACEHOLDERS[sttProvider]}
-              />
-            </label>
-          {/if}
-          <p class="tip warn">
-            {$_("settings.tip_stt_warn_1")}<strong
-              >{$_("settings.tip_stt_warn_strong", {
-                values: { provider: STT_LABELS[sttProvider] },
-              })}</strong
-            >{$_("settings.tip_stt_warn_2")}
-          </p>
-        {:else}
-          <label>
-            {$_("settings.stt_model")}
-            <select bind:value={whisperModel}>
-              {#each whisperModels as m}
-                <option value={m.id}>{m.label}</option>
-              {/each}
-            </select>
-          </label>
-          <p class="tip">
-            {$_("settings.tip_whisper_1")}<strong>kotoba-whisper</strong>{$_(
-              "settings.tip_whisper_2",
-            )}
-          </p>
-        {/if}
-      </details>
-
-      <details class="meta-group">
-        <summary class="meta-title">{$_("settings.group_transcribe_meta")}</summary>
-        <label class="check">
-          <input type="checkbox" bind:checked={includeTimestamps} />
-          {$_("settings.include_timestamps")}
-        </label>
-        <p class="tip">{$_("settings.tip_timestamps")}</p>
-        <label class="check">
-          <input type="checkbox" bind:checked={autoPipeline} />
-          {$_("settings.auto_pipeline")}
-        </label>
-        <p class="tip">{$_("settings.tip_auto_pipeline")}</p>
       </details>
 
       <details class="meta-group" open>
