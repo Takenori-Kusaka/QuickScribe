@@ -90,12 +90,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrayvec"
-version = "0.7.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f02882884d3e1bc524fb12c79f107f6ad0e1cfd498c536ffb494301740995dfe"
-
-[[package]]
 name = "async-broadcast"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -267,6 +261,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "auto-launch"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f012b8cc0c850f34117ec8252a44418f2e34a2cf501de89e29b241ae5f79471"
+dependencies = [
+ "dirs 4.0.0",
+ "thiserror 1.0.69",
+ "winreg 0.10.1",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -414,26 +419,6 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
-version = "0.71.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f58bf3d7db68cfbac37cfc485a8d711e87e064c3d0fe0435b92f7a407f9d6b3"
-dependencies = [
- "bitflags 2.13.0",
- "cexpr",
- "clang-sys",
- "itertools",
- "log",
- "prettyplease",
- "proc-macro2",
- "quote",
- "regex",
- "rustc-hash",
- "shlex 1.3.0",
- "syn 2.0.118",
-]
-
-[[package]]
-name = "bindgen"
 version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
@@ -442,6 +427,8 @@ dependencies = [
  "cexpr",
  "clang-sys",
  "itertools",
+ "log",
+ "prettyplease",
  "proc-macro2",
  "quote",
  "regex",
@@ -884,7 +871,7 @@ version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9b4739a805a62757a83e5654fa3faabec0442666b263bb2287d5a8185bfd953"
 dependencies = [
- "bindgen 0.72.1",
+ "bindgen",
 ]
 
 [[package]]
@@ -1154,6 +1141,15 @@ dependencies = [
 
 [[package]]
 name = "dirs"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca3aa72a6f96ea37bbc5aa912f6788242832f75369bdfdadcb0e38423f100059"
+dependencies = [
+ "dirs-sys 0.3.7",
+]
+
+[[package]]
+name = "dirs"
 version = "5.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "44c45a9d03d6676652bcb5e724c7e988de1acad23a711b5217ab9cbecbec2225"
@@ -1168,6 +1164,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3e8aa94d75141228480295a7d0e7feb620b1a5ad9f12bc40be62411e38cce4e"
 dependencies = [
  "dirs-sys 0.5.0",
+]
+
+[[package]]
+name = "dirs-sys"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b1d1d91c932ef41c0f2663aa8b0ca0342d444d842c06914aa0a7e352d0bada6"
+dependencies = [
+ "libc",
+ "redox_users 0.4.6",
+ "winapi",
 ]
 
 [[package]]
@@ -1323,7 +1330,7 @@ dependencies = [
  "rustc_version",
  "toml 1.1.2+spec-1.1.0",
  "vswhom",
- "winreg",
+ "winreg 0.55.0",
 ]
 
 [[package]]
@@ -1331,15 +1338,6 @@ name = "embed_plist"
 version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ef6b89e5b37196644d8796de5268852ff179b44e96276cf4290264843743bb7"
-
-[[package]]
-name = "encoding_rs"
-version = "0.8.35"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3"
-dependencies = [
- "cfg-if",
-]
 
 [[package]]
 name = "endi"
@@ -3535,12 +3533,14 @@ dependencies = [
  "symphonia",
  "tauri",
  "tauri-build",
+ "tauri-plugin-autostart",
  "tauri-plugin-dialog",
  "tauri-plugin-global-shortcut",
  "tauri-plugin-process",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
  "ureq",
+ "wasapi",
  "whisper-rs",
  "windows 0.61.3",
 ]
@@ -3675,6 +3675,12 @@ dependencies = [
  "memchr",
  "regex-syntax",
 ]
+
+[[package]]
+name = "regex-lite"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cab834c73d247e67f4fae452806d17d3c7501756d98c8808d7c9c7aa7d18f973"
 
 [[package]]
 name = "regex-syntax"
@@ -4404,9 +4410,9 @@ dependencies = [
 
 [[package]]
 name = "symphonia"
-version = "0.5.5"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5773a4c030a19d9bfaa090f49746ff35c75dfddfa700df7a5939d5e076a57039"
+checksum = "1758d6c853020a7244de03cc3e0185eaea3f58715122422dd3cc7452e6d4c16a"
 dependencies = [
  "lazy_static",
  "symphonia-bundle-flac",
@@ -4423,44 +4429,44 @@ dependencies = [
 
 [[package]]
 name = "symphonia-bundle-flac"
-version = "0.5.5"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c91565e180aea25d9b80a910c546802526ffd0072d0b8974e3ebe59b686c9976"
+checksum = "ee69ad01236a67260b82fd1ff9790dd75ead29f2f46af145e63b7e72273e0e03"
 dependencies = [
  "log",
+ "symphonia-common",
  "symphonia-core",
  "symphonia-metadata",
- "symphonia-utils-xiph",
 ]
 
 [[package]]
 name = "symphonia-bundle-mp3"
-version = "0.5.5"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4872dd6bb56bf5eac799e3e957aa1981086c3e613b27e0ac23b176054f7c57ed"
+checksum = "350f1f2f2e19ad4dd315db94304d1eb361b29af070681f94e51b8fdaad769546"
 dependencies = [
  "lazy_static",
  "log",
  "symphonia-core",
- "symphonia-metadata",
 ]
 
 [[package]]
 name = "symphonia-codec-aac"
-version = "0.5.5"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c263845aa86881416849c1729a54c7f55164f8b96111dba59de46849e73a790"
+checksum = "f1979c515a76371b186aad2feff5f23e21cbec775bf95de08bf1e3af92a2ad76"
 dependencies = [
  "lazy_static",
  "log",
+ "symphonia-common",
  "symphonia-core",
 ]
 
 [[package]]
 name = "symphonia-codec-pcm"
-version = "0.5.5"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e89d716c01541ad3ebe7c91ce4c8d38a7cf266a3f7b2f090b108fb0cb031d95"
+checksum = "50baee168f0e9dcf6ba7fc06e8b57eb62072a4490cc7cf13af77e72baae5d328"
 dependencies = [
  "log",
  "symphonia-core",
@@ -4468,58 +4474,69 @@ dependencies = [
 
 [[package]]
 name = "symphonia-codec-vorbis"
-version = "0.5.5"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f025837c309cd69ffef572750b4a2257b59552c5399a5e49707cc5b1b85d1c73"
+checksum = "45b07b4423cd8e0fc472575909a5554b12c2f58e3c190b38c24f042e732fd8de"
+dependencies = [
+ "log",
+ "symphonia-common",
+ "symphonia-core",
+]
+
+[[package]]
+name = "symphonia-common"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8257891ffa7f05e02b58f4761e2abf7e5278c8744fd59e981559e050f86eef55"
 dependencies = [
  "log",
  "symphonia-core",
- "symphonia-utils-xiph",
+ "symphonia-metadata",
 ]
 
 [[package]]
 name = "symphonia-core"
-version = "0.5.5"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea00cc4f79b7f6bb7ff87eddc065a1066f3a43fe1875979056672c9ef948c2af"
+checksum = "95ec293b5f288383b72a7bffcade6b2860b642cf66f28b3bd5967349a49938b1"
 dependencies = [
- "arrayvec",
- "bitflags 1.3.2",
+ "bitflags 2.13.0",
  "bytemuck",
  "lazy_static",
  "log",
+ "num-complex",
+ "smallvec",
 ]
 
 [[package]]
 name = "symphonia-format-isomp4"
-version = "0.5.5"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "243739585d11f81daf8dac8d9f3d18cc7898f6c09a259675fc364b382c30e0a5"
+checksum = "2d179a01305b3505940135a9f0180d6ef4b487912748fe97554756f120fbd05e"
 dependencies = [
- "encoding_rs",
  "log",
+ "symphonia-common",
  "symphonia-core",
  "symphonia-metadata",
- "symphonia-utils-xiph",
 ]
 
 [[package]]
 name = "symphonia-format-ogg"
-version = "0.5.5"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b4955c67c1ed3aa8ae8428d04ca8397fbef6a19b2b051e73b5da8b1435639cb"
+checksum = "b05a67e02b1e4fca1a261ba4fe06910a9357489ad8c36aafdd2960e9c6559433"
 dependencies = [
  "log",
+ "symphonia-common",
  "symphonia-core",
  "symphonia-metadata",
- "symphonia-utils-xiph",
 ]
 
 [[package]]
 name = "symphonia-format-riff"
-version = "0.5.5"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2d7c3df0e7d94efb68401d81906eae73c02b40d5ec1a141962c592d0f11a96f"
+checksum = "17424452a777666d3eaf09a5c651029b15b6a333812fcc5b5474f2a3f0cff3f0"
 dependencies = [
  "extended",
  "log",
@@ -4529,24 +4546,15 @@ dependencies = [
 
 [[package]]
 name = "symphonia-metadata"
-version = "0.5.5"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36306ff42b9ffe6e5afc99d49e121e0bd62fe79b9db7b9681d48e29fa19e6b16"
+checksum = "a31acf5cd623398a6208e2225d18f4b20f761c55098a796a5247ad516a4a8681"
 dependencies = [
- "encoding_rs",
  "lazy_static",
  "log",
+ "regex-lite",
+ "smallvec",
  "symphonia-core",
-]
-
-[[package]]
-name = "symphonia-utils-xiph"
-version = "0.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee27c85ab799a338446b68eec77abf42e1a6f1bb490656e121c6e27bfbab9f16"
-dependencies = [
- "symphonia-core",
- "symphonia-metadata",
 ]
 
 [[package]]
@@ -4798,6 +4806,20 @@ dependencies = [
  "serde_json",
  "tauri-utils",
  "walkdir",
+]
+
+[[package]]
+name = "tauri-plugin-autostart"
+version = "2.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "459383cebc193cdd03d1ba4acc40f2c408a7abce419d64bdcd2d745bc2886f70"
+dependencies = [
+ "auto-launch",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -5601,6 +5623,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasapi"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80c3aa5d6b0e7acc3ea10cb19c334df0c8d825060f14a30d9e3b03385e6e5175"
+dependencies = [
+ "log",
+ "num-integer",
+ "thiserror 2.0.18",
+ "windows 0.62.2",
+ "windows-core 0.62.2",
+]
+
+[[package]]
 name = "wasi"
 version = "0.11.1+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5814,21 +5849,24 @@ dependencies = [
 
 [[package]]
 name = "whisper-rs"
-version = "0.14.4"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d2eac0a371f8ae667a5ee15ae4130553ea3004e7572544d1ce546c81ea8874b"
+checksum = "2088172d00f936c348d6a72f488dc2660ab3f507263a195df308a3c2383229f6"
 dependencies = [
  "whisper-rs-sys",
 ]
 
 [[package]]
 name = "whisper-rs-sys"
-version = "0.13.1"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6986c0fe081241d391f09b9a071fbcbb59720c3563628c3c829057cf69f2a56f"
 dependencies = [
- "bindgen 0.71.1",
+ "bindgen",
  "cfg-if",
  "cmake",
  "fs_extra",
+ "semver",
 ]
 
 [[package]]
@@ -5893,11 +5931,23 @@ version = "0.61.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9babd3a767a4c1aef6900409f85f5d53ce2544ccdfaa86dad48c91782c6d6893"
 dependencies = [
- "windows-collections",
+ "windows-collections 0.2.0",
  "windows-core 0.61.2",
- "windows-future",
+ "windows-future 0.2.1",
  "windows-link 0.1.3",
- "windows-numerics",
+ "windows-numerics 0.2.0",
+]
+
+[[package]]
+name = "windows"
+version = "0.62.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "527fadee13e0c05939a6a05d5bd6eec6cd2e3dbd648b9f8e447c6518133d8580"
+dependencies = [
+ "windows-collections 0.3.2",
+ "windows-core 0.62.2",
+ "windows-future 0.3.2",
+ "windows-numerics 0.3.1",
 ]
 
 [[package]]
@@ -5907,6 +5957,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3beeceb5e5cfd9eb1d76b381630e82c4241ccd0d27f1a39ed41b2760b255c5e8"
 dependencies = [
  "windows-core 0.61.2",
+]
+
+[[package]]
+name = "windows-collections"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23b2d95af1a8a14a3c7367e1ed4fc9c20e0a26e79551b1454d72583c97cc6610"
+dependencies = [
+ "windows-core 0.62.2",
 ]
 
 [[package]]
@@ -5953,7 +6012,18 @@ checksum = "fc6a41e98427b19fe4b73c550f060b59fa592d7d686537eebf9385621bfbad8e"
 dependencies = [
  "windows-core 0.61.2",
  "windows-link 0.1.3",
- "windows-threading",
+ "windows-threading 0.1.0",
+]
+
+[[package]]
+name = "windows-future"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1d6f90251fe18a279739e78025bd6ddc52a7e22f921070ccdc67dde84c605cb"
+dependencies = [
+ "windows-core 0.62.2",
+ "windows-link 0.2.1",
+ "windows-threading 0.2.1",
 ]
 
 [[package]]
@@ -5998,6 +6068,16 @@ checksum = "9150af68066c4c5c07ddc0ce30421554771e528bde427614c61038bc2c92c2b1"
 dependencies = [
  "windows-core 0.61.2",
  "windows-link 0.1.3",
+]
+
+[[package]]
+name = "windows-numerics"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e2e40844ac143cdb44aead537bbf727de9b044e107a0f1220392177d15b0f26"
+dependencies = [
+ "windows-core 0.62.2",
+ "windows-link 0.2.1",
 ]
 
 [[package]]
@@ -6169,6 +6249,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b66463ad2e0ea3bbf808b7f1d371311c80e115c0b71d60efc142cafbcfb057a6"
 dependencies = [
  "windows-link 0.1.3",
+]
+
+[[package]]
+name = "windows-threading"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3949bd5b99cafdf1c7ca86b43ca564028dfe27d66958f2470940f73d86d75b37"
+dependencies = [
+ "windows-link 0.2.1",
 ]
 
 [[package]]
@@ -6382,6 +6471,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0592e1c9d151f854e6fd382574c3a0855250e1d9b2f99d9281c6e6391af352f1"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "winreg"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80d0f4e272c85def139476380b12f9ac60926689dd2e01d4923222f40580869d"
+dependencies = [
+ "winapi",
 ]
 
 [[package]]
@@ -6842,3 +6940,7 @@ dependencies = [
  "syn 2.0.118",
  "winnow 1.0.3",
 ]
+
+[[patch.unused]]
+name = "whisper-rs-sys"
+version = "0.13.1"
