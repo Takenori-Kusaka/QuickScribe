@@ -1386,17 +1386,16 @@
           <option value="gemini">Gemini</option>
           <option value="anthropic">Anthropic (Claude)</option>
           <option value="openai">OpenAI</option>
-          <option value="ollama">ローカル (Ollama)</option>
+          <option value="ollama">{$_("settings.provider_ollama")}</option>
           <option value="bedrock">AWS Bedrock</option>
           <option value="claude-aws">Claude Platform on AWS</option>
         </select>
       </label>
       {#if LOCAL_PROVIDERS.includes(provider)}
         <p class="muted">
-          ローカル (Ollama) は鍵不要で端末内完結（思考の生データを外に出しません）。 事前に <code
-            >ollama serve</code
-          >
-          の起動とモデル取得（例: <code>ollama pull llama3.1</code>）が必要です。
+          {$_("settings.ollama_note_1")}<code>ollama serve</code>{$_("settings.ollama_note_2")}<code
+            >ollama pull llama3.1</code
+          >{$_("settings.ollama_note_3")}
         </p>
       {:else if AWS_PROVIDERS.includes(provider)}
         <!-- AWSプロバイダ(Bedrock / Claude Platform on AWS) / ADR-0011。SigV4 or APIキー。 -->
@@ -1429,8 +1428,8 @@
         <label>
           {$_("settings.label_auth_mode")}
           <select bind:value={awsAuthMode}>
-            <option value="sigv4">AWS IAMキー (SigV4)</option>
-            <option value="apikey">APIキー</option>
+            <option value="sigv4">{$_("settings.auth_sigv4")}</option>
+            <option value="apikey">{$_("settings.auth_apikey")}</option>
           </select>
         </label>
         {#if awsAuthMode === "sigv4"}
@@ -1452,7 +1451,7 @@
             <input
               type="password"
               bind:value={awsSessionToken}
-              placeholder="（任意）"
+              placeholder={$_("settings.session_optional_ph")}
               autocomplete="off"
             />
           </label>
@@ -1481,12 +1480,20 @@
       {/if}
       <p class="muted model-hint">
         {#if provider === "bedrock"}
-          モデル: <code>{bedrockModel || FALLBACK_MODELS[provider]}</code>（Bedrockは手入力/既定）
+          {$_("settings.model_label")}<code>{bedrockModel || FALLBACK_MODELS[provider]}</code>{$_(
+            "settings.model_bedrock_suffix",
+          )}
         {:else if provider === "claude-aws"}
-          モデル: <code>{FALLBACK_MODELS[provider]}</code>（Claude Platform on AWS）
+          {$_("settings.model_label")}<code>{FALLBACK_MODELS[provider]}</code>{$_(
+            "settings.model_claude_aws_suffix",
+          )}
         {:else}
-          モデル: <code>{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code>
-          {#if resolvingModel}（取得中…）{:else if resolvedModel[provider]}（最新を自動取得）{:else}（最新ミドルレンジを自動選択）{/if}
+          {$_("settings.model_label")}<code
+            >{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code
+          >
+          {#if resolvingModel}{$_("settings.model_resolving")}{:else if resolvedModel[provider]}{$_(
+              "settings.model_latest_auto",
+            )}{:else}{$_("settings.model_latest_midrange")}{/if}
         {/if}
       </p>
       <label>
@@ -1511,7 +1518,7 @@
                 <button
                   type="button"
                   class="btn small ghost"
-                  onclick={() => removeCustomStyle(c.id)}>削除</button
+                  onclick={() => removeCustomStyle(c.id)}>{$_("settings.delete")}</button
                 >
               </li>
             {/each}
@@ -1521,20 +1528,17 @@
           class="custom-name-input"
           type="text"
           bind:value={newCustomLabel}
-          placeholder="パターン名（例: 議事録、日報、感情ラベル付け）"
+          placeholder={$_("settings.custom_name_ph")}
         />
         <textarea
           class="custom-instruction-input"
           bind:value={newCustomInstruction}
           rows="4"
-          placeholder={"AIへの指示を箇条書きで。例:\n- 決定事項とToDoを分けて箇条書きにする\n- 各ToDoに担当と期限の候補を添える"}
-        ></textarea>
+          placeholder={$_("settings.custom_instruction_ph")}></textarea>
         <button type="button" class="btn small" onclick={addCustomStyle}>
           {$_("settings.add_custom")}
         </button>
-        <p class="tip">
-          作成したパターンは整形スタイルの一覧（上の選択と結果画面のチップ）に並びます。捏造禁止・本文だけを出力する基本ルールは自動で守られます。
-        </p>
+        <p class="tip">{$_("settings.tip_custom")}</p>
       </details>
       <span class="meta-title">{$_("settings.group_hotkey")}</span>
       <div class="hotkey-row">
@@ -1557,7 +1561,7 @@
         >
       </div>
       <p class="tip">
-        「{displayShortcut(recordShortcut, IS_MAC)}」をクリックして、登録したいキーを押します。
+        {$_("settings.tip_hotkey", { values: { key: displayShortcut(recordShortcut, IS_MAC) } })}
       </p>
       {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
 
@@ -1570,9 +1574,9 @@
           </select>
         </div>
         <p class="tip">
-          「押している間だけ録音」は、物理ボタン（マウス・フットスイッチ等）やホットキーを<strong
-            >押し続けている間だけ</strong
-          >録音します。離すと停止します（会議の発言・とっさの一言向け）。
+          {$_("settings.tip_momentary_1")}<strong>{$_("settings.tip_momentary_strong")}</strong>{$_(
+            "settings.tip_momentary_2",
+          )}
         </p>
       </details>
 
@@ -1592,10 +1596,7 @@
             {$_("settings.reload")}
           </button>
         </div>
-        <p class="tip">
-          録音元を選びます。「システム音:
-          …」はその出力で再生中の音（相手の声・再生音）を録音。「マイク＋システム音」は自分の声と相手の声を同時に録音します（会議・通話向け）。次回の録音開始から反映されます。
-        </p>
+        <p class="tip">{$_("settings.tip_record_source")}</p>
       </details>
 
       <details class="meta-group" open>
@@ -1622,7 +1623,7 @@
               <input
                 type="text"
                 bind:value={sttAzureResource}
-                placeholder="例: myspeechresource（.cognitiveservices.azure.com の前）"
+                placeholder={$_("settings.azure_resource_ph")}
               />
             </label>
           {/if}
@@ -1637,8 +1638,11 @@
             </label>
           {/if}
           <p class="tip warn">
-            ⚠ クラウド文字起こしは<strong>音声を端末外（{STT_LABELS[sttProvider]}）へ送信</strong
-            >します。各社は既定でAPI音声を学習利用しないと明言していますが、プライバシー重視なら「ローカル」をお使いください。鍵はこの端末の安全な保管領域に保存されます。
+            {$_("settings.tip_stt_warn_1")}<strong
+              >{$_("settings.tip_stt_warn_strong", {
+                values: { provider: STT_LABELS[sttProvider] },
+              })}</strong
+            >{$_("settings.tip_stt_warn_2")}
           </p>
         {:else}
           <label>
@@ -1650,9 +1654,9 @@
             </select>
           </label>
           <p class="tip">
-            ローカルの whisper で端末内完結（音声は外部送信されません）。日本語中心なら <strong
-              >kotoba-whisper</strong
-            > が高精度です。選んだモデルは初回録音時に自動ダウンロードします（大きいモデルは時間がかかります）。
+            {$_("settings.tip_whisper_1")}<strong>kotoba-whisper</strong>{$_(
+              "settings.tip_whisper_2",
+            )}
           </p>
         {/if}
       </details>
@@ -1708,10 +1712,11 @@
           </select>
         </label>
         <p class="tip">
-          生の文字起こしの保存形式です。Markdownは先頭に作成日時・種別・タグを付けます。<strong
-            >整形結果は構造化Markdownのため常に .md で保存</strong
-          >されます。ファイル名も <code>transcript-…</code>（生）/
-          <code>refined-…</code>（整形）で区別されます。
+          {$_("settings.tip_output_1")}<strong>{$_("settings.tip_output_strong")}</strong>{$_(
+            "settings.tip_output_2",
+          )}<code>transcript-…</code>{$_("settings.tip_output_3")}<code>refined-…</code>{$_(
+            "settings.tip_output_4",
+          )}
         </p>
       </details>
 
@@ -1735,9 +1740,7 @@
             <input type="checkbox" bind:checked={taskbarWidget} />
             {$_("settings.taskbar_widget")}
           </label>
-          <p class="tip">
-            タスクバー上の録音/停止・ウィンドウ表示ボタン（Windows）。OFFにすると非表示になります。
-          </p>
+          <p class="tip">{$_("settings.tip_taskbar")}</p>
         {/if}
         <label class="check">
           <input
@@ -1747,10 +1750,7 @@
           />
           {$_("settings.autostart")}
         </label>
-        <p class="tip">
-          OSにログインすると QuickScribe
-          を自動で起動し、トレイに常駐します（ウィンドウは出ません）。
-        </p>
+        <p class="tip">{$_("settings.tip_autostart")}</p>
       </details>
 
       <div class="settings-actions">
