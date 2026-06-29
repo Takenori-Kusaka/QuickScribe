@@ -80,5 +80,24 @@
     "copy": "Copy",
     "copied": "Copied",
     "open_output": "Open output folder"
+  },
+  "errors": {
+    "journal_load": "Failed to load journal: {detail}",
+    "entry_open": "Could not open entry: {detail}",
+    "config_suffix": "Please enter it in Settings.",
+    "discover_need_two": "Cross-discovery needs at least 2 entries (narrow down with tags/search first).",
+    "discover_failed": "Cross-discovery failed: {detail}",
+    "autostart_failed": "Failed to configure auto-start: {detail}",
+    "custom_need_both": "A custom pattern needs both a name and instructions.",
+    "open_output_failed": "Could not open the output folder: {detail}",
+    "hotkey_set": "Hotkey set: {key}",
+    "hotkey_failed": "Could not set the hotkey: {detail}",
+    "transcribe_failed": "Transcription failed: {detail}",
+    "refine_failed": "Refine failed: {detail}",
+    "term_check_failed": "Term check failed: {detail}",
+    "memo_refine_failed": "Memo refine failed: {detail}",
+    "record_start_failed": "Could not start recording: {detail}",
+    "record_stop_failed": "Could not stop recording: {detail}",
+    "no_audio": "No transcribable audio was found (audio was not saved)."
   }
 }

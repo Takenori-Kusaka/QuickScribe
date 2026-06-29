@@ -80,5 +80,24 @@
     "copy": "コピー",
     "copied": "コピーしました",
     "open_output": "出力先を開く"
+  },
+  "errors": {
+    "journal_load": "ジャーナルの読み込みに失敗しました: {detail}",
+    "entry_open": "エントリを開けませんでした: {detail}",
+    "config_suffix": "設定から入力してください。",
+    "discover_need_two": "横断発見には2件以上のエントリが必要です（タグ/検索で絞ってからお試しください）。",
+    "discover_failed": "横断発見に失敗しました: {detail}",
+    "autostart_failed": "自動起動の設定に失敗しました: {detail}",
+    "custom_need_both": "カスタムパターンには名前と指示の両方が必要です。",
+    "open_output_failed": "出力先フォルダを開けませんでした: {detail}",
+    "hotkey_set": "ホットキーを設定しました: {key}",
+    "hotkey_failed": "ホットキーを設定できませんでした: {detail}",
+    "transcribe_failed": "文字起こしに失敗しました: {detail}",
+    "refine_failed": "整形に失敗しました: {detail}",
+    "term_check_failed": "用語チェックに失敗しました: {detail}",
+    "memo_refine_failed": "メモの整形に失敗しました: {detail}",
+    "record_start_failed": "録音を開始できませんでした: {detail}",
+    "record_stop_failed": "録音の停止に失敗しました: {detail}",
+    "no_audio": "文字起こしできる音声が含まれていませんでした（音声は保存していません）。"
   }
 }
