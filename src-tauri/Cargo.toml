@@ -29,7 +29,7 @@ tauri-plugin-autostart = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = "0.4"
-dirs = "5"
+dirs = "6"
 # whisperモデルDLの整合性検証(#391): SHA256照合で改ざん/破損を検出。
 # 既に推移依存として解決済み(sha2 0.10 / hex 0.4)のため新規クレートは増えない。
 sha2 = "0.10"
