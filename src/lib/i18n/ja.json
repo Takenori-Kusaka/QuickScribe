@@ -13,6 +13,23 @@
     "settings": "設定",
     "close": "閉じる"
   },
+  "settings": {
+    "title": "設定",
+    "group_custom_style": "カスタム整形パターン",
+    "group_hotkey": "録音開始/停止のホットキー",
+    "group_record_mode": "録音モード",
+    "group_record_source": "録音ソース（マイク / システム音）",
+    "group_stt": "文字起こしエンジン",
+    "group_transcribe_meta": "文字起こしのメタデータ",
+    "group_save": "保存",
+    "group_app": "アプリ全般",
+    "save_dir": "保存先: {dir}",
+    "save_dir_default": "既定（ドキュメント/QuickScribe）",
+    "change": "変更",
+    "open_output": "出力先フォルダを開く",
+    "save": "保存",
+    "check_update": "更新を確認"
+  },
   "vault": {
     "back_to_list": "← 一覧へ戻る",
     "search_placeholder": "🔎 本文・タグ・ファイル名で検索",

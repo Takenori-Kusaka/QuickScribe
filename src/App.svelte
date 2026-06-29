@@ -1373,7 +1373,7 @@
       use:modal={{ onClose: () => (showSettings = false) }}
     >
       <div class="settings-head">
-        <h2 id="settings-title">設定</h2>
+        <h2 id="settings-title">{$_("settings.title")}</h2>
         <button class="close" aria-label={$_("header.close")} onclick={() => (showSettings = false)}
           >×</button
         >
@@ -1500,7 +1500,7 @@
 
       <!-- カスタム整形パターン(S3.3): ユーザー定義の指示を追加・管理する。 -->
       <div class="meta-group">
-        <span class="meta-title">カスタム整形パターン</span>
+        <span class="meta-title">{$_("settings.group_custom_style")}</span>
         {#if customStyles.length > 0}
           <ul class="custom-list">
             {#each customStyles as c}
@@ -1534,7 +1534,7 @@
           作成したパターンは整形スタイルの一覧（上の選択と結果画面のチップ）に並びます。捏造禁止・本文だけを出力する基本ルールは自動で守られます。
         </p>
       </div>
-      <span class="meta-title">録音開始/停止のホットキー</span>
+      <span class="meta-title">{$_("settings.group_hotkey")}</span>
       <div class="hotkey-row">
         <button
           type="button"
@@ -1558,7 +1558,7 @@
       {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
 
       <div class="meta-group">
-        <span class="meta-title">録音モード</span>
+        <span class="meta-title">{$_("settings.group_record_mode")}</span>
         <div class="device-row">
           <select bind:value={recordMode}>
             <option value="toggle">トグル（1回押すと開始 / もう1回で停止）</option>
@@ -1573,7 +1573,7 @@
       </div>
 
       <div class="meta-group">
-        <span class="meta-title">録音ソース（マイク / システム音）</span>
+        <span class="meta-title">{$_("settings.group_record_source")}</span>
         <div class="device-row">
           <select value={`${inputDeviceKind}|${inputDevice}`} onchange={onSourceChange}>
             <option value="input|">OS既定のマイク</option>
@@ -1595,7 +1595,7 @@
       </div>
 
       <div class="meta-group">
-        <span class="meta-title">文字起こしエンジン</span>
+        <span class="meta-title">{$_("settings.group_stt")}</span>
         <div class="device-row">
           <select bind:value={sttProvider}>
             {#each Object.keys(STT_LABELS) as p}
@@ -1654,7 +1654,7 @@
       </div>
 
       <div class="meta-group">
-        <span class="meta-title">文字起こしのメタデータ</span>
+        <span class="meta-title">{$_("settings.group_transcribe_meta")}</span>
         <label class="check">
           <input type="checkbox" bind:checked={includeTimestamps} />
           タイムスタンプを含める
@@ -1670,7 +1670,7 @@
       </div>
 
       <div class="meta-group">
-        <span class="meta-title">保存</span>
+        <span class="meta-title">{$_("settings.group_save")}</span>
         <label class="check">
           <input type="checkbox" bind:checked={keepText} />
           文字起こしテキストを保存（.txt）
@@ -1690,9 +1690,13 @@
           <p class="tip">Opusは小容量でジャーナル向き。WAVは無圧縮で容量大ですが確実です。</p>
         {/if}
         <div class="dir-row">
-          <span class="tip">保存先: {saveDir || "既定（ドキュメント/QuickScribe）"}</span>
-          <button class="btn small ghost" onclick={pickSaveDir}>変更</button>
-          <button class="btn small ghost" onclick={openVault}>出力先フォルダを開く</button>
+          <span class="tip"
+            >{$_("settings.save_dir", {
+              values: { dir: saveDir || $_("settings.save_dir_default") },
+            })}</span
+          >
+          <button class="btn small ghost" onclick={pickSaveDir}>{$_("settings.change")}</button>
+          <button class="btn small ghost" onclick={openVault}>{$_("settings.open_output")}</button>
         </div>
         <label>
           出力形式（生の文字起こし）
@@ -1710,7 +1714,7 @@
       </div>
 
       <div class="meta-group">
-        <span class="meta-title">アプリ全般</span>
+        <span class="meta-title">{$_("settings.group_app")}</span>
         {#if IS_WINDOWS}
           <label class="check">
             <input type="checkbox" bind:checked={taskbarWidget} />
@@ -1735,8 +1739,10 @@
       </div>
 
       <div class="settings-actions">
-        <button class="btn small" onclick={saveSettings}>保存</button>
-        <button class="btn small ghost" onclick={() => checkForUpdate(true)}>更新を確認</button>
+        <button class="btn small" onclick={saveSettings}>{$_("settings.save")}</button>
+        <button class="btn small ghost" onclick={() => checkForUpdate(true)}
+          >{$_("settings.check_update")}</button
+        >
       </div>
       {#if updateMsg}<p class="muted">{updateMsg}</p>{/if}
     </div>
