@@ -258,7 +258,7 @@ jobs:
 
       - name: Cache whisper model
         id: cache-model
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: models/ggml-tiny.bin
           key: ggml-tiny-bin-v1
