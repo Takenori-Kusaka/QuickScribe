@@ -986,7 +986,7 @@
         <h1>QuickScribe</h1>
         <div class="header-actions">
           <button
-            class="nav-btn"
+            class="gear"
             title={$_("header.journal_title")}
             aria-label={$_("header.journal")}
             onclick={openEntriesPanel}
@@ -1004,7 +1004,6 @@
               <path d="M2 6h4" /><path d="M2 10h4" /><path d="M2 14h4" /><path d="M2 18h4" />
               <rect width="16" height="20" x="4" y="2" rx="2" /><path d="M16 2v20" />
             </svg>
-            <span>{$_("header.journal")}</span>
           </button>
           <button
             class="gear"
@@ -1826,30 +1825,8 @@
     align-items: center;
     gap: 0.5rem;
   }
-  /* 主要アクション: ジャーナル（アイコン＋ラベル）。補助操作より視覚的に格上げ。 */
-  .nav-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    background: #eef2ff;
-    color: #4338ca;
-    border: 1px solid #e0e7ff;
-    border-radius: 8px;
-    padding: 0.4rem 0.7rem;
-    font-size: 0.82rem;
-    font-weight: 600;
-    font-family: inherit;
-    cursor: pointer;
-  }
-  .nav-btn:hover {
-    background: #e0e7ff;
-    border-color: #c7d2fe;
-  }
-  .nav-btn .ic {
-    width: 1.05rem;
-    height: 1.05rem;
-  }
-  /* 補助操作: 設定（アイコンのみ）。 */
+  /* ヘッダのアイコンボタン（ジャーナル・設定）はアイコンのみ＋ツールチップ(title)。
+     狭いウィンドウでタイトルと重ならないよう、ラベルは表示しない。 */
   .gear {
     display: inline-flex;
     align-items: center;
