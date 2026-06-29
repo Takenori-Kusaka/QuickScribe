@@ -3,12 +3,16 @@
 import { addMessages, init, getLocaleFromNavigator } from "svelte-i18n";
 import ja from "./ja.json";
 import en from "./en.json";
+import zh from "./zh.json";
+import es from "./es.json";
 
 addMessages("ja", ja);
 addMessages("en", en);
+addMessages("zh", zh);
+addMessages("es", es);
 
 /** 対応ロケール。未対応のOS言語は fallback(ja) で表示される。 */
-export const SUPPORTED_LOCALES = ["ja", "en"] as const;
+export const SUPPORTED_LOCALES = ["ja", "en", "zh", "es"] as const;
 export const LOCALE_STORAGE_KEY = "locale";
 
 /** 対応ロケールに丸める（未対応は ja）。 */
