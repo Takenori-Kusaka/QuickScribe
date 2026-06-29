@@ -1,14 +1,18 @@
 // 保管庫エントリ／タグ関連の純粋関数（#402）。App.svelte から抽出してテスト可能化。
 
-/** エントリ種別を日本語ラベルへ。未知の値はそのまま返す。 */
+/**
+ * エントリ種別を i18n キーへ（#401）。未知の値はそのまま返す。
+ * 呼び出し側で `$_(kindLabel(kind))` のように翻訳する。キー欠如時は
+ * svelte-i18n がキー文字列を返すため、未知値はそのまま表示される。
+ */
 export function kindLabel(kind: string): string {
   switch (kind) {
     case "transcript":
-      return "文字起こし";
+      return "results.kind_transcript";
     case "refined":
-      return "整形済み";
+      return "results.kind_refined";
     case "note":
-      return "メモ";
+      return "results.kind_note";
     default:
       return kind;
   }

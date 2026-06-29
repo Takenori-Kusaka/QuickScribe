@@ -2,10 +2,10 @@ import { describe, it, expect } from "vitest";
 import { kindLabel, parseTags } from "./entry";
 
 describe("kindLabel", () => {
-  it("既知の種別を日本語に", () => {
-    expect(kindLabel("transcript")).toBe("文字起こし");
-    expect(kindLabel("refined")).toBe("整形済み");
-    expect(kindLabel("note")).toBe("メモ");
+  it("既知の種別を i18n キーに", () => {
+    expect(kindLabel("transcript")).toBe("results.kind_transcript");
+    expect(kindLabel("refined")).toBe("results.kind_refined");
+    expect(kindLabel("note")).toBe("results.kind_note");
   });
   it("未知はそのまま", () => {
     expect(kindLabel("other")).toBe("other");

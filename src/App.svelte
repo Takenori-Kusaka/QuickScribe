@@ -589,7 +589,7 @@
     const accel = accelFromEvent(e);
     if (!accel) {
       // 修飾キー無しは誤爆防止のため不可。ヒントを出して待機継続。
-      shortcutMsg = "修飾キー（Ctrl/Alt/Shift）と組み合わせて押してください";
+      shortcutMsg = $_("settings.shortcut_modifier_required");
       return;
     }
     recordShortcut = accel;
@@ -650,10 +650,10 @@
 
   async function checkForUpdate(manual = false) {
     try {
-      updateMsg = manual ? "更新を確認中…" : "";
+      updateMsg = manual ? $_("update.checking") : "";
       const update = await check();
       if (!update) {
-        updateMsg = manual ? "お使いのバージョンは最新です。" : "";
+        updateMsg = manual ? $_("update.latest") : "";
         return;
       }
       updateMsg = "";
@@ -672,7 +672,7 @@
       updateState = "ready";
     } catch (e) {
       console.error("update check failed", e);
-      updateMsg = manual ? `更新確認に失敗: ${errorText(e)}` : "";
+      updateMsg = manual ? $_("update.check_failed", { values: { detail: errorText(e) } }) : "";
     }
   }
 
@@ -691,7 +691,7 @@
     transcribeStartMs = null;
     const selected = await open({
       multiple: false,
-      filters: [{ name: "音声ファイル", extensions: SUPPORTED_AUDIO_EXTS }],
+      filters: [{ name: $_("dialog.audio_files"), extensions: SUPPORTED_AUDIO_EXTS }],
     });
     if (typeof selected !== "string") return;
     busy = true;
@@ -809,7 +809,7 @@
     const { text, applied } = applyCorrections(transcript, corrections);
     transcript = text;
     corrections = null;
-    status = applied > 0 ? `用語を${applied}件置換しました` : "";
+    status = applied > 0 ? $_("corrections.replaced", { values: { n: applied } }) : "";
   }
 
   // 整形結果をクリップボードへコピー(S3.5・最小操作の利便)。
@@ -830,7 +830,7 @@
     error = null;
     const selected = await open({
       multiple: false,
-      filters: [{ name: "テキスト/メモ", extensions: ["txt", "md", "markdown", "text"] }],
+      filters: [{ name: $_("dialog.text_memo"), extensions: ["txt", "md", "markdown", "text"] }],
     });
     if (typeof selected !== "string") return;
     try {
@@ -1039,7 +1039,7 @@
     {#if updateState === "downloading"}
       <div class="update-banner">
         <span class="spinner" aria-hidden="true"></span>
-        新バージョン {updateVersion} を背景でダウンロード中… {updatePct}%
+        {$_("update.downloading", { values: { version: updateVersion, pct: updatePct } })}
       </div>
     {:else if updateState === "ready"}
       <div class="update-banner ready">
@@ -1098,7 +1098,7 @@
       <div class="panel">
         <div class="status-row">
           <span class="spinner" aria-hidden="true"></span>
-          <span class="status-text">{status || "処理中…"}</span>
+          <span class="status-text">{status || $_("results.processing")}</span>
         </div>
         {#if progress > 0}
           <div class="progress" role="progressbar" aria-valuenow={progress}>
@@ -1129,7 +1129,7 @@
             </span>
             <button
               class="btn small ghost"
-              title="誤変換が疑われる用語をAIが検出し、置換を提案します（整形の前に手修正を緩和）"
+              title={$_("results.term_check_title")}
               onclick={suggestCorrections}
               disabled={checkingTerms || refining}
             >
@@ -1145,19 +1145,17 @@
         <!-- 用語補正フェーズ: 誤変換疑いの候補を確認→置換（置換しない選択肢付き）。 -->
         {#if corrections !== null}
           {#if corrections.length === 0}
-            <p class="tip">誤変換の疑いがある用語は見つかりませんでした。</p>
+            <p class="tip">{$_("corrections.none_found")}</p>
           {:else}
             <div class="corrections">
               <div class="corrections-head">
-                <span
-                  >誤変換の疑い（{corrections.length}件）— 置換する語にチェック、提案は編集可</span
-                >
+                <span>{$_("corrections.head", { values: { n: corrections.length } })}</span>
                 <button
                   type="button"
                   class="btn small ghost"
                   onclick={() => corrections && corrections.forEach((c) => (c.replace = false))}
                 >
-                  すべて置換しない
+                  {$_("corrections.clear_all")}
                 </button>
               </div>
               <ul class="correction-list">
@@ -1176,10 +1174,10 @@
               </ul>
               <div class="corrections-actions">
                 <button class="btn small" onclick={applyCorrectionsToTranscript}
-                  >選んだ用語を置換して更新</button
+                  >{$_("corrections.apply")}</button
                 >
                 <button class="btn small ghost" onclick={() => (corrections = null)}
-                  >閉じる（置換しない）</button
+                  >{$_("corrections.close")}</button
                 >
               </div>
             </div>
@@ -1191,7 +1189,7 @@
             class="tags-input"
             type="text"
             bind:value={entryTags}
-            placeholder="タグ（任意・カンマ区切り 例: 仕事, 不安, アイデア）"
+            placeholder={$_("results.tags_placeholder")}
           />
         </div>
       </section>
@@ -1199,7 +1197,8 @@
 
     {#if refining}
       <p class="muted center">
-        <span class="spinner" aria-hidden="true"></span> AIが思考を整理しています…
+        <span class="spinner" aria-hidden="true"></span>
+        {$_("results.refining_status")}
       </p>
     {/if}
     {#if refined}
@@ -1226,7 +1225,7 @@
             type="button"
             class="chip"
             onclick={openVault}
-            title="保存先フォルダをエクスプローラー等で開く"
+            title={$_("results.open_output_title")}
           >
             <svg
               class="ic-sm"
@@ -1271,7 +1270,11 @@
       use:modal={{ onClose: () => (showEntries = false) }}
     >
       <div class="settings-head">
-        <h2 id="vault-title">ジャーナル{viewingEntry ? `：${viewingEntry.name}` : ""}</h2>
+        <h2 id="vault-title">
+          {viewingEntry
+            ? $_("vault.title_viewing", { values: { name: viewingEntry.name } })
+            : $_("header.journal")}
+        </h2>
         <button class="close" aria-label={$_("header.close")} onclick={() => (showEntries = false)}
           >×</button
         >
@@ -1340,7 +1343,7 @@
                 <button type="button" class="entry-item" onclick={() => openEntry(e)}>
                   <div class="entry-meta">
                     <span class="entry-date">{e.created.replace("T", " ")}</span>
-                    {#if e.kind}<span class="entry-kind">{kindLabel(e.kind)}</span>{/if}
+                    {#if e.kind}<span class="entry-kind">{$_(kindLabel(e.kind))}</span>{/if}
                   </div>
                   {#if e.tags.length > 0}
                     <div class="entry-tags">
