@@ -6,7 +6,20 @@
     "from_file": "从音频文件转写",
     "from_memo": "从备忘录 / 文本整理",
     "formats_hint": "支持：音频 {exts}（最大 {max}MB）· 文本 txt / md",
-    "hotkey_hint": "录音热键：{key}（可在设置中更改）"
+    "hotkey_hint": "录音热键：{key}（可在设置中更改）",
+    "empty_cta": "先从录音开始。按麦克风按钮或 {key} 开始说话。"
+  },
+  "onboarding": {
+    "title": "欢迎使用 QuickScribe",
+    "local_note": "你说的话不会离开本设备。思绪整理完全在本地完成。",
+    "step1_title": "说",
+    "step1_desc": "用按钮或物理热键录音。把脑海中的想法直接说出来。",
+    "step2_title": "整理",
+    "step2_desc": "AI 在保留语气的同时整理你的思绪。可在逐字、摘要与头脑风暴之间切换。",
+    "step3_title": "回顾",
+    "step3_desc": "积累到日记中，通过跨条目发现从过去的自己获得启发。",
+    "start": "开始",
+    "skip": "跳过"
   },
   "header": {
     "journal": "日记",
@@ -153,7 +166,9 @@
     "downloading": "正在后台下载新版本 {version}… {pct}%",
     "checking": "正在检查更新…",
     "latest": "你使用的已是最新版本。",
-    "check_failed": "检查更新失败：{detail}"
+    "check_failed": "检查更新失败：{detail}",
+    "ready": "新版本 {version} 已准备就绪。",
+    "restart": "重启以更新"
   },
   "dialog": {
     "audio_files": "音频文件",

@@ -6,7 +6,20 @@
     "from_file": "Transcribir desde archivo de audio",
     "from_memo": "Refinar desde nota / texto",
     "formats_hint": "Compatibles: audio {exts} (máx. {max}MB) · texto txt / md",
-    "hotkey_hint": "Atajo de grabación: {key} (cámbialo en Ajustes)"
+    "hotkey_hint": "Atajo de grabación: {key} (cámbialo en Ajustes)",
+    "empty_cta": "Empieza grabando. Pulsa el botón del micrófono o {key} para empezar a hablar."
+  },
+  "onboarding": {
+    "title": "Te damos la bienvenida a QuickScribe",
+    "local_note": "Lo que dices nunca sale de este dispositivo. Organizar tus pensamientos es totalmente local.",
+    "step1_title": "Habla",
+    "step1_desc": "Graba con un botón o un atajo físico. Pon en palabras lo que tienes en mente.",
+    "step2_title": "Refina",
+    "step2_desc": "La IA organiza tus pensamientos conservando los matices. Alterna entre literal, resumen y lluvia de ideas.",
+    "step3_title": "Repasa",
+    "step3_desc": "Se acumula en tu diario; el descubrimiento entre entradas revela ideas de tu yo pasado.",
+    "start": "Empezar",
+    "skip": "Omitir"
   },
   "header": {
     "journal": "Diario",
@@ -153,7 +166,9 @@
     "downloading": "Descargando la nueva versión {version} en segundo plano… {pct}%",
     "checking": "Buscando actualizaciones…",
     "latest": "Tienes la versión más reciente.",
-    "check_failed": "Error al buscar actualizaciones: {detail}"
+    "check_failed": "Error al buscar actualizaciones: {detail}",
+    "ready": "La versión {version} está lista.",
+    "restart": "Reiniciar para actualizar"
   },
   "dialog": {
     "audio_files": "Archivos de audio",
