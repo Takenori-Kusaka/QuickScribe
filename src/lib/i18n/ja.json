@@ -6,7 +6,20 @@
     "from_file": "音声ファイルから文字起こし",
     "from_memo": "メモ/テキストから整形",
     "formats_hint": "対応形式: 音声 {exts}（最大 {max}MB）・テキスト txt / md",
-    "hotkey_hint": "録音ホットキー: {key}（設定で変更可）"
+    "hotkey_hint": "録音ホットキー: {key}（設定で変更可）",
+    "empty_cta": "まずは録音から。マイクボタンか {key} で話しはじめてください。"
+  },
+  "onboarding": {
+    "title": "QuickScribe へようこそ",
+    "local_note": "話した言葉はこの端末から出ません。思考整理はローカルで完結します。",
+    "step1_title": "話す",
+    "step1_desc": "ボタンか物理ホットキーで録音。頭の中をそのまま声にします。",
+    "step2_title": "整える",
+    "step2_desc": "AIがニュアンスを残したまま思考を整理。逐語⇄要約⇄ブレストを行き来できます。",
+    "step3_title": "見返す",
+    "step3_desc": "ジャーナルに蓄積し、横断発見で過去の自分から気づきを得ます。",
+    "start": "はじめる",
+    "skip": "スキップ"
   },
   "header": {
     "journal": "ジャーナル",
@@ -153,7 +166,9 @@
     "downloading": "新バージョン {version} を背景でダウンロード中… {pct}%",
     "checking": "更新を確認中…",
     "latest": "お使いのバージョンは最新です。",
-    "check_failed": "更新確認に失敗: {detail}"
+    "check_failed": "更新確認に失敗: {detail}",
+    "ready": "新バージョン {version} の準備ができました。",
+    "restart": "再起動して更新"
   },
   "dialog": {
     "audio_files": "音声ファイル",
