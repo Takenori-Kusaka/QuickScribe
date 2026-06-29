@@ -1378,7 +1378,7 @@
         >
       </div>
       <label>
-        整形プロバイダ
+        {$_("settings.label_refine_provider")}
         <select bind:value={provider} onchange={() => resolveCurrentModel()}>
           <option value="gemini">Gemini</option>
           <option value="anthropic">Anthropic (Claude)</option>
@@ -1398,7 +1398,7 @@
       {:else if AWS_PROVIDERS.includes(provider)}
         <!-- AWSプロバイダ(Bedrock / Claude Platform on AWS) / ADR-0011。SigV4 or APIキー。 -->
         <label>
-          AWSリージョン
+          {$_("settings.label_aws_region")}
           <input type="text" bind:value={awsRegion} placeholder="us-east-1" autocomplete="off" />
         </label>
         {#if provider === "claude-aws"}
@@ -1424,7 +1424,7 @@
           </label>
         {/if}
         <label>
-          認証方式
+          {$_("settings.label_auth_mode")}
           <select bind:value={awsAuthMode}>
             <option value="sigv4">AWS IAMキー (SigV4)</option>
             <option value="apikey">APIキー</option>
@@ -1487,7 +1487,7 @@
         {/if}
       </p>
       <label>
-        整形スタイル（録音後の自動整形にも適用されます）
+        {$_("settings.label_refine_style")}
         <select bind:value={refineStyle}>
           {#each allStyles as s}
             <option value={s.value} title={s.desc}>{s.label}</option>
@@ -1527,7 +1527,7 @@
           placeholder={"AIへの指示を箇条書きで。例:\n- 決定事項とToDoを分けて箇条書きにする\n- 各ToDoに担当と期限の候補を添える"}
         ></textarea>
         <button type="button" class="btn small" onclick={addCustomStyle}>
-          カスタムパターンを追加
+          {$_("settings.add_custom")}
         </button>
         <p class="tip">
           作成したパターンは整形スタイルの一覧（上の選択と結果画面のチップ）に並びます。捏造禁止・本文だけを出力する基本ルールは自動で守られます。
@@ -1544,12 +1544,14 @@
           onblur={cancelCapture}
         >
           {#if capturing}
-            キーを押してください…（Escでキャンセル）
+            {$_("settings.press_key")}
           {:else}
             {displayShortcut(recordShortcut, IS_MAC)}
           {/if}
         </button>
-        <button type="button" class="btn small ghost" onclick={resetShortcut}>既定に戻す</button>
+        <button type="button" class="btn small ghost" onclick={resetShortcut}
+          >{$_("settings.reset_default")}</button
+        >
       </div>
       <p class="tip">
         「{displayShortcut(recordShortcut, IS_MAC)}」をクリックして、登録したいキーを押します。
@@ -1656,12 +1658,12 @@
         <summary class="meta-title">{$_("settings.group_transcribe_meta")}</summary>
         <label class="check">
           <input type="checkbox" bind:checked={includeTimestamps} />
-          タイムスタンプを含める
+          {$_("settings.include_timestamps")}
         </label>
         <p class="tip">いつ何を話したかの時刻を残し、AIが話の流れを踏まえて整理します。</p>
         <label class="check">
           <input type="checkbox" bind:checked={autoPipeline} />
-          停止後、文字起こしから整形まで自動実行する
+          {$_("settings.auto_pipeline")}
         </label>
         <p class="tip">
           録音を止めると、文字起こし→AI整形まで一気に実行します（整形プロバイダの鍵が必要）。
@@ -1672,15 +1674,15 @@
         <summary class="meta-title">{$_("settings.group_save")}</summary>
         <label class="check">
           <input type="checkbox" bind:checked={keepText} />
-          文字起こしテキストを保存（.txt）
+          {$_("settings.keep_text")}
         </label>
         <label class="check">
           <input type="checkbox" bind:checked={saveAudio} />
-          録音音声を保存
+          {$_("settings.save_audio")}
         </label>
         {#if saveAudio}
           <label>
-            音声形式
+            {$_("settings.audio_format")}
             <select bind:value={audioFormat}>
               <option value="opus">Opus（高圧縮・モダン / .opus）</option>
               <option value="wav">WAV（無圧縮・確実）</option>
@@ -1698,7 +1700,7 @@
           <button class="btn small ghost" onclick={openVault}>{$_("settings.open_output")}</button>
         </div>
         <label>
-          出力形式（生の文字起こし）
+          {$_("settings.output_format")}
           <select bind:value={outputFormat}>
             <option value="txt">プレーンテキスト（.txt・本文のみ）</option>
             <option value="md">Markdown（.md・日時/種別などのメタデータ付き）</option>
@@ -1717,7 +1719,7 @@
         {#if IS_WINDOWS}
           <label class="check">
             <input type="checkbox" bind:checked={taskbarWidget} />
-            タスクバーに録音ウィジェットを表示する
+            {$_("settings.taskbar_widget")}
           </label>
           <p class="tip">
             タスクバー上の録音/停止・ウィンドウ表示ボタン（Windows）。OFFにすると非表示になります。
@@ -1729,7 +1731,7 @@
             bind:checked={autoStart}
             onchange={() => void onAutoStartChange()}
           />
-          PCのログイン時に自動起動する
+          {$_("settings.autostart")}
         </label>
         <p class="tip">
           OSにログインすると QuickScribe
