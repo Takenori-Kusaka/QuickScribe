@@ -43,3 +43,12 @@ test("ジャーナル（過去エントリ一覧・横断発見）", async ({ pa
 
   await panel.screenshot({ path: "docs/assets/screenshot-vault.png" });
 });
+
+test("設定パネル（カテゴリ/アコーディオン）", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("settings-btn").click();
+
+  const panel = page.getByRole("dialog", { name: "設定" });
+  await expect(panel).toBeVisible();
+  await panel.screenshot({ path: "docs/assets/screenshot-settings.png" });
+});

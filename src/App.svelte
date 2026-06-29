@@ -1498,8 +1498,8 @@
       <p class="style-desc">{currentStyle.desc}</p>
 
       <!-- カスタム整形パターン(S3.3): ユーザー定義の指示を追加・管理する。 -->
-      <div class="meta-group">
-        <span class="meta-title">{$_("settings.group_custom_style")}</span>
+      <details class="meta-group">
+        <summary class="meta-title">{$_("settings.group_custom_style")}</summary>
         {#if customStyles.length > 0}
           <ul class="custom-list">
             {#each customStyles as c}
@@ -1532,7 +1532,7 @@
         <p class="tip">
           作成したパターンは整形スタイルの一覧（上の選択と結果画面のチップ）に並びます。捏造禁止・本文だけを出力する基本ルールは自動で守られます。
         </p>
-      </div>
+      </details>
       <span class="meta-title">{$_("settings.group_hotkey")}</span>
       <div class="hotkey-row">
         <button
@@ -1556,8 +1556,8 @@
       </p>
       {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
 
-      <div class="meta-group">
-        <span class="meta-title">{$_("settings.group_record_mode")}</span>
+      <details class="meta-group" open>
+        <summary class="meta-title">{$_("settings.group_record_mode")}</summary>
         <div class="device-row">
           <select bind:value={recordMode}>
             <option value="toggle">トグル（1回押すと開始 / もう1回で停止）</option>
@@ -1569,10 +1569,10 @@
             >押し続けている間だけ</strong
           >録音します。離すと停止します（会議の発言・とっさの一言向け）。
         </p>
-      </div>
+      </details>
 
-      <div class="meta-group">
-        <span class="meta-title">{$_("settings.group_record_source")}</span>
+      <details class="meta-group">
+        <summary class="meta-title">{$_("settings.group_record_source")}</summary>
         <div class="device-row">
           <select value={`${inputDeviceKind}|${inputDevice}`} onchange={onSourceChange}>
             <option value="input|">OS既定のマイク</option>
@@ -1591,10 +1591,10 @@
           録音元を選びます。「システム音:
           …」はその出力で再生中の音（相手の声・再生音）を録音。「マイク＋システム音」は自分の声と相手の声を同時に録音します（会議・通話向け）。次回の録音開始から反映されます。
         </p>
-      </div>
+      </details>
 
-      <div class="meta-group">
-        <span class="meta-title">{$_("settings.group_stt")}</span>
+      <details class="meta-group" open>
+        <summary class="meta-title">{$_("settings.group_stt")}</summary>
         <div class="device-row">
           <select bind:value={sttProvider}>
             {#each Object.keys(STT_LABELS) as p}
@@ -1650,10 +1650,10 @@
             > が高精度です。選んだモデルは初回録音時に自動ダウンロードします（大きいモデルは時間がかかります）。
           </p>
         {/if}
-      </div>
+      </details>
 
-      <div class="meta-group">
-        <span class="meta-title">{$_("settings.group_transcribe_meta")}</span>
+      <details class="meta-group">
+        <summary class="meta-title">{$_("settings.group_transcribe_meta")}</summary>
         <label class="check">
           <input type="checkbox" bind:checked={includeTimestamps} />
           タイムスタンプを含める
@@ -1666,10 +1666,10 @@
         <p class="tip">
           録音を止めると、文字起こし→AI整形まで一気に実行します（整形プロバイダの鍵が必要）。
         </p>
-      </div>
+      </details>
 
-      <div class="meta-group">
-        <span class="meta-title">{$_("settings.group_save")}</span>
+      <details class="meta-group" open>
+        <summary class="meta-title">{$_("settings.group_save")}</summary>
         <label class="check">
           <input type="checkbox" bind:checked={keepText} />
           文字起こしテキストを保存（.txt）
@@ -1710,10 +1710,10 @@
           >されます。ファイル名も <code>transcript-…</code>（生）/
           <code>refined-…</code>（整形）で区別されます。
         </p>
-      </div>
+      </details>
 
-      <div class="meta-group">
-        <span class="meta-title">{$_("settings.group_app")}</span>
+      <details class="meta-group">
+        <summary class="meta-title">{$_("settings.group_app")}</summary>
         {#if IS_WINDOWS}
           <label class="check">
             <input type="checkbox" bind:checked={taskbarWidget} />
@@ -1735,7 +1735,7 @@
           OSにログインすると QuickScribe
           を自動で起動し、トレイに常駐します（ウィンドウは出ません）。
         </p>
-      </div>
+      </details>
 
       <div class="settings-actions">
         <button class="btn small" onclick={saveSettings}>{$_("settings.save")}</button>
@@ -1908,6 +1908,17 @@
     color: #4b5563;
     font-weight: 600;
     margin-bottom: 0.45rem;
+  }
+  /* 設定グループを折りたたみ可能なアコーディオンに（#404）。
+     native <details>/<summary> で開閉＋キーボード/SR対応が標準で得られる。 */
+  details.meta-group > summary.meta-title {
+    display: list-item;
+    list-style-position: inside;
+    cursor: pointer;
+    user-select: none;
+  }
+  details.meta-group > summary.meta-title:hover {
+    color: #4338ca;
   }
   .hotkey-row {
     display: flex;
