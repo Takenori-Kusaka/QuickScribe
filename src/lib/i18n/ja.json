@@ -9,6 +9,21 @@
   },
   "header": {
     "journal": "ジャーナル",
-    "settings": "設定"
+    "journal_title": "ジャーナル（過去のエントリを一覧・検索・横断発見）",
+    "settings": "設定",
+    "close": "閉じる"
+  },
+  "results": {
+    "transcript": "文字起こし",
+    "style_label": "整形スタイル:",
+    "term_check": "✓ 用語チェック",
+    "term_checking": "用語を確認中…",
+    "refine": "✨ 整形する",
+    "refining": "整形中…",
+    "refined_title": "整形（思考整理）",
+    "restyle_label": "別のスタイルで整形し直す:",
+    "copy": "コピー",
+    "copied": "コピーしました",
+    "open_output": "出力先を開く"
   }
 }
