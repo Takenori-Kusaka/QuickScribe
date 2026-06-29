@@ -88,7 +88,7 @@
     try {
       entries = await invoke<EntrySummary[]>("list_entries");
     } catch (e) {
-      error = `ジャーナルの読み込みに失敗しました: ${errorText(e)}`;
+      error = $_("errors.journal_load", { values: { detail: errorText(e) } });
       entries = [];
     } finally {
       entriesLoading = false;
@@ -126,7 +126,7 @@
       const content = await invoke<string>("read_text_file", { path: e.path });
       viewingEntry = { name: e.name, content };
     } catch (err) {
-      error = `エントリを開けませんでした: ${err}`;
+      error = $_("errors.entry_open", { values: { detail: errorText(err) } });
     }
   }
 
@@ -143,7 +143,7 @@
   async function discoverAcross() {
     const cfgErr = refineConfigError();
     if (cfgErr) {
-      error = `${cfgErr}設定から入力してください。`;
+      error = cfgErr + $_("errors.config_suffix");
       showEntries = false;
       showSettings = true;
       return;
@@ -151,7 +151,7 @@
     const { targets, truncated } = selectDiscoveryTargets(filteredEntries, DISCOVERY_MAX);
     discoveryTruncated = truncated;
     if (targets.length < 2) {
-      error = "横断発見には2件以上のエントリが必要です（タグ/検索で絞ってからお試しください）。";
+      error = $_("errors.discover_need_two");
       return;
     }
     error = null;
@@ -171,7 +171,7 @@
       delete args.tags;
       discoveryResult = await invoke<string>("refine_text", args);
     } catch (e) {
-      error = `横断発見に失敗しました: ${errorText(e)}`;
+      error = $_("errors.discover_failed", { values: { detail: errorText(e) } });
     } finally {
       discovering = false;
     }
@@ -246,7 +246,7 @@
       // OSの実際の登録状態に同期（失敗時のずれを防ぐ）。
       autoStart = await isAutostartEnabled();
     } catch (e) {
-      error = `自動起動の設定に失敗しました: ${errorText(e)}`;
+      error = $_("errors.autostart_failed", { values: { detail: errorText(e) } });
       autoStart = await isAutostartEnabled().catch(() => autoStart);
     }
   }
@@ -360,7 +360,7 @@
     const label = newCustomLabel.trim();
     const instruction = newCustomInstruction.trim();
     if (!label || !instruction) {
-      error = "カスタムパターンには名前と指示の両方が必要です。";
+      error = $_("errors.custom_need_both");
       return;
     }
     const id =
@@ -530,7 +530,7 @@
     try {
       await invoke("open_vault");
     } catch (e) {
-      error = `出力先フォルダを開けませんでした: ${errorText(e)}`;
+      error = $_("errors.open_output_failed", { values: { detail: errorText(e) } });
     }
   }
   function saveSettings() {
@@ -607,9 +607,11 @@
       await invoke("set_record_shortcut", { accelerator: recordShortcut });
       localStorage.setItem("recordShortcut", recordShortcut);
       void invoke("set_taskbar_shortcut", { display: displayShortcut(recordShortcut, IS_MAC) });
-      shortcutMsg = `ホットキーを設定しました: ${displayShortcut(recordShortcut, IS_MAC)}`;
+      shortcutMsg = $_("errors.hotkey_set", {
+        values: { key: displayShortcut(recordShortcut, IS_MAC) },
+      });
     } catch (e) {
-      shortcutMsg = `ホットキーを設定できませんでした: ${errorText(e)}`;
+      shortcutMsg = $_("errors.hotkey_failed", { values: { detail: errorText(e) } });
     }
   }
 
@@ -700,7 +702,7 @@
       });
       transcript = text;
     } catch (e) {
-      error = `文字起こしに失敗しました: ${errorText(e)}`;
+      error = $_("errors.transcribe_failed", { values: { detail: errorText(e) } });
     } finally {
       busy = false;
       status = "";
@@ -747,7 +749,7 @@
     const cfgErr = refineConfigError();
     if (cfgErr) {
       showSettings = true;
-      error = `${cfgErr}設定から入力してください。`;
+      error = cfgErr + $_("errors.config_suffix");
       return;
     }
     error = null;
@@ -759,7 +761,7 @@
       refined = await invoke<string>("refine_text", refineArgs(styleOverride));
       refinedStyle = styleOverride ?? refineStyle; // どのスタイルで整形したか(再整形チップの強調用)。
     } catch (e) {
-      error = `整形に失敗しました: ${errorText(e)}`;
+      error = $_("errors.refine_failed", { values: { detail: errorText(e) } });
     } finally {
       refining = false;
     }
@@ -781,7 +783,7 @@
     const cfgErr = refineConfigError();
     if (cfgErr) {
       showSettings = true;
-      error = `${cfgErr}設定から入力してください。`;
+      error = cfgErr + $_("errors.config_suffix");
       return;
     }
     error = null;
@@ -796,7 +798,7 @@
       const raw = await invoke<string>("refine_text", args);
       corrections = parseCorrections(raw);
     } catch (e) {
-      error = `用語チェックに失敗しました: ${errorText(e)}`;
+      error = $_("errors.term_check_failed", { values: { detail: errorText(e) } });
     } finally {
       checkingTerms = false;
     }
@@ -838,7 +840,7 @@
       segments = [];
       await refineNow();
     } catch (e) {
-      error = `メモの整形に失敗しました: ${errorText(e)}`;
+      error = $_("errors.memo_refine_failed", { values: { detail: errorText(e) } });
     }
   }
 
@@ -863,7 +865,7 @@
         eta = "";
         transcribeStartMs = null;
       } catch (e) {
-        error = `録音を開始できませんでした: ${errorText(e)}`;
+        error = $_("errors.record_start_failed", { values: { detail: errorText(e) } });
       }
     } else {
       recording = false;
@@ -877,7 +879,7 @@
         await invoke("stop_recording", { timestamps: includeTimestamps });
       } catch (e) {
         transcribing = false;
-        error = `録音の停止に失敗しました: ${errorText(e)}`;
+        error = $_("errors.record_stop_failed", { values: { detail: errorText(e) } });
       }
     }
   }
@@ -956,7 +958,7 @@
         // 一気通貫: 自動で整形まで実行（プロバイダが設定済みのときのみ）。
         if (autoPipeline && refineConfigError() === null) void refineNow();
       } else {
-        error = "文字起こしできる音声が含まれていませんでした（音声は保存していません）。";
+        error = $_("errors.no_audio");
       }
     });
     const unErr = listen<string>("transcribe-error", (e) => {
