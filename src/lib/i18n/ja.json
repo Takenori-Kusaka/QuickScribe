@@ -13,6 +13,18 @@
     "settings": "設定",
     "close": "閉じる"
   },
+  "vault": {
+    "back_to_list": "← 一覧へ戻る",
+    "search_placeholder": "🔎 本文・タグ・ファイル名で検索",
+    "discover": "✨ この{n}件から横断発見",
+    "discovering": "AIが横断的に読み解いています…",
+    "discover_tip": "絞り込んだ過去エントリから、繰り返すテーマ・感情の傾向・未解決の問い・次の一歩をAIが抽出します（整形プロバイダの鍵が必要・最大30件）。",
+    "discovery_result_tip": "絞り込んだ{n}件{detail}からの横断発見です。保存はされません（必要ならコピーしてください）。",
+    "discovery_truncated": "（先頭30件のみ・全{total}件）",
+    "loading": "読み込み中…",
+    "empty": "まだエントリがありません。録音・整形するとジャーナルに保存されます。",
+    "no_match": "条件に合うエントリがありません。"
+  },
   "results": {
     "transcript": "文字起こし",
     "style_label": "整形スタイル:",

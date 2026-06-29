@@ -1277,23 +1277,30 @@
 
       {#if discoveryResult !== null}
         <button class="btn small ghost" onclick={() => (discoveryResult = null)}
-          >← 一覧へ戻る</button
+          >{$_("vault.back_to_list")}</button
         >
         <p class="tip">
-          絞り込んだ{Math.min(filteredEntries.length, 30)}件{discoveryTruncated
-            ? `（先頭30件のみ・全${filteredEntries.length}件）`
-            : ""}からの横断発見です。保存はされません（必要ならコピーしてください）。
+          {$_("vault.discovery_result_tip", {
+            values: {
+              n: Math.min(filteredEntries.length, 30),
+              detail: discoveryTruncated
+                ? $_("vault.discovery_truncated", { values: { total: filteredEntries.length } })
+                : "",
+            },
+          })}
         </p>
         <pre class="entry-view">{discoveryResult}</pre>
       {:else if viewingEntry}
-        <button class="btn small ghost" onclick={() => (viewingEntry = null)}>← 一覧へ戻る</button>
+        <button class="btn small ghost" onclick={() => (viewingEntry = null)}
+          >{$_("vault.back_to_list")}</button
+        >
         <pre class="entry-view">{viewingEntry.content}</pre>
       {:else}
         <input
           class="tags-input"
           type="text"
           bind:value={entrySearch}
-          placeholder="🔎 本文・タグ・ファイル名で検索"
+          placeholder={$_("vault.search_placeholder")}
         />
         {#if allTags.length > 0}
           <div class="tag-filter">
@@ -1310,20 +1317,19 @@
         {#if filteredEntries.length >= 2}
           <button type="button" class="btn small" disabled={discovering} onclick={discoverAcross}>
             {discovering
-              ? "AIが横断的に読み解いています…"
-              : `✨ この${filteredEntries.length}件から横断発見`}
+              ? $_("vault.discovering")
+              : $_("vault.discover", { values: { n: filteredEntries.length } })}
           </button>
-          <p class="tip">
-            絞り込んだ過去エントリから、繰り返すテーマ・感情の傾向・未解決の問い・次の一歩をAIが抽出します（整形プロバイダの鍵が必要・最大30件）。
-          </p>
+          <p class="tip">{$_("vault.discover_tip")}</p>
         {/if}
         {#if entriesLoading}
-          <p class="muted center"><span class="spinner" aria-hidden="true"></span> 読み込み中…</p>
+          <p class="muted center">
+            <span class="spinner" aria-hidden="true"></span>
+            {$_("vault.loading")}
+          </p>
         {:else if filteredEntries.length === 0}
           <p class="tip">
-            {entries.length === 0
-              ? "まだエントリがありません。録音・整形するとジャーナルに保存されます。"
-              : "条件に合うエントリがありません。"}
+            {entries.length === 0 ? $_("vault.empty") : $_("vault.no_match")}
           </p>
         {:else}
           <ul class="entry-list">
