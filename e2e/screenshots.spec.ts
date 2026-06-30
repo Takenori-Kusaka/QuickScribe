@@ -9,6 +9,7 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("provider", "ollama");
     localStorage.setItem("locale", "ja"); // 日本語UIで決定的に検証（OS言語に依存させない）。
+    localStorage.setItem("onboarded", "1"); // 既存ショットは通常フロー（初回オンボーディングは別テストで撮影）。
   });
 });
 
@@ -52,6 +53,14 @@ test("メイン画面（英語ロケール / OS言語デフォルト検証）", 
   await expect(page.getByRole("button", { name: "Start recording" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Journal" })).toBeVisible();
   await page.screenshot({ path: "docs/assets/screenshot-main-en.png", fullPage: true });
+});
+
+test("初回オンボーディング（空状態のコア体験案内）", async ({ page }) => {
+  // beforeEach の onboarded を消し、初回起動の状態を再現する。
+  await page.addInitScript(() => localStorage.removeItem("onboarded"));
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "QuickScribe へようこそ" })).toBeVisible();
+  await page.screenshot({ path: "docs/assets/screenshot-onboarding.png", fullPage: true });
 });
 
 test("設定パネル（カテゴリ/アコーディオン）", async ({ page }) => {

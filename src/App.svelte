@@ -16,7 +16,7 @@
   import { modal } from "./lib/a11y";
   import { displayShortcut, accelFromEvent } from "./lib/shortcut";
   import { kindLabel } from "./lib/entry";
-  import { validateRefineConfig } from "./lib/provider-config";
+  import { validateRefineConfig, type RefineConfigError } from "./lib/provider-config";
   import { buildRefineArgs } from "./lib/refine-args";
   import { isModelCacheFresh } from "./lib/model-cache";
   import { selectDiscoveryTargets, buildDiscoveryText } from "./lib/discovery";
@@ -67,6 +67,19 @@
   // プロバイダ定義・定数は src/lib/constants.ts に集約(SSOT / #401 Phase0)。
 
   let showSettings = $state(false);
+
+  // 初回オンボーディング（#397）。初回起動時にコア体験3ステップとローカル完結を案内。
+  // 表示済みフラグは localStorage に持ち、以後は出さない。
+  const ONBOARDED_KEY = "onboarded";
+  let showOnboarding = $state(false);
+  function dismissOnboarding() {
+    showOnboarding = false;
+    try {
+      localStorage.setItem(ONBOARDED_KEY, "1");
+    } catch {
+      /* localStorage 不可環境では単に閉じる */
+    }
+  }
 
   // 保管庫エントリの横断（S4.3 Phase1）。一覧＋タグ/全文絞り込み＋閲覧。
   type EntrySummary = {
@@ -143,7 +156,7 @@
   async function discoverAcross() {
     const cfgErr = refineConfigError();
     if (cfgErr) {
-      error = cfgErr + $_("errors.config_suffix");
+      error = $_(cfgErr.code, { values: cfgErr.params }) + $_("errors.config_suffix");
       showEntries = false;
       showSettings = true;
       return;
@@ -710,8 +723,8 @@
   }
 
   // 文字起こしを整形（思考整理・要約）する＝コア価値。選択中プロバイダの鍵が必要。
-  // プロバイダが整形可能な設定になっているか（鍵/AWS資格情報）。未設定なら理由文を返す。
-  function refineConfigError(): string | null {
+  // プロバイダが整形可能な設定になっているか（鍵/AWS資格情報）。未設定なら i18n コードを返す。
+  function refineConfigError(): RefineConfigError | null {
     return validateRefineConfig({
       provider,
       apiKey: apiKeys[provider],
@@ -749,7 +762,7 @@
     const cfgErr = refineConfigError();
     if (cfgErr) {
       showSettings = true;
-      error = cfgErr + $_("errors.config_suffix");
+      error = $_(cfgErr.code, { values: cfgErr.params }) + $_("errors.config_suffix");
       return;
     }
     error = null;
@@ -783,7 +796,7 @@
     const cfgErr = refineConfigError();
     if (cfgErr) {
       showSettings = true;
-      error = cfgErr + $_("errors.config_suffix");
+      error = $_(cfgErr.code, { values: cfgErr.params }) + $_("errors.config_suffix");
       return;
     }
     error = null;
@@ -913,6 +926,12 @@
 
   onMount(() => {
     loadSettings();
+    // 初回起動（未表示）ならオンボーディングを出す（#397）。
+    try {
+      if (localStorage.getItem(ONBOARDED_KEY) !== "1") showOnboarding = true;
+    } catch {
+      /* localStorage 不可環境では出さない */
+    }
     void applyShortcut();
     void applyTaskbarWidget();
     void loadAutoStart();
@@ -1043,8 +1062,8 @@
       </div>
     {:else if updateState === "ready"}
       <div class="update-banner ready">
-        <span>新バージョン {updateVersion} の準備ができました。</span>
-        <button class="btn-restart" onclick={restartNow}>再起動して更新</button>
+        <span>{$_("update.ready", { values: { version: updateVersion } })}</span>
+        <button class="btn-restart" onclick={restartNow}>{$_("update.restart")}</button>
       </div>
     {/if}
 
@@ -1093,6 +1112,56 @@
     <p class="hint">
       {$_("main.hotkey_hint", { values: { key: displayShortcut(recordShortcut, IS_MAC) } })}
     </p>
+
+    <!-- 初回オンボーディング（#397）: 初回はコア体験3ステップ＋ローカル完結を非ブロッキングの
+         インラインカードで案内（リッチすぎて簡便さを損なわないよう、操作を妨げない）。
+         以降の空状態では軽量な「まず録音」導線のみ。 -->
+    {#if showOnboarding && !recording && !busy && !transcribing && !status && !transcript && !refined}
+      <section class="onboarding-card" aria-labelledby="onboarding-title">
+        <div class="onboarding-head">
+          <h2 id="onboarding-title">{$_("onboarding.title")}</h2>
+          <button
+            class="close"
+            aria-label={$_("onboarding.skip")}
+            onclick={dismissOnboarding}
+            onkeydown={(e) => {
+              if (e.key === "Escape") dismissOnboarding();
+            }}>×</button
+          >
+        </div>
+        <p class="onboarding-local">{$_("onboarding.local_note")}</p>
+        <ol class="onboarding-steps">
+          <li>
+            <span class="onboarding-step-n" aria-hidden="true">1</span>
+            <div>
+              <strong>{$_("onboarding.step1_title")}</strong>
+              <p>{$_("onboarding.step1_desc")}</p>
+            </div>
+          </li>
+          <li>
+            <span class="onboarding-step-n" aria-hidden="true">2</span>
+            <div>
+              <strong>{$_("onboarding.step2_title")}</strong>
+              <p>{$_("onboarding.step2_desc")}</p>
+            </div>
+          </li>
+          <li>
+            <span class="onboarding-step-n" aria-hidden="true">3</span>
+            <div>
+              <strong>{$_("onboarding.step3_title")}</strong>
+              <p>{$_("onboarding.step3_desc")}</p>
+            </div>
+          </li>
+        </ol>
+        <div class="onboarding-actions">
+          <button class="btn small" onclick={dismissOnboarding}>{$_("onboarding.start")}</button>
+        </div>
+      </section>
+    {:else if !recording && !busy && !transcribing && !status && !transcript && !refined}
+      <p class="empty-cta">
+        {$_("main.empty_cta", { values: { key: displayShortcut(recordShortcut, IS_MAC) } })}
+      </p>
+    {/if}
 
     {#if busy || transcribing || status}
       <div class="panel">
@@ -1383,6 +1452,141 @@
           >×</button
         >
       </div>
+      <span class="meta-title">{$_("settings.group_hotkey")}</span>
+      <div class="hotkey-row">
+        <button
+          type="button"
+          class="hotkey-capture"
+          class:capturing
+          onclick={startCapture}
+          onkeydown={onCaptureKeydown}
+          onblur={cancelCapture}
+        >
+          {#if capturing}
+            {$_("settings.press_key")}
+          {:else}
+            {displayShortcut(recordShortcut, IS_MAC)}
+          {/if}
+        </button>
+        <button type="button" class="btn small ghost" onclick={resetShortcut}
+          >{$_("settings.reset_default")}</button
+        >
+      </div>
+      <p class="tip">
+        {$_("settings.tip_hotkey", { values: { key: displayShortcut(recordShortcut, IS_MAC) } })}
+      </p>
+      {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
+
+      <details class="meta-group" open>
+        <summary class="meta-title">{$_("settings.group_record_mode")}</summary>
+        <div class="device-row">
+          <select bind:value={recordMode}>
+            <option value="toggle">{$_("settings.mode_toggle")}</option>
+            <option value="momentary">{$_("settings.mode_momentary")}</option>
+          </select>
+        </div>
+        <p class="tip">
+          {$_("settings.tip_momentary_1")}<strong>{$_("settings.tip_momentary_strong")}</strong>{$_(
+            "settings.tip_momentary_2",
+          )}
+        </p>
+      </details>
+
+      <details class="meta-group">
+        <summary class="meta-title">{$_("settings.group_record_source")}</summary>
+        <div class="device-row">
+          <select value={`${inputDeviceKind}|${inputDevice}`} onchange={onSourceChange}>
+            <option value="input|">{$_("settings.source_default_mic")}</option>
+            {#if IS_WINDOWS}
+              <option value="mix|">{$_("settings.source_mix")}</option>
+            {/if}
+            {#each audioSources as s}
+              <option value={`${s.kind}|${s.id}`}>{s.label}</option>
+            {/each}
+          </select>
+          <button type="button" class="btn small ghost" onclick={() => void loadAudioSources()}>
+            {$_("settings.reload")}
+          </button>
+        </div>
+        <p class="tip">{$_("settings.tip_record_source")}</p>
+      </details>
+
+      <details class="meta-group" open>
+        <summary class="meta-title">{$_("settings.group_stt")}</summary>
+        <div class="device-row">
+          <select bind:value={sttProvider}>
+            {#each Object.keys(STT_LABELS) as p}
+              <option value={p}>{STT_LABELS[p as SttProvider]}</option>
+            {/each}
+          </select>
+        </div>
+        {#if STT_CLOUD.includes(sttProvider)}
+          <label>
+            {$_("settings.stt_api_key", { values: { provider: STT_LABELS[sttProvider] } })}
+            <input
+              type="password"
+              bind:value={sttKeys[sttProvider]}
+              placeholder={STT_KEY_PLACEHOLDERS[sttProvider]}
+            />
+          </label>
+          {#if sttProvider === "azure"}
+            <label>
+              {$_("settings.azure_resource")}
+              <input
+                type="text"
+                bind:value={sttAzureResource}
+                placeholder={$_("settings.azure_resource_ph")}
+              />
+            </label>
+          {/if}
+          {#if sttProvider !== "azure"}
+            <label>
+              {$_("settings.stt_model_optional")}
+              <input
+                type="text"
+                bind:value={sttModel}
+                placeholder={STT_MODEL_PLACEHOLDERS[sttProvider]}
+              />
+            </label>
+          {/if}
+          <p class="tip warn">
+            {$_("settings.tip_stt_warn_1")}<strong
+              >{$_("settings.tip_stt_warn_strong", {
+                values: { provider: STT_LABELS[sttProvider] },
+              })}</strong
+            >{$_("settings.tip_stt_warn_2")}
+          </p>
+        {:else}
+          <label>
+            {$_("settings.stt_model")}
+            <select bind:value={whisperModel}>
+              {#each whisperModels as m}
+                <option value={m.id}>{m.label}</option>
+              {/each}
+            </select>
+          </label>
+          <p class="tip">
+            {$_("settings.tip_whisper_1")}<strong>kotoba-whisper</strong>{$_(
+              "settings.tip_whisper_2",
+            )}
+          </p>
+        {/if}
+      </details>
+
+      <details class="meta-group">
+        <summary class="meta-title">{$_("settings.group_transcribe_meta")}</summary>
+        <label class="check">
+          <input type="checkbox" bind:checked={includeTimestamps} />
+          {$_("settings.include_timestamps")}
+        </label>
+        <p class="tip">{$_("settings.tip_timestamps")}</p>
+        <label class="check">
+          <input type="checkbox" bind:checked={autoPipeline} />
+          {$_("settings.auto_pipeline")}
+        </label>
+        <p class="tip">{$_("settings.tip_auto_pipeline")}</p>
+      </details>
+
       <label>
         {$_("settings.label_refine_provider")}
         <select bind:value={provider} onchange={() => resolveCurrentModel()}>
@@ -1542,140 +1746,6 @@
           {$_("settings.add_custom")}
         </button>
         <p class="tip">{$_("settings.tip_custom")}</p>
-      </details>
-      <span class="meta-title">{$_("settings.group_hotkey")}</span>
-      <div class="hotkey-row">
-        <button
-          type="button"
-          class="hotkey-capture"
-          class:capturing
-          onclick={startCapture}
-          onkeydown={onCaptureKeydown}
-          onblur={cancelCapture}
-        >
-          {#if capturing}
-            {$_("settings.press_key")}
-          {:else}
-            {displayShortcut(recordShortcut, IS_MAC)}
-          {/if}
-        </button>
-        <button type="button" class="btn small ghost" onclick={resetShortcut}
-          >{$_("settings.reset_default")}</button
-        >
-      </div>
-      <p class="tip">
-        {$_("settings.tip_hotkey", { values: { key: displayShortcut(recordShortcut, IS_MAC) } })}
-      </p>
-      {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
-
-      <details class="meta-group" open>
-        <summary class="meta-title">{$_("settings.group_record_mode")}</summary>
-        <div class="device-row">
-          <select bind:value={recordMode}>
-            <option value="toggle">{$_("settings.mode_toggle")}</option>
-            <option value="momentary">{$_("settings.mode_momentary")}</option>
-          </select>
-        </div>
-        <p class="tip">
-          {$_("settings.tip_momentary_1")}<strong>{$_("settings.tip_momentary_strong")}</strong>{$_(
-            "settings.tip_momentary_2",
-          )}
-        </p>
-      </details>
-
-      <details class="meta-group">
-        <summary class="meta-title">{$_("settings.group_record_source")}</summary>
-        <div class="device-row">
-          <select value={`${inputDeviceKind}|${inputDevice}`} onchange={onSourceChange}>
-            <option value="input|">{$_("settings.source_default_mic")}</option>
-            {#if IS_WINDOWS}
-              <option value="mix|">{$_("settings.source_mix")}</option>
-            {/if}
-            {#each audioSources as s}
-              <option value={`${s.kind}|${s.id}`}>{s.label}</option>
-            {/each}
-          </select>
-          <button type="button" class="btn small ghost" onclick={() => void loadAudioSources()}>
-            {$_("settings.reload")}
-          </button>
-        </div>
-        <p class="tip">{$_("settings.tip_record_source")}</p>
-      </details>
-
-      <details class="meta-group" open>
-        <summary class="meta-title">{$_("settings.group_stt")}</summary>
-        <div class="device-row">
-          <select bind:value={sttProvider}>
-            {#each Object.keys(STT_LABELS) as p}
-              <option value={p}>{STT_LABELS[p as SttProvider]}</option>
-            {/each}
-          </select>
-        </div>
-        {#if STT_CLOUD.includes(sttProvider)}
-          <label>
-            {$_("settings.stt_api_key", { values: { provider: STT_LABELS[sttProvider] } })}
-            <input
-              type="password"
-              bind:value={sttKeys[sttProvider]}
-              placeholder={STT_KEY_PLACEHOLDERS[sttProvider]}
-            />
-          </label>
-          {#if sttProvider === "azure"}
-            <label>
-              {$_("settings.azure_resource")}
-              <input
-                type="text"
-                bind:value={sttAzureResource}
-                placeholder={$_("settings.azure_resource_ph")}
-              />
-            </label>
-          {/if}
-          {#if sttProvider !== "azure"}
-            <label>
-              {$_("settings.stt_model_optional")}
-              <input
-                type="text"
-                bind:value={sttModel}
-                placeholder={STT_MODEL_PLACEHOLDERS[sttProvider]}
-              />
-            </label>
-          {/if}
-          <p class="tip warn">
-            {$_("settings.tip_stt_warn_1")}<strong
-              >{$_("settings.tip_stt_warn_strong", {
-                values: { provider: STT_LABELS[sttProvider] },
-              })}</strong
-            >{$_("settings.tip_stt_warn_2")}
-          </p>
-        {:else}
-          <label>
-            {$_("settings.stt_model")}
-            <select bind:value={whisperModel}>
-              {#each whisperModels as m}
-                <option value={m.id}>{m.label}</option>
-              {/each}
-            </select>
-          </label>
-          <p class="tip">
-            {$_("settings.tip_whisper_1")}<strong>kotoba-whisper</strong>{$_(
-              "settings.tip_whisper_2",
-            )}
-          </p>
-        {/if}
-      </details>
-
-      <details class="meta-group">
-        <summary class="meta-title">{$_("settings.group_transcribe_meta")}</summary>
-        <label class="check">
-          <input type="checkbox" bind:checked={includeTimestamps} />
-          {$_("settings.include_timestamps")}
-        </label>
-        <p class="tip">{$_("settings.tip_timestamps")}</p>
-        <label class="check">
-          <input type="checkbox" bind:checked={autoPipeline} />
-          {$_("settings.auto_pipeline")}
-        </label>
-        <p class="tip">{$_("settings.tip_auto_pipeline")}</p>
       </details>
 
       <details class="meta-group" open>
@@ -2324,6 +2394,84 @@
     font-size: 0.72rem;
     text-align: center;
     margin: 0.7rem 0 1.1rem;
+  }
+
+  .empty-cta {
+    color: #4b5563;
+    font-size: 0.82rem;
+    text-align: center;
+    background: #f9fafb;
+    border: 1px dashed #d1d5db;
+    border-radius: 8px;
+    padding: 0.7rem 0.9rem;
+    margin: 0.2rem 0 1rem;
+  }
+
+  /* 初回オンボーディング（#397）。操作を妨げない非ブロッキングのインラインカード。 */
+  .onboarding-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 1.1rem 1.2rem;
+    margin: 0.2rem 0 1.1rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+    text-align: left;
+  }
+  .onboarding-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .onboarding-card h2 {
+    margin: 0;
+    font-size: 1.05rem;
+  }
+  .onboarding-local {
+    color: #6b7280;
+    font-size: 0.8rem;
+    margin: 0.35rem 0 1rem;
+  }
+  .onboarding-steps {
+    list-style: none;
+    margin: 0 0 1rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+  }
+  .onboarding-steps li {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+  }
+  .onboarding-steps strong {
+    display: block;
+    font-size: 0.92rem;
+    margin-bottom: 0.15rem;
+  }
+  .onboarding-steps p {
+    margin: 0;
+    color: #4b5563;
+    font-size: 0.82rem;
+    line-height: 1.45;
+  }
+  .onboarding-step-n {
+    flex: 0 0 auto;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 50%;
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 700;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .onboarding-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
   }
 
   .panel {
