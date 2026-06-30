@@ -6,7 +6,20 @@
     "from_file": "Transcribe from audio file",
     "from_memo": "Refine from memo / text",
     "formats_hint": "Supported: audio {exts} (max {max}MB) · text txt / md",
-    "hotkey_hint": "Recording hotkey: {key} (change in Settings)"
+    "hotkey_hint": "Recording hotkey: {key} (change in Settings)",
+    "empty_cta": "Start by recording. Press the mic button or {key} to begin speaking."
+  },
+  "onboarding": {
+    "title": "Welcome to QuickScribe",
+    "local_note": "What you say never leaves this device. Organizing your thoughts stays local.",
+    "step1_title": "Speak",
+    "step1_desc": "Record with a button or a physical hotkey. Put what's on your mind straight into words.",
+    "step2_title": "Refine",
+    "step2_desc": "The AI organizes your thoughts while keeping the nuance. Move between verbatim, summary and brainstorm.",
+    "step3_title": "Look back",
+    "step3_desc": "It builds up in your journal; cross-discovery surfaces insights from your past self.",
+    "start": "Get started",
+    "skip": "Skip"
   },
   "header": {
     "journal": "Journal",
@@ -153,7 +166,9 @@
     "downloading": "Downloading new version {version} in the background… {pct}%",
     "checking": "Checking for updates…",
     "latest": "You are on the latest version.",
-    "check_failed": "Update check failed: {detail}"
+    "check_failed": "Update check failed: {detail}",
+    "ready": "Version {version} is ready.",
+    "restart": "Restart to update"
   },
   "dialog": {
     "audio_files": "Audio files",
@@ -176,6 +191,11 @@
     "memo_refine_failed": "Memo refine failed: {detail}",
     "record_start_failed": "Could not start recording: {detail}",
     "record_stop_failed": "Could not stop recording: {detail}",
-    "no_audio": "No transcribable audio was found (audio was not saved)."
+    "no_audio": "No transcribable audio was found (audio was not saved).",
+    "cfg_aws_region": "Please set an AWS region.",
+    "cfg_workspace_id": "Claude Platform on AWS requires a workspace_id.",
+    "cfg_aws_keys": "Please set your AWS access key / secret.",
+    "cfg_api_key_aws": "An API key for {provider} is required.",
+    "cfg_api_key": "Refining requires an API key for {provider}."
   }
 }
