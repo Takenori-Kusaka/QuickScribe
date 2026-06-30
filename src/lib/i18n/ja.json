@@ -6,7 +6,20 @@
     "from_file": "音声ファイルから文字起こし",
     "from_memo": "メモ/テキストから整形",
     "formats_hint": "対応形式: 音声 {exts}（最大 {max}MB）・テキスト txt / md",
-    "hotkey_hint": "録音ホットキー: {key}（設定で変更可）"
+    "hotkey_hint": "録音ホットキー: {key}（設定で変更可）",
+    "empty_cta": "まずは録音から。マイクボタンか {key} で話しはじめてください。"
+  },
+  "onboarding": {
+    "title": "QuickScribe へようこそ",
+    "local_note": "記録はすべてこの端末に保存されます。文字起こし（ローカルwhisper）と整形（ローカルOllama）を選べば、音声も文字も端末から一切出ません。",
+    "step1_title": "話す",
+    "step1_desc": "ボタンか物理ホットキーで録音。頭の中をそのまま声にします。",
+    "step2_title": "整える",
+    "step2_desc": "AIがニュアンスを残したまま思考を整理。逐語⇄要約⇄ブレストを行き来できます。",
+    "step3_title": "見返す",
+    "step3_desc": "ジャーナルに蓄積し、横断発見で過去の自分から気づきを得ます。",
+    "start": "はじめる",
+    "skip": "スキップ"
   },
   "header": {
     "journal": "ジャーナル",
@@ -60,7 +73,7 @@
     "label_aws_access_key": "AWSアクセスキーID",
     "label_aws_secret_key": "AWSシークレットアクセスキー",
     "label_aws_session": "セッショントークン（一時credのときのみ・任意）",
-    "secret_local_note": "秘密情報は端末内に保存します（思考の生データを外に出しません）。",
+    "secret_local_note": "API鍵などの秘密情報は、この端末の安全な保管領域に保存します。",
     "api_key_save": "{provider} APIキー（端末内のみ保存）",
     "api_key_refine": "{provider} APIキー（整形に使用・端末内のみ保存）",
     "stt_api_key": "APIキー（{provider}）",
@@ -153,7 +166,9 @@
     "downloading": "新バージョン {version} を背景でダウンロード中… {pct}%",
     "checking": "更新を確認中…",
     "latest": "お使いのバージョンは最新です。",
-    "check_failed": "更新確認に失敗: {detail}"
+    "check_failed": "更新確認に失敗: {detail}",
+    "ready": "新バージョン {version} の準備ができました。",
+    "restart": "再起動して更新"
   },
   "dialog": {
     "audio_files": "音声ファイル",
@@ -176,6 +191,11 @@
     "memo_refine_failed": "メモの整形に失敗しました: {detail}",
     "record_start_failed": "録音を開始できませんでした: {detail}",
     "record_stop_failed": "録音の停止に失敗しました: {detail}",
-    "no_audio": "文字起こしできる音声が含まれていませんでした（音声は保存していません）。"
+    "no_audio": "文字起こしできる音声が含まれていませんでした（音声は保存していません）。",
+    "cfg_aws_region": "AWSリージョンを設定してください。",
+    "cfg_workspace_id": "Claude Platform on AWS には workspace_id が必要です。",
+    "cfg_aws_keys": "AWSアクセスキー/シークレットを設定してください。",
+    "cfg_api_key_aws": "{provider} のAPIキーが必要です。",
+    "cfg_api_key": "整形には {provider} のAPIキーが必要です。"
   }
 }
