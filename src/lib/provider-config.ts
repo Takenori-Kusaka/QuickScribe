@@ -15,25 +15,36 @@ export interface RefineConfig {
 }
 
 /**
- * 整形を実行できる設定かを検証する。問題があればユーザー向けの理由を返し、無ければ null。
+ * 検証エラー（i18n対応 / #401 Phase2）。`code` は errors.* カタログのキー、
+ * `params` は ICU 補間値。呼び出し側で `$_(code, { values: params })` で翻訳する。
+ * これにより lib は言語に依存せず、多言語(ja/en/zh/es)で表示できる。
+ */
+export interface RefineConfigError {
+  code: string;
+  params?: Record<string, string>;
+}
+
+/**
+ * 整形を実行できる設定かを検証する。問題があれば i18n コードを返し、無ければ null。
  * - ローカル(Ollama): 鍵不要。
  * - AWS(Bedrock/Claude Platform): region 必須。claude-aws は workspace_id 必須。
  *   SigV4 は アクセスキー/シークレット、それ以外は APIキー。
  * - その他クラウド(Gemini/Anthropic/OpenAI): APIキー必須。
  */
-export function validateRefineConfig(c: RefineConfig): string | null {
+export function validateRefineConfig(c: RefineConfig): RefineConfigError | null {
   if (LOCAL_PROVIDERS.includes(c.provider)) return null;
   if (AWS_PROVIDERS.includes(c.provider)) {
-    if (!c.awsRegion.trim()) return "AWSリージョンを設定してください。";
+    if (!c.awsRegion.trim()) return { code: "errors.cfg_aws_region" };
     if (c.provider === "claude-aws" && !c.awsWorkspaceId.trim())
-      return "Claude Platform on AWS には workspace_id が必要です。";
+      return { code: "errors.cfg_workspace_id" };
     if (c.awsAuthMode === "sigv4") {
-      if (!c.awsAccessKey.trim() || !c.awsSecretKey.trim())
-        return "AWSアクセスキー/シークレットを設定してください。";
+      if (!c.awsAccessKey.trim() || !c.awsSecretKey.trim()) return { code: "errors.cfg_aws_keys" };
     } else if (!c.apiKey.trim()) {
-      return `${PROVIDER_LABELS[c.provider]} のAPIキーが必要です。`;
+      return { code: "errors.cfg_api_key_aws", params: { provider: PROVIDER_LABELS[c.provider] } };
     }
     return null;
   }
-  return c.apiKey.trim() ? null : `整形には ${PROVIDER_LABELS[c.provider]} のAPIキーが必要です。`;
+  return c.apiKey.trim()
+    ? null
+    : { code: "errors.cfg_api_key", params: { provider: PROVIDER_LABELS[c.provider] } };
 }
