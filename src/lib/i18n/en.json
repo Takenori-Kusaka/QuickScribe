@@ -11,7 +11,7 @@
   },
   "onboarding": {
     "title": "Welcome to QuickScribe",
-    "local_note": "What you say never leaves this device. Organizing your thoughts stays local.",
+    "local_note": "Everything you record is saved on this device. Choose local transcription (whisper) and local refine (Ollama) and neither audio nor text ever leaves it.",
     "step1_title": "Speak",
     "step1_desc": "Record with a button or a physical hotkey. Put what's on your mind straight into words.",
     "step2_title": "Refine",
@@ -73,7 +73,7 @@
     "label_aws_access_key": "AWS access key ID",
     "label_aws_secret_key": "AWS secret access key",
     "label_aws_session": "Session token (only for temporary credentials, optional)",
-    "secret_local_note": "Secrets are stored on this device (your raw thoughts never leave it).",
+    "secret_local_note": "Secrets such as API keys are stored in this device's secure storage.",
     "api_key_save": "{provider} API key (stored on device only)",
     "api_key_refine": "{provider} API key (used for refine, stored on device only)",
     "stt_api_key": "API key ({provider})",
