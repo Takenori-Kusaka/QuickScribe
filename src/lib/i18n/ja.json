@@ -191,6 +191,11 @@
     "memo_refine_failed": "メモの整形に失敗しました: {detail}",
     "record_start_failed": "録音を開始できませんでした: {detail}",
     "record_stop_failed": "録音の停止に失敗しました: {detail}",
-    "no_audio": "文字起こしできる音声が含まれていませんでした（音声は保存していません）。"
+    "no_audio": "文字起こしできる音声が含まれていませんでした（音声は保存していません）。",
+    "cfg_aws_region": "AWSリージョンを設定してください。",
+    "cfg_workspace_id": "Claude Platform on AWS には workspace_id が必要です。",
+    "cfg_aws_keys": "AWSアクセスキー/シークレットを設定してください。",
+    "cfg_api_key_aws": "{provider} のAPIキーが必要です。",
+    "cfg_api_key": "整形には {provider} のAPIキーが必要です。"
   }
 }

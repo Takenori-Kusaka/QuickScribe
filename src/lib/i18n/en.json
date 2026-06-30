@@ -191,6 +191,11 @@
     "memo_refine_failed": "Memo refine failed: {detail}",
     "record_start_failed": "Could not start recording: {detail}",
     "record_stop_failed": "Could not stop recording: {detail}",
-    "no_audio": "No transcribable audio was found (audio was not saved)."
+    "no_audio": "No transcribable audio was found (audio was not saved).",
+    "cfg_aws_region": "Please set an AWS region.",
+    "cfg_workspace_id": "Claude Platform on AWS requires a workspace_id.",
+    "cfg_aws_keys": "Please set your AWS access key / secret.",
+    "cfg_api_key_aws": "An API key for {provider} is required.",
+    "cfg_api_key": "Refining requires an API key for {provider}."
   }
 }
