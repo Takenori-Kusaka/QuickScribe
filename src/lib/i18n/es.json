@@ -11,7 +11,7 @@
   },
   "onboarding": {
     "title": "Te damos la bienvenida a QuickScribe",
-    "local_note": "Lo que dices nunca sale de este dispositivo. Organizar tus pensamientos es totalmente local.",
+    "local_note": "Todo lo que grabas se guarda en este dispositivo. Elige transcripción local (whisper) y refinado local (Ollama) y ni el audio ni el texto saldrán de él.",
     "step1_title": "Habla",
     "step1_desc": "Graba con un botón o un atajo físico. Pon en palabras lo que tienes en mente.",
     "step2_title": "Refina",
@@ -73,7 +73,7 @@
     "label_aws_access_key": "ID de clave de acceso de AWS",
     "label_aws_secret_key": "Clave de acceso secreta de AWS",
     "label_aws_session": "Token de sesión (solo para credenciales temporales, opcional)",
-    "secret_local_note": "Los secretos se guardan en este dispositivo (tus pensamientos en bruto nunca salen de él).",
+    "secret_local_note": "Los secretos como las claves API se guardan en el almacenamiento seguro de este dispositivo.",
     "api_key_save": "Clave API de {provider} (guardada solo en el dispositivo)",
     "api_key_refine": "Clave API de {provider} (usada para refinar, guardada solo en el dispositivo)",
     "stt_api_key": "Clave API ({provider})",

@@ -11,7 +11,7 @@
   },
   "onboarding": {
     "title": "欢迎使用 QuickScribe",
-    "local_note": "你说的话不会离开本设备。思绪整理完全在本地完成。",
+    "local_note": "所有记录都保存在本设备上。选择本地转写（whisper）和本地整理（Ollama），音频和文字都不会离开设备。",
     "step1_title": "说",
     "step1_desc": "用按钮或物理热键录音。把脑海中的想法直接说出来。",
     "step2_title": "整理",
@@ -73,7 +73,7 @@
     "label_aws_access_key": "AWS 访问密钥 ID",
     "label_aws_secret_key": "AWS 秘密访问密钥",
     "label_aws_session": "会话令牌（仅临时凭证时需要，可选）",
-    "secret_local_note": "机密信息保存在本设备上（你思考的原始数据不会离开设备）。",
+    "secret_local_note": "API 密钥等机密信息保存在本设备的安全存储区。",
     "api_key_save": "{provider} API 密钥（仅保存在本设备）",
     "api_key_refine": "{provider} API 密钥（用于整理，仅保存在本设备）",
     "stt_api_key": "API 密钥（{provider}）",

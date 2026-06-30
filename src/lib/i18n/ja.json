@@ -11,7 +11,7 @@
   },
   "onboarding": {
     "title": "QuickScribe へようこそ",
-    "local_note": "話した言葉はこの端末から出ません。思考整理はローカルで完結します。",
+    "local_note": "記録はすべてこの端末に保存されます。文字起こし（ローカルwhisper）と整形（ローカルOllama）を選べば、音声も文字も端末から一切出ません。",
     "step1_title": "話す",
     "step1_desc": "ボタンか物理ホットキーで録音。頭の中をそのまま声にします。",
     "step2_title": "整える",
@@ -73,7 +73,7 @@
     "label_aws_access_key": "AWSアクセスキーID",
     "label_aws_secret_key": "AWSシークレットアクセスキー",
     "label_aws_session": "セッショントークン（一時credのときのみ・任意）",
-    "secret_local_note": "秘密情報は端末内に保存します（思考の生データを外に出しません）。",
+    "secret_local_note": "API鍵などの秘密情報は、この端末の安全な保管領域に保存します。",
     "api_key_save": "{provider} APIキー（端末内のみ保存）",
     "api_key_refine": "{provider} APIキー（整形に使用・端末内のみ保存）",
     "stt_api_key": "APIキー（{provider}）",
