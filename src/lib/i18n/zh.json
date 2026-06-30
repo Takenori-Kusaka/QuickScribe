@@ -191,6 +191,11 @@
     "memo_refine_failed": "备忘整理失败：{detail}",
     "record_start_failed": "无法开始录音：{detail}",
     "record_stop_failed": "无法停止录音：{detail}",
-    "no_audio": "未发现可转写的音频（音频未保存）。"
+    "no_audio": "未发现可转写的音频（音频未保存）。",
+    "cfg_aws_region": "请设置 AWS 区域。",
+    "cfg_workspace_id": "Claude Platform on AWS 需要 workspace_id。",
+    "cfg_aws_keys": "请设置 AWS 访问密钥/秘密密钥。",
+    "cfg_api_key_aws": "需要 {provider} 的 API 密钥。",
+    "cfg_api_key": "整理需要 {provider} 的 API 密钥。"
   }
 }

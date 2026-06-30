@@ -191,6 +191,11 @@
     "memo_refine_failed": "Falló el refinado de la nota: {detail}",
     "record_start_failed": "No se pudo empezar a grabar: {detail}",
     "record_stop_failed": "No se pudo detener la grabación: {detail}",
-    "no_audio": "No se encontró audio transcribible (el audio no se guardó)."
+    "no_audio": "No se encontró audio transcribible (el audio no se guardó).",
+    "cfg_aws_region": "Configura una región de AWS.",
+    "cfg_workspace_id": "Claude Platform on AWS requiere un workspace_id.",
+    "cfg_aws_keys": "Configura tu clave de acceso / secreto de AWS.",
+    "cfg_api_key_aws": "Se requiere una clave API de {provider}.",
+    "cfg_api_key": "Refinar requiere una clave API de {provider}."
   }
 }

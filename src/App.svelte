@@ -16,7 +16,7 @@
   import { modal } from "./lib/a11y";
   import { displayShortcut, accelFromEvent } from "./lib/shortcut";
   import { kindLabel } from "./lib/entry";
-  import { validateRefineConfig } from "./lib/provider-config";
+  import { validateRefineConfig, type RefineConfigError } from "./lib/provider-config";
   import { buildRefineArgs } from "./lib/refine-args";
   import { isModelCacheFresh } from "./lib/model-cache";
   import { selectDiscoveryTargets, buildDiscoveryText } from "./lib/discovery";
@@ -156,7 +156,7 @@
   async function discoverAcross() {
     const cfgErr = refineConfigError();
     if (cfgErr) {
-      error = cfgErr + $_("errors.config_suffix");
+      error = $_(cfgErr.code, { values: cfgErr.params }) + $_("errors.config_suffix");
       showEntries = false;
       showSettings = true;
       return;
@@ -723,8 +723,8 @@
   }
 
   // 文字起こしを整形（思考整理・要約）する＝コア価値。選択中プロバイダの鍵が必要。
-  // プロバイダが整形可能な設定になっているか（鍵/AWS資格情報）。未設定なら理由文を返す。
-  function refineConfigError(): string | null {
+  // プロバイダが整形可能な設定になっているか（鍵/AWS資格情報）。未設定なら i18n コードを返す。
+  function refineConfigError(): RefineConfigError | null {
     return validateRefineConfig({
       provider,
       apiKey: apiKeys[provider],
@@ -762,7 +762,7 @@
     const cfgErr = refineConfigError();
     if (cfgErr) {
       showSettings = true;
-      error = cfgErr + $_("errors.config_suffix");
+      error = $_(cfgErr.code, { values: cfgErr.params }) + $_("errors.config_suffix");
       return;
     }
     error = null;
@@ -796,7 +796,7 @@
     const cfgErr = refineConfigError();
     if (cfgErr) {
       showSettings = true;
-      error = cfgErr + $_("errors.config_suffix");
+      error = $_(cfgErr.code, { values: cfgErr.params }) + $_("errors.config_suffix");
       return;
     }
     error = null;

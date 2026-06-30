@@ -16,21 +16,24 @@ describe("validateRefineConfig", () => {
     expect(validateRefineConfig({ ...base, provider: "ollama" })).toBeNull();
   });
 
-  it("クラウドは APIキー必須", () => {
-    expect(validateRefineConfig({ ...base, provider: "openai", apiKey: "" })).toContain(
-      "APIキーが必要",
-    );
+  it("クラウドは APIキー必須（コード＋provider params）", () => {
+    expect(validateRefineConfig({ ...base, provider: "openai", apiKey: "" })).toEqual({
+      code: "errors.cfg_api_key",
+      params: { provider: "OpenAI" },
+    });
     expect(validateRefineConfig({ ...base, provider: "openai", apiKey: "sk-x" })).toBeNull();
   });
 
   it("AWSは region 必須", () => {
-    expect(validateRefineConfig({ ...base, provider: "bedrock" })).toContain("リージョン");
+    expect(validateRefineConfig({ ...base, provider: "bedrock" })).toEqual({
+      code: "errors.cfg_aws_region",
+    });
   });
 
   it("claude-aws は workspace_id 必須", () => {
     expect(
       validateRefineConfig({ ...base, provider: "claude-aws", awsRegion: "us-east-1" }),
-    ).toContain("workspace_id");
+    ).toEqual({ code: "errors.cfg_workspace_id" });
   });
 
   it("AWS SigV4 は アクセスキー/シークレット必須", () => {
@@ -40,18 +43,21 @@ describe("validateRefineConfig", () => {
       awsRegion: "us-east-1",
       awsAuthMode: "sigv4",
     };
-    expect(validateRefineConfig(c)).toContain("アクセスキー");
+    expect(validateRefineConfig(c)).toEqual({ code: "errors.cfg_aws_keys" });
     expect(validateRefineConfig({ ...c, awsAccessKey: "AKIA", awsSecretKey: "secret" })).toBeNull();
   });
 
-  it("AWS Bearer は APIキー必須", () => {
+  it("AWS Bearer は APIキー必須（コード＋provider params）", () => {
     const c: RefineConfig = {
       ...base,
       provider: "bedrock",
       awsRegion: "us-east-1",
       awsAuthMode: "bearer",
     };
-    expect(validateRefineConfig(c)).toContain("APIキー");
+    expect(validateRefineConfig(c)).toEqual({
+      code: "errors.cfg_api_key_aws",
+      params: { provider: "AWS Bedrock" },
+    });
     expect(validateRefineConfig({ ...c, apiKey: "key" })).toBeNull();
   });
 });
