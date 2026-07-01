@@ -618,6 +618,8 @@ async fn refine_text(
     aws_access_key: Option<String>,
     aws_secret_key: Option<String>,
     aws_session_token: Option<String>,
+    // 整形出力言語(翻訳 / #453)。Some(英語名)時、指定言語で整形出力する。非指定は原語のまま。
+    output_lang: Option<String>,
 ) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let m = if model.trim().is_empty() {
@@ -652,6 +654,7 @@ async fn refine_text(
             &text,
             aws_cfg,
             custom_instruction,
+            output_lang,
         )?;
         // 整形結果（ジャーナルの成果物）は保存先へ書き出す（save=false の一時結果は保存しない）。
         let settings = current_settings(&app);

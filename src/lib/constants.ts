@@ -5,6 +5,46 @@
 // 注意: REFINE_STYLES の desc・各プロバイダ識別子は Rust 側(refine.rs/stt.rs)の
 // 指示文・分岐と意味的に一致させること（将来は Rust 側も同一の契約から導出する）。
 
+// ===== 言語(UI言語 + 整形出力言語の共通SSOT / #401 #453) =====
+// UIロケール(翻訳カタログ有)と「整形出力言語(翻訳)」の選択肢を単一定義に統合する。
+// ui:true = UI表示言語として提供(カタログ有)。全件は出力言語の選択肢(LLMが訳せる任意言語)。
+// en = LLMへの言語指示に使う英語名(Vietnamese等・UIカタログが無くても出力言語にできる)。
+export interface Language {
+  code: string;
+  /** 自言語表記(endonym)。UIの表示用。 */
+  label: string;
+  /** プロンプトに差し込む英語名(LLMが確実に解釈できる)。 */
+  en: string;
+  /** UI表示言語として提供するか(翻訳カタログの有無)。 */
+  ui: boolean;
+}
+
+export const LANGUAGES: Language[] = [
+  { code: "ja", label: "日本語", en: "Japanese", ui: true },
+  { code: "en", label: "English", en: "English", ui: true },
+  { code: "zh", label: "简体中文", en: "Chinese (Simplified)", ui: true },
+  { code: "es", label: "Español", en: "Spanish", ui: true },
+  { code: "ko", label: "한국어", en: "Korean", ui: false },
+  { code: "vi", label: "Tiếng Việt", en: "Vietnamese", ui: false },
+  { code: "fr", label: "Français", en: "French", ui: false },
+  { code: "de", label: "Deutsch", en: "German", ui: false },
+  { code: "pt", label: "Português", en: "Portuguese", ui: false },
+  { code: "it", label: "Italiano", en: "Italian", ui: false },
+  { code: "ru", label: "Русский", en: "Russian", ui: false },
+  { code: "id", label: "Bahasa Indonesia", en: "Indonesian", ui: false },
+  { code: "th", label: "ไทย", en: "Thai", ui: false },
+  { code: "hi", label: "हिन्दी", en: "Hindi", ui: false },
+  { code: "ar", label: "العربية", en: "Arabic", ui: false },
+];
+
+/** UI表示言語(翻訳カタログ有)のコード。i18n の SUPPORTED_LOCALES の唯一の源。 */
+export const UI_LOCALES: string[] = LANGUAGES.filter((l) => l.ui).map((l) => l.code);
+
+/** コード→プロンプト用の英語名。未知は undefined。 */
+export function languageEnglishName(code: string): string | undefined {
+  return LANGUAGES.find((l) => l.code === code)?.en;
+}
+
 // ===== 整形(LLM)プロバイダ =====
 export type Provider = "gemini" | "anthropic" | "openai" | "ollama" | "bedrock" | "claude-aws";
 
