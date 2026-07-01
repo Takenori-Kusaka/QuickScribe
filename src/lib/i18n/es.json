@@ -170,7 +170,8 @@
     "clear_all": "No reemplazar ninguno",
     "apply": "Reemplazar los términos seleccionados y actualizar",
     "close": "Cerrar (no reemplazar)",
-    "replaced": "Se reemplazaron {n} término(s)"
+    "replaced": "Se reemplazaron {n} término(s)",
+    "suggestion_label": "Término de reemplazo"
   },
   "update": {
     "downloading": "Descargando la nueva versión {version} en segundo plano… {pct}%",

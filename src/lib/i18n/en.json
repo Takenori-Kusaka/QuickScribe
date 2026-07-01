@@ -170,7 +170,8 @@
     "clear_all": "Replace none",
     "apply": "Replace selected terms and update",
     "close": "Close (replace none)",
-    "replaced": "Replaced {n} term(s)"
+    "replaced": "Replaced {n} term(s)",
+    "suggestion_label": "Replacement term"
   },
   "update": {
     "downloading": "Downloading new version {version} in the background… {pct}%",

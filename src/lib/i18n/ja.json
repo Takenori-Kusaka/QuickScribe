@@ -170,7 +170,8 @@
     "clear_all": "すべて置換しない",
     "apply": "選んだ用語を置換して更新",
     "close": "閉じる（置換しない）",
-    "replaced": "用語を{n}件置換しました"
+    "replaced": "用語を{n}件置換しました",
+    "suggestion_label": "置換後の語"
   },
   "update": {
     "downloading": "新バージョン {version} を背景でダウンロード中… {pct}%",
