@@ -130,6 +130,10 @@
     "tip_taskbar": "Botones de grabar/detener y mostrar ventana en la barra de tareas (Windows). Desactívalo para ocultarlos.",
     "tip_autostart": "Inicia QuickScribe automáticamente al iniciar sesión en el SO y lo mantiene en la bandeja (no aparece ninguna ventana).",
     "shortcut_modifier_required": "Combínala con una tecla modificadora (Ctrl/Alt/Shift) y pulsa.",
+    "group_about": "Acerca de",
+    "about_license": "Licencia: MIT",
+    "about_oss": "Esta app usa software de código abierto como whisper.cpp (MIT), libopus (BSD-3-Clause), Tauri (MIT/Apache-2.0) y Svelte (MIT). Las atribuciones de terceros se incluyen en THIRD-PARTY-NOTICES con la distribución y en el repositorio.",
+    "about_repo": "Repositorio / licencia completa",
     "show_onboarding": "Ver la introducción de nuevo",
     "tip_show_onboarding": "Muestra de nuevo la guía inicial (3 pasos)."
   },

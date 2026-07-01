@@ -13,9 +13,13 @@
 > 企画・設計の背景は [docs/vision.md](docs/vision.md) と [docs/adr/](docs/adr/) を参照。
 > 使い方の詳細・ダウンロードは **[ドキュメントサイト](https://takenori-kusaka.github.io/QuickScribe/)** へ。
 
-![QuickScribe メイン画面（プレースホルダ）](docs/assets/screenshot-main.placeholder.png)
+![QuickScribe メイン画面（録音→文字起こし→整形）](docs/assets/screenshot-main.png)
 
-> 📸 上記は**プレースホルダ画像**です。実スクリーンショットは v1.0.0 リリース時に **CI で自動生成**して差し替えます（Vite + Playwright でフロントをヘッドレス描画・Tauri IPCをモック）。
+| ジャーナル（横断発見） | 設定 | 初回オンボーディング |
+|---|---|---|
+| ![ジャーナル](docs/assets/screenshot-vault.png) | ![設定](docs/assets/screenshot-settings.png) | ![オンボーディング](docs/assets/screenshot-onboarding.png) |
+
+> スクリーンショットは **CI（Vite + Playwright・Tauri IPCモック）** で自動生成しています（`.github/workflows/screenshots.yml`）。
 
 
 ## QuickScribe とは

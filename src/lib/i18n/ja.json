@@ -130,6 +130,10 @@
     "tip_taskbar": "タスクバー上の録音/停止・ウィンドウ表示ボタン（Windows）。OFFにすると非表示になります。",
     "tip_autostart": "OSにログインすると QuickScribe を自動で起動し、トレイに常駐します（ウィンドウは出ません）。",
     "shortcut_modifier_required": "修飾キー（Ctrl/Alt/Shift）と組み合わせて押してください",
+    "group_about": "このアプリについて",
+    "about_license": "ライセンス: MIT",
+    "about_oss": "本アプリは whisper.cpp（MIT）・libopus（BSD-3-Clause）・Tauri（MIT/Apache-2.0）・Svelte（MIT）等のオープンソースを利用しています。第三者ライセンスの帰属は配布物の THIRD-PARTY-NOTICES とリポジトリに含まれます。",
+    "about_repo": "リポジトリ / ライセンス全文",
     "show_onboarding": "使い方をもう一度見る",
     "tip_show_onboarding": "初回ガイド（3ステップ）をもう一度表示します。"
   },
