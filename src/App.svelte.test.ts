@@ -301,4 +301,95 @@ describe("App.svelte AWSプロバイダ", () => {
     await fireEvent.change(providerSelect, { target: { value: "bedrock" } });
     expect(await screen.findByPlaceholderText("us-east-1")).toBeInTheDocument();
   });
+
+  it("STTをクラウド(OpenAI)にするとAPIキー欄が現れる", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    // STTプロバイダの select は value=local で一意に特定できる。
+    const combos = screen.getAllByRole("combobox") as HTMLSelectElement[];
+    const sttSelect = combos.find((c) => c.value === "local")!;
+    expect(sttSelect).toBeTruthy();
+    const before = document.querySelectorAll('input[type="password"]').length;
+    await fireEvent.change(sttSelect, { target: { value: "openai" } });
+    // クラウドSTTの鍵入力(password)が増える。
+    const after = document.querySelectorAll('input[type="password"]').length;
+    expect(after).toBeGreaterThan(before);
+  });
+});
+
+describe("App.svelte 横断発見", () => {
+  it("エントリが1件のときは横断発見ボタンが出ない", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "ジャーナル" }));
+    await screen.findByText("プレビュー本文");
+    expect(screen.queryByRole("button", { name: /横断発見/ })).not.toBeInTheDocument();
+  });
+
+  it("2件以上あると横断発見が実行され結果が表示される", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_entries")
+        return [
+          {
+            path: "/a.md",
+            name: "a.md",
+            created: "2026-06-01T10:00:00",
+            kind: "refined",
+            tags: [],
+            preview: "A本文",
+          },
+          {
+            path: "/b.md",
+            name: "b.md",
+            created: "2026-06-02T10:00:00",
+            kind: "refined",
+            tags: [],
+            preview: "B本文",
+          },
+        ];
+      if (cmd === "refine_text") return "横断発見の結果";
+      return undefined;
+    });
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "ジャーナル" }));
+    await screen.findByText("A本文");
+    await fireEvent.click(await screen.findByRole("button", { name: /横断発見/ }));
+    expect(await screen.findByText("横断発見の結果")).toBeInTheDocument();
+    expect(invokeMock).toHaveBeenCalledWith("refine_text", expect.anything());
+  });
+});
+
+describe("App.svelte 音声保存設定", () => {
+  it("録音音声を保存をONにすると音声形式の選択が現れる", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    const cb = (await screen.findByLabelText("録音音声を保存")) as HTMLInputElement;
+    await fireEvent.click(cb);
+    expect(await screen.findByLabelText("音声形式")).toBeInTheDocument();
+  });
+
+  it("STTをAzureにすると Azure リソース欄が現れる", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    const combos = screen.getAllByRole("combobox") as HTMLSelectElement[];
+    const sttSelect = combos.find((c) => c.value === "local")!;
+    await fireEvent.change(sttSelect, { target: { value: "azure" } });
+    // Azure 固有の追加フィールドが現れる(password鍵 + azureリソース)。
+    expect(document.querySelectorAll('input[type="password"]').length).toBeGreaterThan(0);
+  });
+});
+
+describe("App.svelte エントリ表示の閉じる", () => {
+  it("エントリを開いてから戻ると一覧へ戻る", async () => {
+    invokeMock.mockImplementation(async (cmd: string) =>
+      cmd === "read_text_file" ? "本文ABC" : defaultInvoke(cmd),
+    );
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "ジャーナル" }));
+    await fireEvent.click(await screen.findByText("プレビュー本文"));
+    expect(await screen.findByText("本文ABC")).toBeInTheDocument();
+    // 閉じるで一覧へ。
+    const closeButtons = screen.getAllByRole("button", { name: "閉じる" });
+    await fireEvent.click(closeButtons[closeButtons.length - 1]);
+    expect(screen.queryByText("本文ABC")).not.toBeInTheDocument();
+  });
 });
