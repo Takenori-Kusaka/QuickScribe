@@ -265,3 +265,40 @@ describe("App.svelte エントリを開く", () => {
     expect(invokeMock).toHaveBeenCalledWith("read_text_file", { path: "/x/refined-1.md" });
   });
 });
+
+describe("App.svelte カスタム整形パターン", () => {
+  it("ラベルと指示を入力して追加すると一覧に現れる", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    // カスタム整形パターンは折りたたみ <details> 内なので開く。
+    await fireEvent.click(await screen.findByText("カスタム整形パターン"));
+    const nameInput = await screen.findByPlaceholderText(/パターン名/);
+    const instrInput = await screen.findByPlaceholderText(/AIへの指示/);
+    await fireEvent.input(nameInput, { target: { value: "議事録モード" } });
+    await fireEvent.input(instrInput, { target: { value: "決定事項とToDoを分ける" } });
+    await fireEvent.click(await screen.findByRole("button", { name: "カスタムパターンを追加" }));
+    // 追加後、カスタム一覧と整形スタイルの選択肢の両方に現れる。
+    expect((await screen.findAllByText("議事録モード")).length).toBeGreaterThan(0);
+  });
+});
+
+describe("App.svelte モーメンタリ録音", () => {
+  it("record-press イベントで録音が開始される（モーメンタリ）", async () => {
+    localStorage.setItem("recordMode", "momentary");
+    render(App);
+    await waitForListeners();
+    await emitEvent("record-press", null);
+    expect(invokeMock).toHaveBeenCalledWith("start_recording", expect.anything());
+    localStorage.removeItem("recordMode");
+  });
+});
+
+describe("App.svelte AWSプロバイダ", () => {
+  it("プロバイダを Bedrock にすると region 入力が現れる", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    const providerSelect = (await screen.findByLabelText("整形プロバイダ")) as HTMLSelectElement;
+    await fireEvent.change(providerSelect, { target: { value: "bedrock" } });
+    expect(await screen.findByPlaceholderText("us-east-1")).toBeInTheDocument();
+  });
+});
