@@ -27,6 +27,13 @@
     "settings": "设置",
     "close": "关闭"
   },
+  "privacy": {
+    "on_device": "完全在本设备",
+    "on_device_desc": "转写和整理都在本设备完成。音频和文字都不会发送到外部。",
+    "cloud": "使用云端",
+    "cloud_desc": "当前的转写/整理使用云端，因此音频或文字会发送到 API。",
+    "make_offline": "切换为离线"
+  },
   "settings": {
     "title": "设置",
     "language": "语言",
@@ -48,6 +55,9 @@
     "label_aws_region": "AWS 区域",
     "label_auth_mode": "认证方式",
     "label_refine_style": "整理风格（同样应用于录音后的自动整理）",
+    "translate_output": "将整理结果翻译成指定语言输出",
+    "output_language": "输出语言",
+    "tip_translate": "开启后，无论你说的是哪种语言，整理结果都会以所选语言输出（原语言的转写会保留）。适合在某个工作期间统一为特定语言。",
     "add_custom": "添加自定义模式",
     "press_key": "请按键…（Esc 取消）",
     "reset_default": "恢复默认",

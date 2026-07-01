@@ -27,6 +27,13 @@
     "settings": "設定",
     "close": "閉じる"
   },
+  "privacy": {
+    "on_device": "オンデバイス完結",
+    "on_device_desc": "文字起こしも整形もこの端末内。音声・文字は一切外部に送信されません。",
+    "cloud": "クラウド送信あり",
+    "cloud_desc": "選択中の文字起こし/整形にクラウドを使うため、音声または文字がAPIへ送信されます。",
+    "make_offline": "オフラインにする"
+  },
   "settings": {
     "title": "設定",
     "language": "言語",
@@ -48,6 +55,9 @@
     "label_aws_region": "AWSリージョン",
     "label_auth_mode": "認証方式",
     "label_refine_style": "整形スタイル（録音後の自動整形にも適用されます）",
+    "translate_output": "整形結果を指定言語に翻訳して出力する",
+    "output_language": "出力言語",
+    "tip_translate": "ONにすると、話した言語に関わらず整形結果を選んだ言語で出力します（原語の文字起こしは保持されます）。ある作業期間だけ特定言語に揃えたいときに。",
     "add_custom": "カスタムパターンを追加",
     "press_key": "キーを押してください…（Escでキャンセル）",
     "reset_default": "既定に戻す",
