@@ -16,6 +16,7 @@
     "coverage": "vitest run --coverage",
     "e2e": "wdio run e2e/wdio.conf.cjs",
     "screenshots": "playwright test",
+    "demo:gif": "node scripts/make-demo-gif.mjs",
     "licenses": "node scripts/generate-frontend-notices.cjs",
     "metrics": "node scripts/release-metrics.mjs",
     "icons": "tauri icon assets/brand/icon-source.png",

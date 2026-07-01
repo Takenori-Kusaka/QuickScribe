@@ -31,3 +31,6 @@ playwright-report/
 
 # カバレッジレポート（CIアーティファクトで保存・非コミット）
 coverage/
+
+# デモGIFの中間フレーム(GIFのみコミット)
+docs/assets/demo/
