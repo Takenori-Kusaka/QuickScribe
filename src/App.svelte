@@ -17,6 +17,7 @@
   import { displayShortcut, accelFromEvent } from "./lib/shortcut";
   import { kindLabel } from "./lib/entry";
   import { validateRefineConfig, type RefineConfigError } from "./lib/provider-config";
+  import { clampProvider, clampSttProvider, clampOneOf, isValidRefineStyle } from "./lib/settings";
   import { buildRefineArgs } from "./lib/refine-args";
   import { isModelCacheFresh } from "./lib/model-cache";
   import { selectDiscoveryTargets, buildDiscoveryText } from "./lib/discovery";
@@ -458,19 +459,15 @@
   // 設定スキーマ版（ADR-0017）。形式が将来変わってもクランプ＋移行で壊れないようにする。
   const SETTINGS_VERSION = 1;
   // enum的な設定値を検証し、不正なら既定へクランプする（破損耐性）。未知キーは保持（非破壊）。
+  // クランプの純ロジックは src/lib/settings.ts に抽出しユニットテスト済み(#402)。
   function validateSettings() {
-    if (!(provider in PROVIDER_LABELS)) provider = "gemini";
-    if (!(sttProvider in STT_LABELS)) sttProvider = "local";
-    if (recordMode !== "toggle" && recordMode !== "momentary") recordMode = "toggle";
-    if (outputFormat !== "txt" && outputFormat !== "md") outputFormat = "txt";
-    if (audioFormat !== "opus" && audioFormat !== "wav") audioFormat = "opus";
-    if (awsAuthMode !== "sigv4" && awsAuthMode !== "apikey") awsAuthMode = "sigv4";
-    // 整形スタイルは「組み込み」または「存在するカスタム」以外は既定へ。
-    const styleOk =
-      REFINE_STYLES.some((s) => s.value === refineStyle) ||
-      (refineStyle.startsWith("custom:") &&
-        customStyles.some((c) => `custom:${c.id}` === refineStyle));
-    if (!styleOk) refineStyle = "structured";
+    provider = clampProvider(provider);
+    sttProvider = clampSttProvider(sttProvider);
+    recordMode = clampOneOf(recordMode, ["toggle", "momentary"] as const, "toggle");
+    outputFormat = clampOneOf(outputFormat, ["txt", "md"] as const, "txt");
+    audioFormat = clampOneOf(audioFormat, ["opus", "wav"] as const, "opus");
+    awsAuthMode = clampOneOf(awsAuthMode, ["sigv4", "apikey"] as const, "sigv4");
+    if (!isValidRefineStyle(refineStyle, customStyles)) refineStyle = "structured";
     localStorage.setItem("settingsVersion", String(SETTINGS_VERSION));
   }
 

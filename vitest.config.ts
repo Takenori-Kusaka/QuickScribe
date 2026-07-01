@@ -17,10 +17,8 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "html", "lcov"],
       reportsDirectory: "coverage",
-      // 計測対象は現状フロントの純ロジック(src/lib の .ts)。
-      // App.svelte 等の .svelte はコンポーネントテスト基盤が未整備のため対象外
-      // (#402 Phase2 で App.svelte をlib抽出→計測対象化する)。
-      include: ["src/**/*.ts"],
+      // 計測対象は src/lib の .ts と App.svelte 等の .svelte の両方(実効カバレッジを正直に測る)。
+      include: ["src/**/*.ts", "src/**/*.svelte"],
       exclude: [
         "src/**/*.test.ts",
         "src/main.ts",
@@ -30,13 +28,15 @@ export default defineConfig({
         "e2e/**",
       ],
       all: true,
-      // ゲート化（#402）。現状 lib カバレッジは ~81%。回帰を防ぐ下限を設定し、
-      // App.svelte の lib 抽出を進めながら段階的に引き上げる。
+      // ゲート化（#402/#481-item13）。**計測を正直化**: App.svelte も対象に含める。
+      // 旧ゲート(75/85)は src/lib(全体の約14%)のみを測っており、実効カバレッジ(約50%)を
+      // 過大に見せていた。ここでは App.svelte を含めた実測(約48-50%)を回帰防止の下限とし、
+      // コンポーネントテスト/lib抽出を追加しながら **80% へ段階的に引き上げる(ratchet)**。
       thresholds: {
-        lines: 75,
-        statements: 75,
-        functions: 85,
-        branches: 85,
+        lines: 48,
+        statements: 48,
+        functions: 45,
+        branches: 45,
       },
     },
   },
