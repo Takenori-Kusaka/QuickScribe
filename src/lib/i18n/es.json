@@ -43,6 +43,7 @@
     "group_record_source": "Fuente de grabación (micrófono / audio del sistema)",
     "group_stt": "Motor de transcripción",
     "group_transcribe_meta": "Metadatos de transcripción",
+    "group_refine": "Refinado",
     "group_save": "Guardado",
     "group_app": "General",
     "save_dir": "Ubicación de guardado: {dir}",
@@ -128,7 +129,13 @@
     "tip_output_4": " (refinado).",
     "tip_taskbar": "Botones de grabar/detener y mostrar ventana en la barra de tareas (Windows). Desactívalo para ocultarlos.",
     "tip_autostart": "Inicia QuickScribe automáticamente al iniciar sesión en el SO y lo mantiene en la bandeja (no aparece ninguna ventana).",
-    "shortcut_modifier_required": "Combínala con una tecla modificadora (Ctrl/Alt/Shift) y pulsa."
+    "shortcut_modifier_required": "Combínala con una tecla modificadora (Ctrl/Alt/Shift) y pulsa.",
+    "group_about": "Acerca de",
+    "about_license": "Licencia: MIT",
+    "about_oss": "Esta app usa software de código abierto como whisper.cpp (MIT), libopus (BSD-3-Clause), Tauri (MIT/Apache-2.0) y Svelte (MIT). Las atribuciones de terceros se incluyen en THIRD-PARTY-NOTICES con la distribución y en el repositorio.",
+    "about_repo": "Repositorio / licencia completa",
+    "show_onboarding": "Ver la introducción de nuevo",
+    "tip_show_onboarding": "Muestra de nuevo la guía inicial (3 pasos)."
   },
   "vault": {
     "back_to_list": "← Volver a la lista",
@@ -170,7 +177,8 @@
     "clear_all": "No reemplazar ninguno",
     "apply": "Reemplazar los términos seleccionados y actualizar",
     "close": "Cerrar (no reemplazar)",
-    "replaced": "Se reemplazaron {n} término(s)"
+    "replaced": "Se reemplazaron {n} término(s)",
+    "suggestion_label": "Término de reemplazo"
   },
   "update": {
     "downloading": "Descargando la nueva versión {version} en segundo plano… {pct}%",
@@ -202,6 +210,7 @@
     "record_start_failed": "No se pudo empezar a grabar: {detail}",
     "record_stop_failed": "No se pudo detener la grabación: {detail}",
     "no_audio": "No se encontró audio transcribible (el audio no se guardó).",
+    "empty_text": "No hay texto para refinar (el archivo está vacío o solo tiene espacios).",
     "cfg_aws_region": "Configura una región de AWS.",
     "cfg_workspace_id": "Claude Platform on AWS requiere un workspace_id.",
     "cfg_aws_keys": "Configura tu clave de acceso / secreto de AWS.",

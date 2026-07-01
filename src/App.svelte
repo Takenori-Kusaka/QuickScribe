@@ -616,6 +616,8 @@
     if (!capturing) return;
     e.preventDefault();
     if (e.key === "Escape") {
+      // ホットキー取得のキャンセルに留め、設定ダイアログ全体を閉じさせない(#395)。
+      e.stopPropagation();
       cancelCapture();
       return;
     }
@@ -872,6 +874,11 @@
     if (typeof selected !== "string") return;
     try {
       const text = await invoke<string>("read_text_file", { path: selected });
+      // 空・空白のみのファイルは整形しても意味が無く、無駄なAPI呼び出しになる(#18)。
+      if (!text.trim()) {
+        error = $_("errors.empty_text");
+        return;
+      }
       transcript = text;
       refined = null;
       segments = [];
@@ -1092,7 +1099,13 @@
     {/if}
 
     <div class="actions">
-      <button class="btn primary" class:recording data-testid="record-btn" onclick={toggle}>
+      <button
+        class="btn primary"
+        class:recording
+        data-testid="record-btn"
+        aria-pressed={recording}
+        onclick={toggle}
+      >
         <span class="dot" class:on={recording}></span>
         {recording ? $_("main.record_stop") : $_("main.record_start")}
       </button>
@@ -1188,13 +1201,20 @@
     {/if}
 
     {#if busy || transcribing || status}
-      <div class="panel">
+      <div class="panel" role="status" aria-live="polite">
         <div class="status-row">
           <span class="spinner" aria-hidden="true"></span>
           <span class="status-text">{status || $_("results.processing")}</span>
         </div>
         {#if progress > 0}
-          <div class="progress" role="progressbar" aria-valuenow={progress}>
+          <div
+            class="progress"
+            role="progressbar"
+            aria-label={$_("results.processing")}
+            aria-valuenow={progress}
+            aria-valuemin="0"
+            aria-valuemax="100"
+          >
             <div class="bar" style="width: {progress}%"></div>
           </div>
           <div class="progress-meta">
@@ -1259,7 +1279,12 @@
                       <span class="correction-orig">{c.original}</span>
                       <span class="correction-arrow">→</span>
                     </label>
-                    <input class="correction-sugg" type="text" bind:value={c.suggestion} />
+                    <input
+                      class="correction-sugg"
+                      type="text"
+                      bind:value={c.suggestion}
+                      aria-label={$_("corrections.suggestion_label")}
+                    />
                     {#if c.reason}<span class="correction-reason" title={c.reason}>{c.reason}</span
                       >{/if}
                   </li>
@@ -1282,6 +1307,7 @@
             class="tags-input"
             type="text"
             bind:value={entryTags}
+            aria-label={$_("results.tags_placeholder")}
             placeholder={$_("results.tags_placeholder")}
           />
         </div>
@@ -1341,7 +1367,7 @@
     {/if}
 
     {#if error}
-      <p class="error">{error}</p>
+      <p class="error" role="alert">{error}</p>
     {/if}
   </div>
 </main>
@@ -1398,6 +1424,7 @@
           class="tags-input"
           type="text"
           bind:value={entrySearch}
+          aria-label={$_("vault.search_placeholder")}
           placeholder={$_("vault.search_placeholder")}
         />
         {#if allTags.length > 0}
@@ -1515,12 +1542,12 @@
       <p class="tip">
         {$_("settings.tip_hotkey", { values: { key: displayShortcut(recordShortcut, IS_MAC) } })}
       </p>
-      {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
+      {#if shortcutMsg}<p class="muted" role="status" aria-live="polite">{shortcutMsg}</p>{/if}
 
       <details class="meta-group" open>
         <summary class="meta-title">{$_("settings.group_record_mode")}</summary>
         <div class="device-row">
-          <select bind:value={recordMode}>
+          <select bind:value={recordMode} aria-label={$_("settings.group_record_mode")}>
             <option value="toggle">{$_("settings.mode_toggle")}</option>
             <option value="momentary">{$_("settings.mode_momentary")}</option>
           </select>
@@ -1535,7 +1562,11 @@
       <details class="meta-group">
         <summary class="meta-title">{$_("settings.group_record_source")}</summary>
         <div class="device-row">
-          <select value={`${inputDeviceKind}|${inputDevice}`} onchange={onSourceChange}>
+          <select
+            value={`${inputDeviceKind}|${inputDevice}`}
+            onchange={onSourceChange}
+            aria-label={$_("settings.group_record_source")}
+          >
             <option value="input|">{$_("settings.source_default_mic")}</option>
             {#if IS_WINDOWS}
               <option value="mix|">{$_("settings.source_mix")}</option>
@@ -1627,84 +1658,103 @@
         <p class="tip">{$_("settings.tip_auto_pipeline")}</p>
       </details>
 
-      <label>
-        {$_("settings.label_refine_provider")}
-        <select bind:value={provider} onchange={() => resolveCurrentModel()}>
-          <option value="gemini">Gemini</option>
-          <option value="anthropic">Anthropic (Claude)</option>
-          <option value="openai">OpenAI</option>
-          <option value="ollama">{$_("settings.provider_ollama")}</option>
-          <option value="bedrock">AWS Bedrock</option>
-          <option value="claude-aws">Claude Platform on AWS</option>
-        </select>
-      </label>
-      {#if LOCAL_PROVIDERS.includes(provider)}
-        <p class="muted">
-          {$_("settings.ollama_note_1")}<code>ollama serve</code>{$_("settings.ollama_note_2")}<code
-            >ollama pull llama3.1</code
-          >{$_("settings.ollama_note_3")}
-        </p>
-      {:else if AWS_PROVIDERS.includes(provider)}
-        <!-- AWSプロバイダ(Bedrock / Claude Platform on AWS) / ADR-0011。SigV4 or APIキー。 -->
+      <details class="meta-group" open>
+        <summary class="meta-title">{$_("settings.group_refine")}</summary>
         <label>
-          {$_("settings.label_aws_region")}
-          <input type="text" bind:value={awsRegion} placeholder="us-east-1" autocomplete="off" />
-        </label>
-        {#if provider === "claude-aws"}
-          <label>
-            {$_("settings.label_workspace_id")}
-            <input
-              type="text"
-              bind:value={awsWorkspaceId}
-              placeholder="wrkspc_..."
-              autocomplete="off"
-            />
-          </label>
-        {/if}
-        {#if provider === "bedrock"}
-          <label>
-            {$_("settings.label_bedrock_model")}
-            <input
-              type="text"
-              bind:value={bedrockModel}
-              placeholder="anthropic.claude-sonnet-4-6"
-              autocomplete="off"
-            />
-          </label>
-        {/if}
-        <label>
-          {$_("settings.label_auth_mode")}
-          <select bind:value={awsAuthMode}>
-            <option value="sigv4">{$_("settings.auth_sigv4")}</option>
-            <option value="apikey">{$_("settings.auth_apikey")}</option>
+          {$_("settings.label_refine_provider")}
+          <select bind:value={provider} onchange={() => resolveCurrentModel()}>
+            <option value="gemini">Gemini</option>
+            <option value="anthropic">Anthropic (Claude)</option>
+            <option value="openai">OpenAI</option>
+            <option value="ollama">{$_("settings.provider_ollama")}</option>
+            <option value="bedrock">AWS Bedrock</option>
+            <option value="claude-aws">Claude Platform on AWS</option>
           </select>
         </label>
-        {#if awsAuthMode === "sigv4"}
+        {#if LOCAL_PROVIDERS.includes(provider)}
+          <p class="muted">
+            {$_("settings.ollama_note_1")}<code>ollama serve</code>{$_(
+              "settings.ollama_note_2",
+            )}<code>ollama pull llama3.1</code>{$_("settings.ollama_note_3")}
+          </p>
+        {:else if AWS_PROVIDERS.includes(provider)}
+          <!-- AWSプロバイダ(Bedrock / Claude Platform on AWS) / ADR-0011。SigV4 or APIキー。 -->
           <label>
-            {$_("settings.label_aws_access_key")}
-            <input
-              type="password"
-              bind:value={awsAccessKey}
-              placeholder="AKIA..."
-              autocomplete="off"
-            />
+            {$_("settings.label_aws_region")}
+            <input type="text" bind:value={awsRegion} placeholder="us-east-1" autocomplete="off" />
           </label>
+          {#if provider === "claude-aws"}
+            <label>
+              {$_("settings.label_workspace_id")}
+              <input
+                type="text"
+                bind:value={awsWorkspaceId}
+                placeholder="wrkspc_..."
+                autocomplete="off"
+              />
+            </label>
+          {/if}
+          {#if provider === "bedrock"}
+            <label>
+              {$_("settings.label_bedrock_model")}
+              <input
+                type="text"
+                bind:value={bedrockModel}
+                placeholder="anthropic.claude-sonnet-4-6"
+                autocomplete="off"
+              />
+            </label>
+          {/if}
           <label>
-            {$_("settings.label_aws_secret_key")}
-            <input type="password" bind:value={awsSecretKey} placeholder="..." autocomplete="off" />
+            {$_("settings.label_auth_mode")}
+            <select bind:value={awsAuthMode}>
+              <option value="sigv4">{$_("settings.auth_sigv4")}</option>
+              <option value="apikey">{$_("settings.auth_apikey")}</option>
+            </select>
           </label>
-          <label>
-            {$_("settings.label_aws_session")}
-            <input
-              type="password"
-              bind:value={awsSessionToken}
-              placeholder={$_("settings.session_optional_ph")}
-              autocomplete="off"
-            />
-          </label>
+          {#if awsAuthMode === "sigv4"}
+            <label>
+              {$_("settings.label_aws_access_key")}
+              <input
+                type="password"
+                bind:value={awsAccessKey}
+                placeholder="AKIA..."
+                autocomplete="off"
+              />
+            </label>
+            <label>
+              {$_("settings.label_aws_secret_key")}
+              <input
+                type="password"
+                bind:value={awsSecretKey}
+                placeholder="..."
+                autocomplete="off"
+              />
+            </label>
+            <label>
+              {$_("settings.label_aws_session")}
+              <input
+                type="password"
+                bind:value={awsSessionToken}
+                placeholder={$_("settings.session_optional_ph")}
+                autocomplete="off"
+              />
+            </label>
+          {:else}
+            <label>
+              {$_("settings.api_key_save", { values: { provider: PROVIDER_LABELS[provider] } })}
+              <input
+                type="password"
+                bind:value={apiKeys[provider]}
+                placeholder={KEY_PLACEHOLDERS[provider]}
+                autocomplete="off"
+              />
+            </label>
+          {/if}
+          <p class="muted">{$_("settings.secret_local_note")}</p>
         {:else}
           <label>
-            {$_("settings.api_key_save", { values: { provider: PROVIDER_LABELS[provider] } })}
+            {$_("settings.api_key_refine", { values: { provider: PROVIDER_LABELS[provider] } })}
             <input
               type="password"
               bind:value={apiKeys[provider]}
@@ -1713,64 +1763,55 @@
             />
           </label>
         {/if}
-        <p class="muted">{$_("settings.secret_local_note")}</p>
-      {:else}
+        <p class="muted model-hint">
+          {#if provider === "bedrock"}
+            {$_("settings.model_label")}<code>{bedrockModel || FALLBACK_MODELS[provider]}</code>{$_(
+              "settings.model_bedrock_suffix",
+            )}
+          {:else if provider === "claude-aws"}
+            {$_("settings.model_label")}<code>{FALLBACK_MODELS[provider]}</code>{$_(
+              "settings.model_claude_aws_suffix",
+            )}
+          {:else}
+            {$_("settings.model_label")}<code
+              >{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code
+            >
+            {#if resolvingModel}{$_(
+                "settings.model_resolving",
+              )}{:else if resolvedModel[provider]}{$_("settings.model_latest_auto")}{:else}{$_(
+                "settings.model_latest_midrange",
+              )}{/if}
+          {/if}
+        </p>
         <label>
-          {$_("settings.api_key_refine", { values: { provider: PROVIDER_LABELS[provider] } })}
-          <input
-            type="password"
-            bind:value={apiKeys[provider]}
-            placeholder={KEY_PLACEHOLDERS[provider]}
-            autocomplete="off"
-          />
-        </label>
-      {/if}
-      <p class="muted model-hint">
-        {#if provider === "bedrock"}
-          {$_("settings.model_label")}<code>{bedrockModel || FALLBACK_MODELS[provider]}</code>{$_(
-            "settings.model_bedrock_suffix",
-          )}
-        {:else if provider === "claude-aws"}
-          {$_("settings.model_label")}<code>{FALLBACK_MODELS[provider]}</code>{$_(
-            "settings.model_claude_aws_suffix",
-          )}
-        {:else}
-          {$_("settings.model_label")}<code
-            >{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code
-          >
-          {#if resolvingModel}{$_("settings.model_resolving")}{:else if resolvedModel[provider]}{$_(
-              "settings.model_latest_auto",
-            )}{:else}{$_("settings.model_latest_midrange")}{/if}
-        {/if}
-      </p>
-      <label>
-        {$_("settings.label_refine_style")}
-        <select bind:value={refineStyle}>
-          {#each allStyles as s}
-            <option value={s.value} title={s.desc}>{s.label}</option>
-          {/each}
-        </select>
-      </label>
-      <!-- 選択中スタイルの解説を常時表示(マウスオーバーに頼らず各モードの違いを示す)。 -->
-      <p class="style-desc">{currentStyle.desc}</p>
-
-      <!-- 整形出力言語(翻訳 / #453)。既定OFF。ONにすると出力言語を選べる(progressive disclosure)。
-           原語の文字起こしは常に保持し、翻訳は整形結果にのみ適用する。 -->
-      <label class="check">
-        <input type="checkbox" bind:checked={translateOutput} />
-        {$_("settings.translate_output")}
-      </label>
-      {#if translateOutput}
-        <label>
-          {$_("settings.output_language")}
-          <select bind:value={outputLang}>
-            {#each LANGUAGES as l}
-              <option value={l.code}>{l.label}</option>
+          {$_("settings.label_refine_style")}
+          <select bind:value={refineStyle}>
+            {#each allStyles as s}
+              <option value={s.value} title={s.desc}>{s.label}</option>
             {/each}
           </select>
         </label>
-      {/if}
-      <p class="tip">{$_("settings.tip_translate")}</p>
+        <!-- 選択中スタイルの解説を常時表示(マウスオーバーに頼らず各モードの違いを示す)。 -->
+        <p class="style-desc">{currentStyle.desc}</p>
+
+        <!-- 整形出力言語(翻訳 / #453)。既定OFF。ONにすると出力言語を選べる(progressive disclosure)。
+           原語の文字起こしは常に保持し、翻訳は整形結果にのみ適用する。 -->
+        <label class="check">
+          <input type="checkbox" bind:checked={translateOutput} />
+          {$_("settings.translate_output")}
+        </label>
+        {#if translateOutput}
+          <label>
+            {$_("settings.output_language")}
+            <select bind:value={outputLang}>
+              {#each LANGUAGES as l}
+                <option value={l.code}>{l.label}</option>
+              {/each}
+            </select>
+          </label>
+        {/if}
+        <p class="tip">{$_("settings.tip_translate")}</p>
+      </details>
 
       <!-- カスタム整形パターン(S3.3): ユーザー定義の指示を追加・管理する。 -->
       <details class="meta-group">
@@ -1883,6 +1924,24 @@
           {$_("settings.autostart")}
         </label>
         <p class="tip">{$_("settings.tip_autostart")}</p>
+        <!-- オンボーディングを再表示する導線(#397)。一度閉じると出なくなるため、後から見返せるように。 -->
+        <button
+          type="button"
+          class="btn small ghost"
+          onclick={() => {
+            showSettings = false;
+            showOnboarding = true;
+          }}>{$_("settings.show_onboarding")}</button
+        >
+        <p class="tip">{$_("settings.tip_show_onboarding")}</p>
+      </details>
+
+      <!-- このアプリについて（ライセンス表示 / #394 監査項目5）。OSS帰属をアプリ内で明示。 -->
+      <details class="meta-group">
+        <summary class="meta-title">{$_("settings.group_about")}</summary>
+        <p class="tip">QuickScribe — {$_("settings.about_license")}</p>
+        <p class="tip">{$_("settings.about_oss")}</p>
+        <p class="tip">{$_("settings.about_repo")}: github.com/Takenori-Kusaka/QuickScribe</p>
       </details>
 
       <div class="settings-actions">
@@ -1891,7 +1950,7 @@
           >{$_("settings.check_update")}</button
         >
       </div>
-      {#if updateMsg}<p class="muted">{updateMsg}</p>{/if}
+      {#if updateMsg}<p class="muted" role="status" aria-live="polite">{updateMsg}</p>{/if}
     </div>
   </div>
 {/if}
@@ -1982,7 +2041,8 @@
     background: none;
     border: none;
     cursor: pointer;
-    opacity: 0.55;
+    /* WCAG AA 非テキストコントラスト(#395): 旧 opacity 0.55 は実効 2.58:1。0.8 で 3:1 を満たす。 */
+    opacity: 0.8;
     color: #4b5563;
     line-height: 1;
     padding: 0.3rem;
@@ -2447,7 +2507,8 @@
   }
 
   .hint {
-    color: #6b7280;
+    /* WCAG AA(#395): body背景 #f3f4f6 上でも 4.5:1 を満たす濃さにする(旧 #6b7280 は 4.34:1)。 */
+    color: #4b5563;
     font-size: 0.72rem;
     text-align: center;
     margin: 0.7rem 0 1.1rem;
