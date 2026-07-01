@@ -126,4 +126,47 @@ describe("App.svelte 設定操作", () => {
     await fireEvent.click(saveBtn);
     expect(invokeMock).toHaveBeenCalledWith("set_save_settings", expect.anything());
   });
+
+  it("翻訳トグルをONにすると出力言語ピッカーが現れる", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    const cb = (await screen.findByLabelText(/翻訳して出力/)) as HTMLInputElement;
+    expect(cb.checked).toBe(false);
+    await fireEvent.click(cb);
+    // 出力言語の select が出現する（settings.output_language）。
+    expect(await screen.findByLabelText(/出力言語|翻訳先/)).toBeInTheDocument();
+  });
+
+  it("カスタム整形: ラベルと指示が空だとエラー", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    // カスタム整形の追加ボタン（指示未入力）を押すとエラー。
+    const addBtn = await screen.findByRole("button", { name: /追加/ });
+    await fireEvent.click(addBtn);
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+});
+
+describe("App.svelte ジャーナル検索", () => {
+  it("一致しない検索語でエントリが絞り込まれる", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "ジャーナル" }));
+    expect(await screen.findByText("プレビュー本文")).toBeInTheDocument();
+    const search = (await screen.findByLabelText(/検索/)) as HTMLInputElement;
+    await fireEvent.input(search, { target: { value: "存在しない語XYZ" } });
+    expect(screen.queryByText("プレビュー本文")).not.toBeInTheDocument();
+  });
+});
+
+describe("App.svelte コピー", () => {
+  it("整形結果をコピーすると clipboard.writeText が呼ばれる", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    openMock.mockResolvedValue("/path/to/memo.txt");
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: /メモ/ }));
+    await screen.findByText("整形された結果テキスト");
+    await fireEvent.click(await screen.findByRole("button", { name: /コピー/ }));
+    expect(writeText).toHaveBeenCalledWith("整形された結果テキスト");
+  });
 });
