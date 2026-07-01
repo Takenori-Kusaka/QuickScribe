@@ -43,6 +43,7 @@
     "group_record_source": "录音来源（麦克风 / 系统声音）",
     "group_stt": "转写引擎",
     "group_transcribe_meta": "转写元数据",
+    "group_refine": "整理",
     "group_save": "保存",
     "group_app": "通用",
     "save_dir": "保存位置：{dir}",

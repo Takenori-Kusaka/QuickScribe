@@ -188,6 +188,10 @@ pub fn refine(
     custom_instruction: Option<String>,
     output_lang: Option<String>,
 ) -> Result<String, String> {
+    // 空・空白のみの入力はAPIを呼ばずに弾く(無駄なコスト・無意味な整形を防ぐ / #18)。
+    if transcript.trim().is_empty() {
+        return Err("整形するテキストがありません（内容が空です）。".into());
+    }
     let req = RefineRequest {
         style: RefineStyle::parse(style),
         api_key,
@@ -813,6 +817,13 @@ mod tests {
         assert!(p.contains("捏造"), "コア規律(捏造禁止)は不変");
         // 既定スタイル(Structured)の指示語には引きずられない。
         assert!(!p.contains("ひとことまとめ"), "既定指示は使われない");
+    }
+
+    #[test]
+    fn refine_rejects_empty_input_without_calling_provider() {
+        // 空・空白のみは HTTP を呼ばず即エラー（無駄コスト防止 / #18）。
+        let err = refine("gemini", "k", "m", "structured", "   \n", None, None, None).unwrap_err();
+        assert!(err.contains("テキストがありません"), "ユーザー向け理由: {err}");
     }
 
     #[test]

@@ -43,6 +43,7 @@
     "group_record_source": "録音ソース（マイク / システム音）",
     "group_stt": "文字起こしエンジン",
     "group_transcribe_meta": "文字起こしのメタデータ",
+    "group_refine": "整形",
     "group_save": "保存",
     "group_app": "アプリ全般",
     "save_dir": "保存先: {dir}",

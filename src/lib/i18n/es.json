@@ -43,6 +43,7 @@
     "group_record_source": "Fuente de grabación (micrófono / audio del sistema)",
     "group_stt": "Motor de transcripción",
     "group_transcribe_meta": "Metadatos de transcripción",
+    "group_refine": "Refinado",
     "group_save": "Guardado",
     "group_app": "General",
     "save_dir": "Ubicación de guardado: {dir}",

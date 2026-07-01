@@ -43,6 +43,7 @@
     "group_record_source": "Recording source (mic / system audio)",
     "group_stt": "Transcription engine",
     "group_transcribe_meta": "Transcription metadata",
+    "group_refine": "Refine",
     "group_save": "Saving",
     "group_app": "General",
     "save_dir": "Save location: {dir}",
