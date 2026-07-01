@@ -8,6 +8,9 @@ const FOCUSABLE = [
   "input:not([disabled])",
   "select:not([disabled])",
   "textarea:not([disabled])",
+  // ネイティブ <details> の <summary> はTab可能。フォーカストラップ境界計算に含める(#395)。
+  "summary",
+  '[contenteditable]:not([contenteditable="false"])',
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
 
