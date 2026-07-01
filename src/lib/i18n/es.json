@@ -128,7 +128,9 @@
     "tip_output_4": " (refinado).",
     "tip_taskbar": "Botones de grabar/detener y mostrar ventana en la barra de tareas (Windows). Desactívalo para ocultarlos.",
     "tip_autostart": "Inicia QuickScribe automáticamente al iniciar sesión en el SO y lo mantiene en la bandeja (no aparece ninguna ventana).",
-    "shortcut_modifier_required": "Combínala con una tecla modificadora (Ctrl/Alt/Shift) y pulsa."
+    "shortcut_modifier_required": "Combínala con una tecla modificadora (Ctrl/Alt/Shift) y pulsa.",
+    "show_onboarding": "Ver la introducción de nuevo",
+    "tip_show_onboarding": "Muestra de nuevo la guía inicial (3 pasos)."
   },
   "vault": {
     "back_to_list": "← Volver a la lista",
@@ -203,6 +205,7 @@
     "record_start_failed": "No se pudo empezar a grabar: {detail}",
     "record_stop_failed": "No se pudo detener la grabación: {detail}",
     "no_audio": "No se encontró audio transcribible (el audio no se guardó).",
+    "empty_text": "No hay texto para refinar (el archivo está vacío o solo tiene espacios).",
     "cfg_aws_region": "Configura una región de AWS.",
     "cfg_workspace_id": "Claude Platform on AWS requiere un workspace_id.",
     "cfg_aws_keys": "Configura tu clave de acceso / secreto de AWS.",

@@ -128,7 +128,9 @@
     "tip_output_4": "（整形）で区別されます。",
     "tip_taskbar": "タスクバー上の録音/停止・ウィンドウ表示ボタン（Windows）。OFFにすると非表示になります。",
     "tip_autostart": "OSにログインすると QuickScribe を自動で起動し、トレイに常駐します（ウィンドウは出ません）。",
-    "shortcut_modifier_required": "修飾キー（Ctrl/Alt/Shift）と組み合わせて押してください"
+    "shortcut_modifier_required": "修飾キー（Ctrl/Alt/Shift）と組み合わせて押してください",
+    "show_onboarding": "使い方をもう一度見る",
+    "tip_show_onboarding": "初回ガイド（3ステップ）をもう一度表示します。"
   },
   "vault": {
     "back_to_list": "← 一覧へ戻る",
@@ -203,6 +205,7 @@
     "record_start_failed": "録音を開始できませんでした: {detail}",
     "record_stop_failed": "録音の停止に失敗しました: {detail}",
     "no_audio": "文字起こしできる音声が含まれていませんでした（音声は保存していません）。",
+    "empty_text": "整形するテキストがありません（ファイルが空か空白のみです）。",
     "cfg_aws_region": "AWSリージョンを設定してください。",
     "cfg_workspace_id": "Claude Platform on AWS には workspace_id が必要です。",
     "cfg_aws_keys": "AWSアクセスキー/シークレットを設定してください。",
