@@ -17,6 +17,7 @@
     "e2e": "wdio run e2e/wdio.conf.cjs",
     "screenshots": "playwright test",
     "licenses": "node scripts/generate-frontend-notices.cjs",
+    "metrics": "node scripts/release-metrics.mjs",
     "icons": "tauri icon assets/brand/icon-source.png",
     "tauri": "tauri"
   },
