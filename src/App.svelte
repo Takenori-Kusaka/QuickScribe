@@ -42,6 +42,8 @@
     DEFAULT_SHORTCUT,
     MAX_INPUT_MB,
     SUPPORTED_AUDIO_EXTS,
+    LANGUAGES,
+    languageEnglishName,
   } from "./lib/constants";
 
   let recording = $state(false);
@@ -352,6 +354,11 @@
   // 整形スタイル(コア価値: 逐語⇄要約⇄ブレストを行き来 / S3.3)。
   // desc は各モードの短い解説(設定のtips・処理画面のツールチップに使う。refine.rs の指示と一致)。
   let refineStyle = $state<string>("structured");
+  // 整形出力言語(翻訳 / #453)。ON時、整形結果を outputLang の言語で生成する(1パス・原語の
+  // 文字起こしは常に保持)。ある作業期間の「期待する出力状態」として永続保持。既定OFF。
+  // 既定言語は起動時のUI言語。UI言語に限らず任意言語(Vietnamese等)を選べる(constants LANGUAGES)。
+  let translateOutput = $state<boolean>(false);
+  let outputLang = $state<string>("ja");
   // 整形スタイル(REFINE_STYLES)・カスタム型は src/lib/constants.ts に集約(SSOT / #401 Phase0)。
   let customStyles = $state<CustomStyle[]>([]);
   // 組み込み＋カスタムを1つの選択肢リストに統合（チップ・設定ドロップダウン・解説で共用）。
@@ -412,6 +419,9 @@
     saveDir = localStorage.getItem("saveDir") || "";
     outputFormat = localStorage.getItem("outputFormat") || "txt";
     refineStyle = localStorage.getItem("refineStyle") || "structured";
+    // 整形出力言語(翻訳 / #453)。既定言語は起動時UI言語。未対応値は無害(select先頭へ)。
+    translateOutput = localStorage.getItem("translateOutput") === "true";
+    outputLang = localStorage.getItem("outputLang") || ($locale ?? "ja").split("-")[0] || "ja";
     sttProvider = (localStorage.getItem("sttProvider") as SttProvider) || "local";
     sttModel = localStorage.getItem("sttModel") || "";
     sttAzureResource = localStorage.getItem("sttAzureResource") || "";
@@ -559,6 +569,8 @@
     localStorage.setItem("saveDir", saveDir);
     localStorage.setItem("outputFormat", outputFormat);
     localStorage.setItem("refineStyle", refineStyle);
+    localStorage.setItem("translateOutput", String(translateOutput));
+    localStorage.setItem("outputLang", outputLang);
     localStorage.setItem("sttProvider", sttProvider);
     localStorage.setItem("sttModel", sttModel);
     localStorage.setItem("sttAzureResource", sttAzureResource);
@@ -754,6 +766,8 @@
       awsAccessKey,
       awsSecretKey,
       awsSessionToken,
+      translateOutput,
+      outputLang,
     });
   }
 
@@ -1714,6 +1728,24 @@
       <!-- 選択中スタイルの解説を常時表示(マウスオーバーに頼らず各モードの違いを示す)。 -->
       <p class="style-desc">{currentStyle.desc}</p>
 
+      <!-- 整形出力言語(翻訳 / #453)。既定OFF。ONにすると出力言語を選べる(progressive disclosure)。
+           原語の文字起こしは常に保持し、翻訳は整形結果にのみ適用する。 -->
+      <label class="check">
+        <input type="checkbox" bind:checked={translateOutput} />
+        {$_("settings.translate_output")}
+      </label>
+      {#if translateOutput}
+        <label>
+          {$_("settings.output_language")}
+          <select bind:value={outputLang}>
+            {#each LANGUAGES as l}
+              <option value={l.code}>{l.label}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
+      <p class="tip">{$_("settings.tip_translate")}</p>
+
       <!-- カスタム整形パターン(S3.3): ユーザー定義の指示を追加・管理する。 -->
       <details class="meta-group">
         <summary class="meta-title">{$_("settings.group_custom_style")}</summary>
@@ -1804,10 +1836,9 @@
               localStorage.setItem(LOCALE_STORAGE_KEY, e.currentTarget.value);
             }}
           >
-            <option value="ja">日本語</option>
-            <option value="en">English</option>
-            <option value="zh">简体中文</option>
-            <option value="es">Español</option>
+            {#each LANGUAGES.filter((l) => l.ui) as l}
+              <option value={l.code}>{l.label}</option>
+            {/each}
           </select>
         </label>
         {#if IS_WINDOWS}
