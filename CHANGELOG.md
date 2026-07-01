@@ -5,6 +5,34 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [0.9.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v0.8.0...v0.9.0) (2026-07-01)
+
+
+### ✨ 新機能 / Features
+
+* **i18n:** validateRefineConfig(cfgErr)をエラーコード化([#401](https://github.com/Takenori-Kusaka/QuickScribe/issues/401) Phase2) ([#463](https://github.com/Takenori-Kusaka/QuickScribe/issues/463)) ([aac2a12](https://github.com/Takenori-Kusaka/QuickScribe/commit/aac2a12b35d155d033083e92906414bc9b8a4444))
+* **i18n:** zh/es カタログ追加（4言語対応）([#401](https://github.com/Takenori-Kusaka/QuickScribe/issues/401)) ([#454](https://github.com/Takenori-Kusaka/QuickScribe/issues/454)) ([a842a9f](https://github.com/Takenori-Kusaka/QuickScribe/commit/a842a9ff95e3405c2fcf1ee59e9563bd3b394d42))
+* **i18n:** メインのホットキーヒント＋設定の選択肢をキー化(ja/en) ([#401](https://github.com/Takenori-Kusaka/QuickScribe/issues/401)) ([#445](https://github.com/Takenori-Kusaka/QuickScribe/issues/445)) ([54e9073](https://github.com/Takenori-Kusaka/QuickScribe/commit/54e90731e86df4484b96c6995a03334b4658e845))
+* **i18n:** 結果カード/用語補正パネル等の残りUI文言をキー化(ja/en) ([#401](https://github.com/Takenori-Kusaka/QuickScribe/issues/401)) ([#451](https://github.com/Takenori-Kusaka/QuickScribe/issues/451)) ([fe48713](https://github.com/Takenori-Kusaka/QuickScribe/commit/fe487131955cc455779aa766a934785b460f3e82))
+* **i18n:** 英語カタログ＋ロケール切替＋起動時OS言語デフォルト ([#401](https://github.com/Takenori-Kusaka/QuickScribe/issues/401) Phase3) ([#443](https://github.com/Takenori-Kusaka/QuickScribe/issues/443)) ([df6c97a](https://github.com/Takenori-Kusaka/QuickScribe/commit/df6c97a4d72fca1dcd096aa1f5cb47c9c1520812))
+* **i18n:** 設定のAWS/STTラベル・主要tipをキー化(ja/en) ([#401](https://github.com/Takenori-Kusaka/QuickScribe/issues/401)) ([#447](https://github.com/Takenori-Kusaka/QuickScribe/issues/447)) ([ecbfd10](https://github.com/Takenori-Kusaka/QuickScribe/commit/ecbfd109853b1e8e12fe565d722d8407db2d50ec))
+* **i18n:** 設定パネル残りの文言・複雑inline-HTML tipをキー化(ja/en) ([#401](https://github.com/Takenori-Kusaka/QuickScribe/issues/401)) ([#450](https://github.com/Takenori-Kusaka/QuickScribe/issues/450)) ([fbd8d96](https://github.com/Takenori-Kusaka/QuickScribe/commit/fbd8d96234039e3bb57af20f15be8528676460a1))
+* **onboarding:** 初回オンボーディングと空状態の導線([#397](https://github.com/Takenori-Kusaka/QuickScribe/issues/397)) ([#461](https://github.com/Takenori-Kusaka/QuickScribe/issues/461)) ([4251291](https://github.com/Takenori-Kusaka/QuickScribe/commit/4251291fcde8787ad172cd8147304741c84f039f))
+* **privacy:** オンデバイス/クラウドのインジケータと「オフラインにする」([#465](https://github.com/Takenori-Kusaka/QuickScribe/issues/465)) ([#480](https://github.com/Takenori-Kusaka/QuickScribe/issues/480)) ([d5a0d68](https://github.com/Takenori-Kusaka/QuickScribe/commit/d5a0d6836c83068b4f630d6f3c12c0187feef47d))
+* **refine:** 整形出力言語(翻訳)オプション([#453](https://github.com/Takenori-Kusaka/QuickScribe/issues/453)) ([#479](https://github.com/Takenori-Kusaka/QuickScribe/issues/479)) ([ea7c0af](https://github.com/Takenori-Kusaka/QuickScribe/commit/ea7c0af90aec1e39acc672d4cd68063c964c7e7e))
+* **security:** 制限的CSPを設定（既定の無効化を解消）([#391](https://github.com/Takenori-Kusaka/QuickScribe/issues/391)) ([#455](https://github.com/Takenori-Kusaka/QuickScribe/issues/455)) ([2156944](https://github.com/Takenori-Kusaka/QuickScribe/commit/21569443a1255a18525e58d1cf7e0d97e179bc60))
+* **settings:** カテゴリを頻度メジャー順に再編([#404](https://github.com/Takenori-Kusaka/QuickScribe/issues/404)) ([#460](https://github.com/Takenori-Kusaka/QuickScribe/issues/460)) ([851f387](https://github.com/Takenori-Kusaka/QuickScribe/commit/851f387d419a1b382ae3b110ab105cb539d04ce0))
+
+
+### 🐛 修正 / Bug Fixes
+
+* **onboarding:** プライバシー文言の過剰主張を是正([#397](https://github.com/Takenori-Kusaka/QuickScribe/issues/397)) ([#464](https://github.com/Takenori-Kusaka/QuickScribe/issues/464)) ([22a2387](https://github.com/Takenori-Kusaka/QuickScribe/commit/22a2387a523d110dcfd57f9545daf8934bb61d47))
+
+
+### 📝 ドキュメント / Docs
+
+* **research:** 整形出力言語・翻訳オプションの設計調査([#401](https://github.com/Takenori-Kusaka/QuickScribe/issues/401)関連) ([#452](https://github.com/Takenori-Kusaka/QuickScribe/issues/452)) ([4a992cb](https://github.com/Takenori-Kusaka/QuickScribe/commit/4a992cb5d68b2abac769a2f76a52c4d1f42cc00a))
+
 ## [0.8.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v0.7.0...v0.8.0) (2026-06-29)
 
 
