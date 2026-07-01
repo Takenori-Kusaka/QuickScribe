@@ -32,13 +32,14 @@ export default defineConfig({
       // 旧ゲート(75/85)は src/lib(全体の約14%)のみを測っており、実効カバレッジ(50%)を
       // 過大(87%)に見せていた。App.svelte を含めた実測を回帰防止の下限とする。
       // 履歴(lines): 50%(正直化) → 64 → 66 → 68 → 71 → 71.6 → 75.4 → **80.1%達成**。
-      // lines は目標の80%に到達。statements/functions/branches は実測近傍を下限とし、
-      // 引き続き分岐(エラー経路等)のテストを足して全指標80%を目指す。
+      // lines/statements/functions が目標の80%前後に到達(実測 local ~82%)。
+      // CI環境差(約0.4pt低い)を見込み下限は少し下に置く。branchesは分岐が多く73を下限に、
+      // 引き続きエラー経路のテストで80%化を継続。
       thresholds: {
         lines: 80,
-        statements: 79,
+        statements: 80,
         functions: 79,
-        branches: 72,
+        branches: 73,
       },
     },
   },
