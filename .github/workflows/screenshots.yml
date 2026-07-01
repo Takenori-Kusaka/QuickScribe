@@ -3,13 +3,16 @@ name: Screenshots
 # README/サイト用スクリーンショットを自動生成して docs/assets を更新する。
 # フロント(Svelte)を Vite で起動し Playwright でヘッドレス描画(Tauri APIはモック)。
 # Rust/cargo/MSVC・マイク不要で ubuntu ランナー完結。
+# 手動(workflow_dispatch)で実行する。release:published はタウリの GITHUB_TOKEN 発行イベントでは
+# 起動しないため信頼できず、代わりに手動＋タグpushで回す(#387/#396)。
 on:
   workflow_dispatch:
-  release:
-    types: [published]
+  push:
+    tags: ["v*"]
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   screenshots:
@@ -31,14 +34,15 @@ jobs:
       - name: Generate screenshots
         run: npm run screenshots
 
-      - name: Commit updated screenshots
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [ -n "$(git status --porcelain docs/assets/screenshot-main.png docs/assets/screenshot-vault.png)" ]; then
-            git add docs/assets/screenshot-main.png docs/assets/screenshot-vault.png
-            git commit -m "chore(assets): スクリーンショット自動更新 [skip ci]"
-            git push
-          else
-            echo "No screenshot changes."
-          fi
+      # main はブランチ保護のため直push不可。差分があれば PR を作成/更新する(全5枚対象)。
+      - name: Open PR with updated screenshots
+        uses: peter-evans/create-pull-request@v7
+        with:
+          add-paths: docs/assets/screenshot-*.png
+          branch: chore/screenshots-auto
+          delete-branch: true
+          commit-message: "chore(assets): スクリーンショット自動更新"
+          title: "chore(assets): スクリーンショット自動更新"
+          body: |
+            CI(Vite+Playwright)が生成した最新スクリーンショット。README/サイト用。
+            マージ前に見た目を確認してください。
