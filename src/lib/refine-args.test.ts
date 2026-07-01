@@ -16,6 +16,8 @@ const base: RefineArgsInput = {
   awsAccessKey: "",
   awsSecretKey: "",
   awsSessionToken: "",
+  translateOutput: false,
+  outputLang: "ja",
 };
 
 describe("buildRefineArgs", () => {
@@ -59,6 +61,24 @@ describe("buildRefineArgs", () => {
   it("タグはパースして配列で付与（空なら付かない）", () => {
     expect(buildRefineArgs({ ...base, entryTags: "a, b" }).tags).toEqual(["a", "b"]);
     expect(buildRefineArgs({ ...base, entryTags: "  " }).tags).toBeUndefined();
+  });
+
+  it("翻訳: ON かつ既知言語のとき英語名を outputLang で渡す（#453）", () => {
+    expect(buildRefineArgs({ ...base, translateOutput: true, outputLang: "vi" }).outputLang).toBe(
+      "Vietnamese",
+    );
+    expect(buildRefineArgs({ ...base, translateOutput: true, outputLang: "en" }).outputLang).toBe(
+      "English",
+    );
+  });
+
+  it("翻訳: OFF または未知言語では outputLang を渡さない（原語のまま）", () => {
+    expect(
+      buildRefineArgs({ ...base, translateOutput: false, outputLang: "vi" }).outputLang,
+    ).toBeUndefined();
+    expect(
+      buildRefineArgs({ ...base, translateOutput: true, outputLang: "zzz" }).outputLang,
+    ).toBeUndefined();
   });
 
   it("AWS SigV4 は資格情報を付与、session 空は null", () => {

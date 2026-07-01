@@ -42,6 +42,8 @@
     DEFAULT_SHORTCUT,
     MAX_INPUT_MB,
     SUPPORTED_AUDIO_EXTS,
+    LANGUAGES,
+    languageEnglishName,
   } from "./lib/constants";
 
   let recording = $state(false);
@@ -352,6 +354,11 @@
   // 整形スタイル(コア価値: 逐語⇄要約⇄ブレストを行き来 / S3.3)。
   // desc は各モードの短い解説(設定のtips・処理画面のツールチップに使う。refine.rs の指示と一致)。
   let refineStyle = $state<string>("structured");
+  // 整形出力言語(翻訳 / #453)。ON時、整形結果を outputLang の言語で生成する(1パス・原語の
+  // 文字起こしは常に保持)。ある作業期間の「期待する出力状態」として永続保持。既定OFF。
+  // 既定言語は起動時のUI言語。UI言語に限らず任意言語(Vietnamese等)を選べる(constants LANGUAGES)。
+  let translateOutput = $state<boolean>(false);
+  let outputLang = $state<string>("ja");
   // 整形スタイル(REFINE_STYLES)・カスタム型は src/lib/constants.ts に集約(SSOT / #401 Phase0)。
   let customStyles = $state<CustomStyle[]>([]);
   // 組み込み＋カスタムを1つの選択肢リストに統合（チップ・設定ドロップダウン・解説で共用）。
@@ -365,6 +372,16 @@
   ]);
   // 現在選択中のスタイル(処理画面の表示・解説に使う)。未知値は既定にフォールバック。
   const currentStyle = $derived(allStyles.find((s) => s.value === refineStyle) ?? allStyles[0]);
+
+  // プライバシー状態(#465): 整形=ローカル(Ollama) かつ 文字起こし=ローカルwhisper のときだけ
+  // 「オンデバイス完結」。それ以外は音声/文字がクラウドAPIへ送信されうる。誇張なく現状を可視化。
+  const isFullyLocal = $derived(LOCAL_PROVIDERS.includes(provider) && sttProvider === "local");
+  // ワンクリックでローカルAI(整形=Ollama / STT=ローカルwhisper)へ切り替える(#465)。
+  function makeOffline() {
+    provider = "ollama";
+    sttProvider = "local";
+    void syncSttSettings();
+  }
 
   // カスタムパターンの編集フォーム状態（新規追加）。
   let newCustomLabel = $state<string>("");
@@ -412,6 +429,9 @@
     saveDir = localStorage.getItem("saveDir") || "";
     outputFormat = localStorage.getItem("outputFormat") || "txt";
     refineStyle = localStorage.getItem("refineStyle") || "structured";
+    // 整形出力言語(翻訳 / #453)。既定言語は起動時UI言語。未対応値は無害(select先頭へ)。
+    translateOutput = localStorage.getItem("translateOutput") === "true";
+    outputLang = localStorage.getItem("outputLang") || ($locale ?? "ja").split("-")[0] || "ja";
     sttProvider = (localStorage.getItem("sttProvider") as SttProvider) || "local";
     sttModel = localStorage.getItem("sttModel") || "";
     sttAzureResource = localStorage.getItem("sttAzureResource") || "";
@@ -559,6 +579,8 @@
     localStorage.setItem("saveDir", saveDir);
     localStorage.setItem("outputFormat", outputFormat);
     localStorage.setItem("refineStyle", refineStyle);
+    localStorage.setItem("translateOutput", String(translateOutput));
+    localStorage.setItem("outputLang", outputLang);
     localStorage.setItem("sttProvider", sttProvider);
     localStorage.setItem("sttModel", sttModel);
     localStorage.setItem("sttAzureResource", sttAzureResource);
@@ -754,6 +776,8 @@
       awsAccessKey,
       awsSecretKey,
       awsSessionToken,
+      translateOutput,
+      outputLang,
     });
   }
 
@@ -1452,6 +1476,22 @@
           >×</button
         >
       </div>
+
+      <!-- プライバシー状態インジケータ(#465): 現在の構成が完全オンデバイスか、クラウド送信を
+           伴うかを常時可視化。クラウド時はワンクリックでローカルAIへ切り替えられる。 -->
+      <div class="privacy-status" class:local={isFullyLocal} class:cloud={!isFullyLocal}>
+        <span class="privacy-dot" aria-hidden="true"></span>
+        <div class="privacy-text">
+          <strong>{isFullyLocal ? $_("privacy.on_device") : $_("privacy.cloud")}</strong>
+          <p>{isFullyLocal ? $_("privacy.on_device_desc") : $_("privacy.cloud_desc")}</p>
+        </div>
+        {#if !isFullyLocal}
+          <button type="button" class="btn small ghost" onclick={makeOffline}
+            >{$_("privacy.make_offline")}</button
+          >
+        {/if}
+      </div>
+
       <span class="meta-title">{$_("settings.group_hotkey")}</span>
       <div class="hotkey-row">
         <button
@@ -1714,6 +1754,24 @@
       <!-- 選択中スタイルの解説を常時表示(マウスオーバーに頼らず各モードの違いを示す)。 -->
       <p class="style-desc">{currentStyle.desc}</p>
 
+      <!-- 整形出力言語(翻訳 / #453)。既定OFF。ONにすると出力言語を選べる(progressive disclosure)。
+           原語の文字起こしは常に保持し、翻訳は整形結果にのみ適用する。 -->
+      <label class="check">
+        <input type="checkbox" bind:checked={translateOutput} />
+        {$_("settings.translate_output")}
+      </label>
+      {#if translateOutput}
+        <label>
+          {$_("settings.output_language")}
+          <select bind:value={outputLang}>
+            {#each LANGUAGES as l}
+              <option value={l.code}>{l.label}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
+      <p class="tip">{$_("settings.tip_translate")}</p>
+
       <!-- カスタム整形パターン(S3.3): ユーザー定義の指示を追加・管理する。 -->
       <details class="meta-group">
         <summary class="meta-title">{$_("settings.group_custom_style")}</summary>
@@ -1804,10 +1862,9 @@
               localStorage.setItem(LOCALE_STORAGE_KEY, e.currentTarget.value);
             }}
           >
-            <option value="ja">日本語</option>
-            <option value="en">English</option>
-            <option value="zh">简体中文</option>
-            <option value="es">Español</option>
+            {#each LANGUAGES.filter((l) => l.ui) as l}
+              <option value={l.code}>{l.label}</option>
+            {/each}
           </select>
         </label>
         {#if IS_WINDOWS}
@@ -2405,6 +2462,51 @@
     border-radius: 8px;
     padding: 0.7rem 0.9rem;
     margin: 0.2rem 0 1rem;
+  }
+
+  /* プライバシー状態インジケータ(#465)。オンデバイス=緑 / クラウド送信あり=琥珀。 */
+  .privacy-status {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    border-radius: 10px;
+    padding: 0.6rem 0.8rem;
+    margin: 0 0 1rem;
+    border: 1px solid transparent;
+  }
+  .privacy-status.local {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+  }
+  .privacy-status.cloud {
+    background: #fffbeb;
+    border-color: #fde68a;
+  }
+  .privacy-dot {
+    flex: 0 0 auto;
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+  }
+  .privacy-status.local .privacy-dot {
+    background: #10b981;
+  }
+  .privacy-status.cloud .privacy-dot {
+    background: #f59e0b;
+  }
+  .privacy-text {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .privacy-text strong {
+    display: block;
+    font-size: 0.86rem;
+  }
+  .privacy-text p {
+    margin: 0.1rem 0 0;
+    font-size: 0.76rem;
+    color: #4b5563;
+    line-height: 1.4;
   }
 
   /* 初回オンボーディング（#397）。操作を妨げない非ブロッキングのインラインカード。 */

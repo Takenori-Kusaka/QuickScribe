@@ -1,6 +1,6 @@
 // 整形コマンド(refine_text)へ渡す引数オブジェクトの組み立て（#402）。
 // App.svelte の refineArgs から純粋ロジックを抽出してユニットテスト可能化。
-import { AWS_PROVIDERS, type Provider, type CustomStyle } from "./constants";
+import { AWS_PROVIDERS, languageEnglishName, type Provider, type CustomStyle } from "./constants";
 import { parseTags } from "./entry";
 
 export interface RefineArgsInput {
@@ -20,6 +20,10 @@ export interface RefineArgsInput {
   awsAccessKey: string;
   awsSecretKey: string;
   awsSessionToken: string;
+  /** 整形出力言語(翻訳 / #453)。ON かつ既知言語のときのみバックエンドへ英語名を渡す。 */
+  translateOutput: boolean;
+  /** 出力言語コード(LANGUAGES)。translateOutput 有効時に英語名へ解決して送る。 */
+  outputLang: string;
 }
 
 /** refine_text コマンドの引数を組み立てる。カスタム整形・内省タグ・AWS認証を反映する。 */
@@ -35,6 +39,11 @@ export function buildRefineArgs(i: RefineArgsInput): Record<string, unknown> {
   if (i.style.startsWith("custom:")) {
     const cs = i.customStyles.find((c) => `custom:${c.id}` === i.style);
     base.customInstruction = cs?.instruction ?? null;
+  }
+  // 整形出力言語(翻訳 / #453)。ON かつ既知言語のときだけ英語名を渡す(未知/OFFは原語のまま)。
+  if (i.translateOutput) {
+    const en = languageEnglishName(i.outputLang);
+    if (en) base.outputLang = en;
   }
   // 内省タグ（S4.3）。保存時にメタデータとして付与。
   const tags = parseTags(i.entryTags);

@@ -118,12 +118,24 @@ pub struct RefineRequest<'a> {
     /// ユーザー定義のカスタム整形指示(S3.3)。Some かつ非空なら style の指示の代わりに使う。
     /// システム指示(捏造禁止・<journal>タグ境界)は共通で不変＝カスタムでも品質ガードが効く。
     pub custom_instruction: Option<&'a str>,
+    /// 整形出力言語(翻訳 / #453)。Some(英語名 例 "Vietnamese")なら、話者/原文の言語に
+    /// 関わらず指定言語で出力するようシステム指示に追記する(1パス)。原語の文字起こしは別途保持。
+    pub output_lang: Option<&'a str>,
 }
 
 impl RefineRequest<'_> {
     /// 全リクエスト共通のシステム指示(カスタムでも不変)。
-    fn system_prompt(&self) -> &'static str {
-        self.style.system_prompt()
+    /// output_lang 指定時は、指定言語で出力する指示を追記する(ニュアンス保持＋タグ境界は不変)。
+    fn system_prompt(&self) -> String {
+        let base = self.style.system_prompt();
+        match self.output_lang {
+            Some(lang) if !lang.trim().is_empty() => format!(
+                "{base}\n\nIMPORTANT: Write the entire refined output in {lang}, translating from \
+                 the source language if needed, while preserving the speaker's nuance and tone. \
+                 Keep the <journal> and </journal> tags exactly as instructed above."
+            ),
+            _ => base.to_string(),
+        }
     }
 
     /// ユーザープロンプト。カスタム指示があればそれを、無ければスタイル既定の指示を使う。
@@ -174,6 +186,7 @@ pub fn refine(
     transcript: &str,
     aws: Option<AwsConfig>,
     custom_instruction: Option<String>,
+    output_lang: Option<String>,
 ) -> Result<String, String> {
     let req = RefineRequest {
         style: RefineStyle::parse(style),
@@ -182,6 +195,7 @@ pub fn refine(
         transcript,
         aws: aws.as_ref(),
         custom_instruction: custom_instruction.as_deref(),
+        output_lang: output_lang.as_deref(),
     };
     engine_for(provider).refine(&req)
 }
@@ -786,6 +800,7 @@ mod tests {
             transcript,
             aws: None,
             custom_instruction: custom,
+            output_lang: None,
         }
     }
 
@@ -798,6 +813,21 @@ mod tests {
         assert!(p.contains("捏造"), "コア規律(捏造禁止)は不変");
         // 既定スタイル(Structured)の指示語には引きずられない。
         assert!(!p.contains("ひとことまとめ"), "既定指示は使われない");
+    }
+
+    #[test]
+    fn output_lang_appends_language_directive_and_keeps_tags() {
+        // 出力言語指定時: 指定言語(英語名)の出力指示が追記され、タグ境界の規律は保たれる(#453)。
+        let mut r = req_with(None, "x");
+        r.output_lang = Some("Vietnamese");
+        let sp = r.system_prompt();
+        assert!(sp.contains("Vietnamese"), "指定言語名を含む");
+        assert!(sp.contains("<journal>"), "タグ境界の規律は不変");
+        // 未指定/空は追記されない(原語のまま)。
+        assert!(!req_with(None, "x").system_prompt().contains("Vietnamese"));
+        let mut r_empty = req_with(None, "x");
+        r_empty.output_lang = Some("  ");
+        assert!(!r_empty.system_prompt().contains("IMPORTANT: Write the entire"));
     }
 
     #[test]
