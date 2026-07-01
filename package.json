@@ -46,7 +46,7 @@
     "eslint-plugin-svelte": "^3.20.0",
     "globals": "^17.7.0",
     "jsdom": "^29.1.1",
-    "license-checker-rseidelsohn": "^4.4.2",
+    "license-checker-rseidelsohn": "^5.0.1",
     "pngjs": "^7.0.0",
     "prettier": "^3.9.4",
     "prettier-plugin-svelte": "^4.1.1",
