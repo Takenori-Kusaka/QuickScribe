@@ -21,3 +21,5 @@
 | [0015](0015-introspective-tags-and-cross-entry-discovery.md) | 内省タグと横断発見（S4.3・段階実装） | Accepted |
 | [0016](0016-cloud-stt-providers.md) | クラウドSTTプロバイダ（Groq/OpenAI/Deepgram/Azure） | Accepted |
 | [0017](0017-schema-versioning-and-migration.md) | スキーマ版管理と非破壊マイグレーション（S5.3/S4.4） | Accepted |
+| [0018](0018-output-language-translation.md) | 整形出力言語（翻訳）を専用の永続設定・1パスで提供（2パス撤回） | Accepted |
+| [0019](0019-privacy-indicator-and-offline-mode.md) | プライバシー状態の可視化と「オフラインにする」導線 | Accepted |
