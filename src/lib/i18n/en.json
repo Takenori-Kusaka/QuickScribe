@@ -130,6 +130,10 @@
     "tip_taskbar": "Record/stop and show-window buttons on the taskbar (Windows). Turn off to hide them.",
     "tip_autostart": "Starts QuickScribe automatically when you log in to the OS and keeps it in the tray (no window appears).",
     "shortcut_modifier_required": "Combine with a modifier key (Ctrl/Alt/Shift) and press.",
+    "group_about": "About",
+    "about_license": "License: MIT",
+    "about_oss": "This app uses open source including whisper.cpp (MIT), libopus (BSD-3-Clause), Tauri (MIT/Apache-2.0) and Svelte (MIT). Third-party attributions are included in THIRD-PARTY-NOTICES with the distribution and in the repository.",
+    "about_repo": "Repository / full license",
     "show_onboarding": "Show the intro again",
     "tip_show_onboarding": "Shows the first-run guide (3 steps) again."
   },

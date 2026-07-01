@@ -1936,6 +1936,14 @@
         <p class="tip">{$_("settings.tip_show_onboarding")}</p>
       </details>
 
+      <!-- このアプリについて（ライセンス表示 / #394 監査項目5）。OSS帰属をアプリ内で明示。 -->
+      <details class="meta-group">
+        <summary class="meta-title">{$_("settings.group_about")}</summary>
+        <p class="tip">QuickScribe — {$_("settings.about_license")}</p>
+        <p class="tip">{$_("settings.about_oss")}</p>
+        <p class="tip">{$_("settings.about_repo")}: github.com/Takenori-Kusaka/QuickScribe</p>
+      </details>
+
       <div class="settings-actions">
         <button class="btn small" onclick={saveSettings}>{$_("settings.save")}</button>
         <button class="btn small ghost" onclick={() => checkForUpdate(true)}
