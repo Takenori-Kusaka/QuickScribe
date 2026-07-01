@@ -233,3 +233,35 @@ describe("App.svelte バックエンドイベント", () => {
     expect(await screen.findByText("音声を読み込み中…")).toBeInTheDocument();
   });
 });
+
+describe("App.svelte オンボーディング", () => {
+  it("初回起動でオンボーディングが表示され、スキップで消える", async () => {
+    localStorage.removeItem("onboarded");
+    render(App);
+    expect(await screen.findByText("QuickScribe へようこそ")).toBeInTheDocument();
+    await fireEvent.click(await screen.findByRole("button", { name: "スキップ" }));
+    expect(screen.queryByText("QuickScribe へようこそ")).not.toBeInTheDocument();
+  });
+});
+
+describe("App.svelte 更新確認", () => {
+  it("更新を確認で最新メッセージが表示される", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "更新を確認" }));
+    expect(await screen.findByText("お使いのバージョンは最新です。")).toBeInTheDocument();
+  });
+});
+
+describe("App.svelte エントリを開く", () => {
+  it("エントリをクリックすると本文が読み込まれ表示される", async () => {
+    invokeMock.mockImplementation(async (cmd: string) =>
+      cmd === "read_text_file" ? "エントリの本文内容" : defaultInvoke(cmd),
+    );
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "ジャーナル" }));
+    await fireEvent.click(await screen.findByText("プレビュー本文"));
+    expect(await screen.findByText("エントリの本文内容")).toBeInTheDocument();
+    expect(invokeMock).toHaveBeenCalledWith("read_text_file", { path: "/x/refined-1.md" });
+  });
+});
