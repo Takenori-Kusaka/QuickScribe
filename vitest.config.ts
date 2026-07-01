@@ -29,14 +29,15 @@ export default defineConfig({
       ],
       all: true,
       // ゲート化（#402/#481-item13）。**計測を正直化**: App.svelte も対象に含める。
-      // 旧ゲート(75/85)は src/lib(全体の約14%)のみを測っており、実効カバレッジ(約50%)を
-      // 過大に見せていた。ここでは App.svelte を含めた実測(約48-50%)を回帰防止の下限とし、
+      // 旧ゲート(75/85)は src/lib(全体の約14%)のみを測っており、実効カバレッジを
+      // 過大に見せていた。App.svelte を含めた実測を回帰防止の下限とし、
       // コンポーネントテスト/lib抽出を追加しながら **80% へ段階的に引き上げる(ratchet)**。
+      // 履歴: 50%(正直化) → 64% → 66%(設定/翻訳/検索/コピー等のフロー追加)。
       thresholds: {
-        lines: 48,
-        statements: 48,
-        functions: 45,
-        branches: 45,
+        lines: 65,
+        statements: 64,
+        functions: 61,
+        branches: 57,
       },
     },
   },
