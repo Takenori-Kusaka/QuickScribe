@@ -7,7 +7,16 @@ import { render, screen, fireEvent } from "@testing-library/svelte";
 
 // i18n は import 時に起動ロケールを解決する。App の import より前に locale=ja と
 // provider=ollama(鍵不要=整形が通る)を固定する(hoistedは全importより先に走る)。
-const { invokeMock, openMock, listeners, listenMock } = vi.hoisted(() => {
+const {
+  invokeMock,
+  openMock,
+  listeners,
+  listenMock,
+  checkMock,
+  enableMock,
+  disableMock,
+  relaunchMock,
+} = vi.hoisted(() => {
   try {
     globalThis.localStorage?.setItem("locale", "ja");
     globalThis.localStorage?.setItem("provider", "ollama");
@@ -21,7 +30,16 @@ const { invokeMock, openMock, listeners, listenMock } = vi.hoisted(() => {
     listeners.set(event, handler);
     return () => listeners.delete(event);
   });
-  return { invokeMock: vi.fn(), openMock: vi.fn(), listeners, listenMock };
+  return {
+    invokeMock: vi.fn(),
+    openMock: vi.fn(),
+    listeners,
+    listenMock,
+    checkMock: vi.fn(),
+    enableMock: vi.fn(),
+    disableMock: vi.fn(),
+    relaunchMock: vi.fn(),
+  };
 });
 
 // バックエンドからのイベント発火をエミュレートする。
@@ -34,11 +52,11 @@ async function emitEvent(event: string, payload: unknown) {
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: listenMock }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: openMock }));
-vi.mock("@tauri-apps/plugin-updater", () => ({ check: vi.fn().mockResolvedValue(null) }));
-vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@tauri-apps/plugin-updater", () => ({ check: checkMock }));
+vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: relaunchMock }));
 vi.mock("@tauri-apps/plugin-autostart", () => ({
-  enable: vi.fn().mockResolvedValue(undefined),
-  disable: vi.fn().mockResolvedValue(undefined),
+  enable: enableMock,
+  disable: disableMock,
   isEnabled: vi.fn().mockResolvedValue(false),
 }));
 
@@ -71,6 +89,14 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (cmd: string) => defaultInvoke(cmd));
   openMock.mockReset();
+  checkMock.mockReset();
+  checkMock.mockResolvedValue(null);
+  enableMock.mockReset();
+  enableMock.mockResolvedValue(undefined);
+  disableMock.mockReset();
+  disableMock.mockResolvedValue(undefined);
+  relaunchMock.mockReset();
+  relaunchMock.mockResolvedValue(undefined);
   listeners.clear();
 });
 
@@ -300,5 +326,179 @@ describe("App.svelte AWSプロバイダ", () => {
     const providerSelect = (await screen.findByLabelText("整形プロバイダ")) as HTMLSelectElement;
     await fireEvent.change(providerSelect, { target: { value: "bedrock" } });
     expect(await screen.findByPlaceholderText("us-east-1")).toBeInTheDocument();
+  });
+
+  it("STTをクラウド(OpenAI)にするとAPIキー欄が現れる", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    // STTプロバイダの select は value=local で一意に特定できる。
+    const combos = screen.getAllByRole("combobox") as HTMLSelectElement[];
+    const sttSelect = combos.find((c) => c.value === "local")!;
+    expect(sttSelect).toBeTruthy();
+    const before = document.querySelectorAll('input[type="password"]').length;
+    await fireEvent.change(sttSelect, { target: { value: "openai" } });
+    // クラウドSTTの鍵入力(password)が増える。
+    const after = document.querySelectorAll('input[type="password"]').length;
+    expect(after).toBeGreaterThan(before);
+  });
+});
+
+describe("App.svelte 横断発見", () => {
+  it("エントリが1件のときは横断発見ボタンが出ない", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "ジャーナル" }));
+    await screen.findByText("プレビュー本文");
+    expect(screen.queryByRole("button", { name: /横断発見/ })).not.toBeInTheDocument();
+  });
+
+  it("2件以上あると横断発見が実行され結果が表示される", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_entries")
+        return [
+          {
+            path: "/a.md",
+            name: "a.md",
+            created: "2026-06-01T10:00:00",
+            kind: "refined",
+            tags: [],
+            preview: "A本文",
+          },
+          {
+            path: "/b.md",
+            name: "b.md",
+            created: "2026-06-02T10:00:00",
+            kind: "refined",
+            tags: [],
+            preview: "B本文",
+          },
+        ];
+      if (cmd === "refine_text") return "横断発見の結果";
+      return undefined;
+    });
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "ジャーナル" }));
+    await screen.findByText("A本文");
+    await fireEvent.click(await screen.findByRole("button", { name: /横断発見/ }));
+    expect(await screen.findByText("横断発見の結果")).toBeInTheDocument();
+    expect(invokeMock).toHaveBeenCalledWith("refine_text", expect.anything());
+  });
+});
+
+describe("App.svelte 音声保存設定", () => {
+  it("録音音声を保存をONにすると音声形式の選択が現れる", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    const cb = (await screen.findByLabelText("録音音声を保存")) as HTMLInputElement;
+    await fireEvent.click(cb);
+    expect(await screen.findByLabelText("音声形式")).toBeInTheDocument();
+  });
+
+  it("STTをAzureにすると Azure リソース欄が現れる", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    const combos = screen.getAllByRole("combobox") as HTMLSelectElement[];
+    const sttSelect = combos.find((c) => c.value === "local")!;
+    await fireEvent.change(sttSelect, { target: { value: "azure" } });
+    // Azure 固有の追加フィールドが現れる(password鍵 + azureリソース)。
+    expect(document.querySelectorAll('input[type="password"]').length).toBeGreaterThan(0);
+  });
+});
+
+describe("App.svelte エントリ表示の閉じる", () => {
+  it("エントリを開いてから戻ると一覧へ戻る", async () => {
+    invokeMock.mockImplementation(async (cmd: string) =>
+      cmd === "read_text_file" ? "本文ABC" : defaultInvoke(cmd),
+    );
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "ジャーナル" }));
+    await fireEvent.click(await screen.findByText("プレビュー本文"));
+    expect(await screen.findByText("本文ABC")).toBeInTheDocument();
+    // 閉じるで一覧へ。
+    const closeButtons = screen.getAllByRole("button", { name: "閉じる" });
+    await fireEvent.click(closeButtons[closeButtons.length - 1]);
+    expect(screen.queryByText("本文ABC")).not.toBeInTheDocument();
+  });
+});
+
+describe("App.svelte 追加フロー", () => {
+  it("コピー失敗時はエラーメッセージが出る", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+    Object.assign(navigator, { clipboard: { writeText } });
+    openMock.mockResolvedValue("/m.txt");
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: /メモ/ }));
+    await screen.findByText("整形された結果テキスト");
+    await fireEvent.click(await screen.findByRole("button", { name: /コピー/ }));
+    expect(writeText).toHaveBeenCalled();
+  });
+
+  it("横断発見の結果を閉じると消える", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_entries")
+        return [
+          {
+            path: "/a.md",
+            name: "a.md",
+            created: "2026-06-01T10:00:00",
+            kind: "refined",
+            tags: [],
+            preview: "A本文",
+          },
+          {
+            path: "/b.md",
+            name: "b.md",
+            created: "2026-06-02T10:00:00",
+            kind: "refined",
+            tags: [],
+            preview: "B本文",
+          },
+        ];
+      if (cmd === "refine_text") return "横断発見の結果Z";
+      return undefined;
+    });
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "ジャーナル" }));
+    await screen.findByText("A本文");
+    await fireEvent.click(await screen.findByRole("button", { name: /横断発見/ }));
+    expect(await screen.findByText("横断発見の結果Z")).toBeInTheDocument();
+    // 発見結果の閉じるボタン群のいずれかで消える。
+    const closes = screen.getAllByRole("button", { name: "閉じる" });
+    await fireEvent.click(closes[closes.length - 1]);
+    expect(screen.queryByText("横断発見の結果Z")).not.toBeInTheDocument();
+  });
+
+  it("STTをクラウドにして保存すると set_stt_settings が呼ばれる", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    const combos = screen.getAllByRole("combobox") as HTMLSelectElement[];
+    const sttSelect = combos.find((c) => c.value === "local")!;
+    await fireEvent.change(sttSelect, { target: { value: "openai" } });
+    await fireEvent.click(await screen.findByRole("button", { name: "保存" }));
+    expect(invokeMock).toHaveBeenCalledWith("set_stt_settings", expect.anything());
+  });
+
+  it("自動起動トグルで enable/disable が呼ばれる", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    const cb = (await screen.findByLabelText(/自動起動|OS起動時|ログイン時/)) as HTMLInputElement;
+    await fireEvent.click(cb);
+    expect(enableMock).toHaveBeenCalled();
+  });
+
+  it("更新ありのとき: ダウンロード→インストールが走り再起動導線が出る", async () => {
+    checkMock.mockResolvedValue({
+      version: "9.9.9",
+      downloadAndInstall: async (
+        cb: (e: { event: string; data: { contentLength?: number; chunkLength?: number } }) => void,
+      ) => {
+        cb({ event: "Started", data: { contentLength: 100 } });
+        cb({ event: "Progress", data: { chunkLength: 100 } });
+      },
+    });
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "更新を確認" }));
+    // バージョンが表示され、再起動ボタンが現れる。
+    expect(await screen.findByText(/9\.9\.9/)).toBeInTheDocument();
   });
 });
