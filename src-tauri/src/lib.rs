@@ -243,7 +243,7 @@ fn list_entries(app: tauri::AppHandle) -> Result<Vec<vault::EntrySummary>, Strin
 #[tauri::command]
 fn open_vault(app: tauri::AppHandle) -> Result<(), String> {
     let dir = resolve_save_dir(&current_settings(&app))?;
-    std::fs::create_dir_all(&dir).map_err(|e| format!("保管庫の作成に失敗: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("ジャーナルフォルダの作成に失敗: {e}"))?;
     open_in_file_manager(&dir)
 }
 
@@ -418,6 +418,24 @@ pub fn check_input_size(len: u64) -> Result<(), String> {
     Ok(())
 }
 
+/// 対応する音声入力形式（フロント SUPPORTED_AUDIO_EXTS と一致させること / #18）。
+pub const SUPPORTED_AUDIO_EXTS: &[&str] = &["mp3", "wav", "m4a", "flac", "ogg", "aac"];
+
+/// 拡張子が対応形式かを検証する（純関数・テスト対象）。非対応は対応形式を添えて弾く。
+pub fn check_audio_extension(path: &std::path::Path) -> Result<(), String> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase());
+    match ext {
+        Some(e) if SUPPORTED_AUDIO_EXTS.contains(&e.as_str()) => Ok(()),
+        _ => Err(format!(
+            "対応していない音声形式です。対応形式: {}",
+            SUPPORTED_AUDIO_EXTS.join(" / ")
+        )),
+    }
+}
+
 /// 音声ファイルから文字起こしし、結果を保存して返す（S1.6 ファイル入力）。
 /// 非同期＋別スレッド実行でUIをブロックしない。
 #[tauri::command]
@@ -428,10 +446,12 @@ async fn transcribe_file(
 ) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let p = std::path::Path::new(&path);
-        // 巨大ファイルは復号前にサイズで弾く（無警告の長時間ブロック/メモリ膨張を防ぐ）。
-        if let Ok(meta) = std::fs::metadata(p) {
-            check_input_size(meta.len())?;
-        }
+        // 対応形式かを先に検証（非対応は分かりやすく弾く / #18）。
+        check_audio_extension(p)?;
+        // 巨大ファイルは復号前にサイズで弾く。metadata失敗は無警告スキップせず明示エラーにする。
+        let meta = std::fs::metadata(p)
+            .map_err(|e| format!("ファイルを開けませんでした（{e}）。パスや権限をご確認ください。"))?;
+        check_input_size(meta.len())?;
         let _ = app.emit("status", "音声を読み込み中…");
         let audio = stt::decode_to_16k_mono(p)?;
         transcribe_blocking(&app, &audio, timestamps)
@@ -806,6 +826,16 @@ fn delete_secret(key: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn check_audio_extension_accepts_supported_rejects_others() {
+        use std::path::Path;
+        assert!(check_audio_extension(Path::new("a.mp3")).is_ok());
+        assert!(check_audio_extension(Path::new("A.WAV")).is_ok(), "大文字も許容");
+        let err = check_audio_extension(Path::new("a.txt")).unwrap_err();
+        assert!(err.contains("対応形式"), "対応形式を案内する: {err}");
+        assert!(check_audio_extension(Path::new("noext")).is_err(), "拡張子なしは弾く");
+    }
 
     #[test]
     fn check_input_size_accepts_within_limit_and_rejects_over() {
