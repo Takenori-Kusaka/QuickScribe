@@ -27,6 +27,13 @@
     "settings": "Settings",
     "close": "Close"
   },
+  "privacy": {
+    "on_device": "Fully on-device",
+    "on_device_desc": "Transcription and refine both run on this device. No audio or text is ever sent out.",
+    "cloud": "Cloud is used",
+    "cloud_desc": "Your current transcription/refine uses the cloud, so audio or text is sent to an API.",
+    "make_offline": "Switch to offline"
+  },
   "settings": {
     "title": "Settings",
     "language": "Language",

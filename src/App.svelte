@@ -373,6 +373,16 @@
   // 現在選択中のスタイル(処理画面の表示・解説に使う)。未知値は既定にフォールバック。
   const currentStyle = $derived(allStyles.find((s) => s.value === refineStyle) ?? allStyles[0]);
 
+  // プライバシー状態(#465): 整形=ローカル(Ollama) かつ 文字起こし=ローカルwhisper のときだけ
+  // 「オンデバイス完結」。それ以外は音声/文字がクラウドAPIへ送信されうる。誇張なく現状を可視化。
+  const isFullyLocal = $derived(LOCAL_PROVIDERS.includes(provider) && sttProvider === "local");
+  // ワンクリックでローカルAI(整形=Ollama / STT=ローカルwhisper)へ切り替える(#465)。
+  function makeOffline() {
+    provider = "ollama";
+    sttProvider = "local";
+    void syncSttSettings();
+  }
+
   // カスタムパターンの編集フォーム状態（新規追加）。
   let newCustomLabel = $state<string>("");
   let newCustomInstruction = $state<string>("");
@@ -1466,6 +1476,22 @@
           >×</button
         >
       </div>
+
+      <!-- プライバシー状態インジケータ(#465): 現在の構成が完全オンデバイスか、クラウド送信を
+           伴うかを常時可視化。クラウド時はワンクリックでローカルAIへ切り替えられる。 -->
+      <div class="privacy-status" class:local={isFullyLocal} class:cloud={!isFullyLocal}>
+        <span class="privacy-dot" aria-hidden="true"></span>
+        <div class="privacy-text">
+          <strong>{isFullyLocal ? $_("privacy.on_device") : $_("privacy.cloud")}</strong>
+          <p>{isFullyLocal ? $_("privacy.on_device_desc") : $_("privacy.cloud_desc")}</p>
+        </div>
+        {#if !isFullyLocal}
+          <button type="button" class="btn small ghost" onclick={makeOffline}
+            >{$_("privacy.make_offline")}</button
+          >
+        {/if}
+      </div>
+
       <span class="meta-title">{$_("settings.group_hotkey")}</span>
       <div class="hotkey-row">
         <button
@@ -2436,6 +2462,51 @@
     border-radius: 8px;
     padding: 0.7rem 0.9rem;
     margin: 0.2rem 0 1rem;
+  }
+
+  /* プライバシー状態インジケータ(#465)。オンデバイス=緑 / クラウド送信あり=琥珀。 */
+  .privacy-status {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    border-radius: 10px;
+    padding: 0.6rem 0.8rem;
+    margin: 0 0 1rem;
+    border: 1px solid transparent;
+  }
+  .privacy-status.local {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+  }
+  .privacy-status.cloud {
+    background: #fffbeb;
+    border-color: #fde68a;
+  }
+  .privacy-dot {
+    flex: 0 0 auto;
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+  }
+  .privacy-status.local .privacy-dot {
+    background: #10b981;
+  }
+  .privacy-status.cloud .privacy-dot {
+    background: #f59e0b;
+  }
+  .privacy-text {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .privacy-text strong {
+    display: block;
+    font-size: 0.86rem;
+  }
+  .privacy-text p {
+    margin: 0.1rem 0 0;
+    font-size: 0.76rem;
+    color: #4b5563;
+    line-height: 1.4;
   }
 
   /* 初回オンボーディング（#397）。操作を妨げない非ブロッキングのインラインカード。 */

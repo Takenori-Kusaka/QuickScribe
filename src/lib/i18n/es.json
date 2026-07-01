@@ -27,6 +27,13 @@
     "settings": "Ajustes",
     "close": "Cerrar"
   },
+  "privacy": {
+    "on_device": "Totalmente en el dispositivo",
+    "on_device_desc": "La transcripción y el refinado se ejecutan en este dispositivo. No se envía ningún audio ni texto.",
+    "cloud": "Se usa la nube",
+    "cloud_desc": "Tu transcripción/refinado actual usa la nube, por lo que se envía audio o texto a una API.",
+    "make_offline": "Cambiar a sin conexión"
+  },
   "settings": {
     "title": "Ajustes",
     "language": "Idioma",

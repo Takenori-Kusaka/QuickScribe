@@ -27,6 +27,13 @@
     "settings": "设置",
     "close": "关闭"
   },
+  "privacy": {
+    "on_device": "完全在本设备",
+    "on_device_desc": "转写和整理都在本设备完成。音频和文字都不会发送到外部。",
+    "cloud": "使用云端",
+    "cloud_desc": "当前的转写/整理使用云端，因此音频或文字会发送到 API。",
+    "make_offline": "切换为离线"
+  },
   "settings": {
     "title": "设置",
     "language": "语言",
