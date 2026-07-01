@@ -139,6 +139,8 @@
   },
   "vault": {
     "back_to_list": "← Back to list",
+    "streak": "🔥 {n}-day streak",
+    "streak_title": "Days you have kept journaling. Missing a single day will not break it.",
     "search_placeholder": "🔎 Search body, tags or file name",
     "discover": "✨ Cross-discover from these {n}",
     "discovering": "AI is reading across your entries…",

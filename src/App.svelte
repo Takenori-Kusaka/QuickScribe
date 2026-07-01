@@ -18,6 +18,7 @@
   import { kindLabel } from "./lib/entry";
   import { validateRefineConfig, type RefineConfigError } from "./lib/provider-config";
   import { clampProvider, clampSttProvider, clampOneOf, isValidRefineStyle } from "./lib/settings";
+  import { computeStreak } from "./lib/streak";
   import { buildRefineArgs } from "./lib/refine-args";
   import { isModelCacheFresh } from "./lib/model-cache";
   import { selectDiscoveryTargets, buildDiscoveryText } from "./lib/discovery";
@@ -95,6 +96,13 @@
   };
   let showEntries = $state(false);
   let entries = $state<EntrySummary[]>([]);
+  // 習慣ナッジ: 記録日の寛容ストリーク(1日サボりまで許容)。ジャーナルに表示(#58)。
+  const journalStreak = $derived(
+    computeStreak(
+      entries.map((e) => e.created),
+      new Date().toISOString().slice(0, 10),
+    ),
+  );
   let entriesLoading = $state(false);
   let entrySearch = $state<string>("");
   let selectedTags = $state<string[]>([]);
@@ -1391,6 +1399,11 @@
             ? $_("vault.title_viewing", { values: { name: viewingEntry.name } })
             : $_("header.journal")}
         </h2>
+        {#if !viewingEntry && journalStreak > 0}
+          <span class="streak-badge" title={$_("vault.streak_title")}
+            >{$_("vault.streak", { values: { n: journalStreak } })}</span
+          >
+        {/if}
         <button class="close" aria-label={$_("header.close")} onclick={() => (showEntries = false)}
           >×</button
         >
@@ -1995,6 +2008,16 @@
   }
   .settings-head h2 {
     margin: 0;
+  }
+  .streak-badge {
+    margin-left: auto;
+    margin-right: 0.6rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, orange 18%, transparent);
+    font-size: 0.85rem;
+    font-weight: 600;
+    white-space: nowrap;
   }
   .close {
     background: none;

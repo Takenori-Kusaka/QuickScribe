@@ -139,6 +139,8 @@
   },
   "vault": {
     "back_to_list": "← 一覧へ戻る",
+    "streak": "🔥 {n}日連続",
+    "streak_title": "記録が続いている日数です。1日休んでも途切れません。",
     "search_placeholder": "🔎 本文・タグ・ファイル名で検索",
     "discover": "✨ この{n}件から横断発見",
     "discovering": "AIが横断的に読み解いています…",
