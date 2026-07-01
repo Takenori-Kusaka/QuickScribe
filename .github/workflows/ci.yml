@@ -81,6 +81,52 @@ jobs:
         continue-on-error: true
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
+  # Rust カバレッジ計測（#402/#392）。フロントは vitest で計測済み、Rust側の分母を可視化する。
+  # cargo-llvm-cov で instrument ビルド。段階導入: まずは可視化(continue-on-error)、
+  # 数値が安定したらゲート化(80%)する。lcov をアーティファクト保存。
+  rust-coverage:
+    name: rust-coverage (llvm-cov)
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Install Linux dependencies (llvm-cov needs to compile)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libxdo-dev \
+            build-essential \
+            file \
+            clang \
+            libclang-dev \
+            cmake \
+            libasound2-dev \
+            pkg-config
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked
+      - name: Measure Rust coverage (unit tests)
+        run: |
+          cargo llvm-cov --manifest-path src-tauri/Cargo.toml --lib \
+            --lcov --output-path lcov-rust.info --summary-only | tee rust-coverage-summary.txt
+      - name: Upload Rust coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-coverage
+          path: |
+            lcov-rust.info
+            rust-coverage-summary.txt
+          if-no-files-found: warn
+
   build:
     name: build (${{ matrix.os }})
     strategy:
