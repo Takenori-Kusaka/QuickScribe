@@ -420,6 +420,30 @@ describe("App.svelte エントリ表示の閉じる", () => {
   });
 });
 
+describe("App.svelte 習慣ストリーク", () => {
+  it("直近に連続した記録があるとストリークバッジが出る", async () => {
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const today = new Date();
+    const y1 = new Date(today.getTime() - 86400000);
+    const y2 = new Date(today.getTime() - 2 * 86400000);
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_entries")
+        return [today, y1, y2].map((d, i) => ({
+          path: `/e${i}.md`,
+          name: `e${i}.md`,
+          created: `${iso(d)}T09:00:00`,
+          kind: "refined",
+          tags: [],
+          preview: `本文${i}`,
+        }));
+      return undefined;
+    });
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "ジャーナル" }));
+    expect(await screen.findByText(/連続/)).toBeInTheDocument();
+  });
+});
+
 describe("App.svelte 追加フロー", () => {
   it("コピー失敗時はエラーメッセージが出る", async () => {
     const writeText = vi.fn().mockRejectedValue(new Error("denied"));

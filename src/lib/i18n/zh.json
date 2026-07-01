@@ -139,6 +139,8 @@
   },
   "vault": {
     "back_to_list": "← 返回列表",
+    "streak": "🔥 连续{n}天",
+    "streak_title": "你坚持记录的天数。漏记一天也不会中断。",
     "search_placeholder": "🔎 按正文、标签或文件名搜索",
     "discover": "✨ 从这 {n} 条跨条目发现",
     "discovering": "AI 正在跨条目解读…",

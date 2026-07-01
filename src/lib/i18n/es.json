@@ -139,6 +139,8 @@
   },
   "vault": {
     "back_to_list": "← Volver a la lista",
+    "streak": "🔥 racha de {n} días",
+    "streak_title": "Días que llevas escribiendo. Saltarte un solo día no la rompe.",
     "search_placeholder": "🔎 Busca por cuerpo, etiquetas o nombre de archivo",
     "discover": "✨ Descubrir entre estas {n}",
     "discovering": "La IA está leyendo entre tus entradas…",
