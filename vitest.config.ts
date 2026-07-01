@@ -32,12 +32,12 @@ export default defineConfig({
       // 旧ゲート(75/85)は src/lib(全体の約14%)のみを測っており、実効カバレッジを
       // 過大に見せていた。App.svelte を含めた実測を回帰防止の下限とし、
       // コンポーネントテスト/lib抽出を追加しながら **80% へ段階的に引き上げる(ratchet)**。
-      // 履歴: 50%(正直化) → 64% → 66% → 68%(a11yモーダルの網羅)。
+      // 履歴: 50%(正直化) → 64% → 66% → 68% → 71%(バックエンドイベントのフロー網羅)。
       thresholds: {
-        lines: 66,
-        statements: 65,
-        functions: 62,
-        branches: 59,
+        lines: 69,
+        statements: 68,
+        functions: 63,
+        branches: 62,
       },
     },
   },

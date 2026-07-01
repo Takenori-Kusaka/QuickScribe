@@ -7,20 +7,32 @@ import { render, screen, fireEvent } from "@testing-library/svelte";
 
 // i18n は import 時に起動ロケールを解決する。App の import より前に locale=ja と
 // provider=ollama(鍵不要=整形が通る)を固定する(hoistedは全importより先に走る)。
-const { invokeMock, openMock } = vi.hoisted(() => {
+const { invokeMock, openMock, listeners, listenMock } = vi.hoisted(() => {
   try {
     globalThis.localStorage?.setItem("locale", "ja");
     globalThis.localStorage?.setItem("provider", "ollama");
+    globalThis.localStorage?.setItem("autoPipeline", "true");
   } catch {
     /* jsdom 前提 */
   }
-  return { invokeMock: vi.fn(), openMock: vi.fn() };
+  const listeners = new Map<string, (e: { payload: unknown }) => void>();
+  // Tauri の listen を模し、イベント名→ハンドラを記録する(テストから emit できるように)。
+  const listenMock = vi.fn(async (event: string, handler: (e: { payload: unknown }) => void) => {
+    listeners.set(event, handler);
+    return () => listeners.delete(event);
+  });
+  return { invokeMock: vi.fn(), openMock: vi.fn(), listeners, listenMock };
 });
 
+// バックエンドからのイベント発火をエミュレートする。
+async function emitEvent(event: string, payload: unknown) {
+  listeners.get(event)?.({ payload });
+  // Svelte のリアクティブ更新をフラッシュ。
+  await Promise.resolve();
+}
+
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn().mockResolvedValue(() => {}),
-}));
+vi.mock("@tauri-apps/api/event", () => ({ listen: listenMock }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: openMock }));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: vi.fn().mockResolvedValue(null) }));
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: vi.fn().mockResolvedValue(undefined) }));
@@ -59,7 +71,15 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (cmd: string) => defaultInvoke(cmd));
   openMock.mockReset();
+  listeners.clear();
 });
+
+// listen の登録は onMount 内で非同期に走る。登録完了を待つ。
+async function waitForListeners() {
+  for (let i = 0; i < 50 && !listeners.has("transcribe-done"); i++) {
+    await Promise.resolve();
+  }
+}
 
 describe("App.svelte 起動・基本描画", () => {
   it("見出しと録音ボタンが描画される", async () => {
@@ -168,5 +188,48 @@ describe("App.svelte コピー", () => {
     await screen.findByText("整形された結果テキスト");
     await fireEvent.click(await screen.findByRole("button", { name: /コピー/ }));
     expect(writeText).toHaveBeenCalledWith("整形された結果テキスト");
+  });
+});
+
+describe("App.svelte バックエンドイベント", () => {
+  it("transcribe-done で文字起こしが表示され、自動整形される", async () => {
+    render(App);
+    await waitForListeners();
+    await emitEvent("transcribe-done", "文字起こしされた本文");
+    // 文字起こしが表示され、autoPipeline+ollama で自動整形まで走る。
+    expect(await screen.findByText("整形された結果テキスト")).toBeInTheDocument();
+    expect(invokeMock).toHaveBeenCalledWith("refine_text", expect.anything());
+  });
+
+  it("空の transcribe-done は「音声なし」エラーを表示する", async () => {
+    render(App);
+    await waitForListeners();
+    await emitEvent("transcribe-done", "");
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(invokeMock).not.toHaveBeenCalledWith("refine_text", expect.anything());
+  });
+
+  it("transcribe-error でエラーが表示される", async () => {
+    render(App);
+    await waitForListeners();
+    await emitEvent("transcribe-error", "文字起こしに失敗しました");
+    expect(await screen.findByText("文字起こしに失敗しました")).toBeInTheDocument();
+  });
+
+  it("録音停止→progress で進捗バーが表示される", async () => {
+    render(App);
+    await waitForListeners();
+    const btn = document.querySelector('[data-testid="record-btn"]') as HTMLButtonElement;
+    await fireEvent.click(btn); // 開始
+    await fireEvent.click(btn); // 停止 → transcribing=true
+    await emitEvent("progress", 42);
+    expect(await screen.findByRole("progressbar")).toBeInTheDocument();
+  });
+
+  it("status イベントでステータス文言が表示される", async () => {
+    render(App);
+    await waitForListeners();
+    await emitEvent("status", "音声を読み込み中…");
+    expect(await screen.findByText("音声を読み込み中…")).toBeInTheDocument();
   });
 });
