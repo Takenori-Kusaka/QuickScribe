@@ -43,6 +43,7 @@
     "group_record_source": "录音来源（麦克风 / 系统声音）",
     "group_stt": "转写引擎",
     "group_transcribe_meta": "转写元数据",
+    "group_refine": "整理",
     "group_save": "保存",
     "group_app": "通用",
     "save_dir": "保存位置：{dir}",
@@ -128,7 +129,13 @@
     "tip_output_4": "（整理）。",
     "tip_taskbar": "任务栏上的录音/停止、显示窗口按钮（Windows）。关闭后将隐藏。",
     "tip_autostart": "登录操作系统时自动启动 QuickScribe 并常驻托盘（不会出现窗口）。",
-    "shortcut_modifier_required": "请与修饰键（Ctrl/Alt/Shift）组合后按下。"
+    "shortcut_modifier_required": "请与修饰键（Ctrl/Alt/Shift）组合后按下。",
+    "group_about": "关于",
+    "about_license": "许可证：MIT",
+    "about_oss": "本应用使用了 whisper.cpp（MIT）、libopus（BSD-3-Clause）、Tauri（MIT/Apache-2.0）、Svelte（MIT）等开源项目。第三方许可证归属包含在发行物的 THIRD-PARTY-NOTICES 和仓库中。",
+    "about_repo": "仓库 / 许可证全文",
+    "show_onboarding": "再次查看使用说明",
+    "tip_show_onboarding": "再次显示首次引导（3 步）。"
   },
   "vault": {
     "back_to_list": "← 返回列表",
@@ -170,7 +177,8 @@
     "clear_all": "全部不替换",
     "apply": "替换所选术语并更新",
     "close": "关闭（不替换）",
-    "replaced": "已替换 {n} 个术语"
+    "replaced": "已替换 {n} 个术语",
+    "suggestion_label": "替换后的词"
   },
   "update": {
     "downloading": "正在后台下载新版本 {version}… {pct}%",
@@ -202,6 +210,7 @@
     "record_start_failed": "无法开始录音：{detail}",
     "record_stop_failed": "无法停止录音：{detail}",
     "no_audio": "未发现可转写的音频（音频未保存）。",
+    "empty_text": "没有可整理的文本（文件为空或仅有空白）。",
     "cfg_aws_region": "请设置 AWS 区域。",
     "cfg_workspace_id": "Claude Platform on AWS 需要 workspace_id。",
     "cfg_aws_keys": "请设置 AWS 访问密钥/秘密密钥。",

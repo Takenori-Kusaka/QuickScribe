@@ -43,6 +43,7 @@
     "group_record_source": "録音ソース（マイク / システム音）",
     "group_stt": "文字起こしエンジン",
     "group_transcribe_meta": "文字起こしのメタデータ",
+    "group_refine": "整形",
     "group_save": "保存",
     "group_app": "アプリ全般",
     "save_dir": "保存先: {dir}",
@@ -128,7 +129,13 @@
     "tip_output_4": "（整形）で区別されます。",
     "tip_taskbar": "タスクバー上の録音/停止・ウィンドウ表示ボタン（Windows）。OFFにすると非表示になります。",
     "tip_autostart": "OSにログインすると QuickScribe を自動で起動し、トレイに常駐します（ウィンドウは出ません）。",
-    "shortcut_modifier_required": "修飾キー（Ctrl/Alt/Shift）と組み合わせて押してください"
+    "shortcut_modifier_required": "修飾キー（Ctrl/Alt/Shift）と組み合わせて押してください",
+    "group_about": "このアプリについて",
+    "about_license": "ライセンス: MIT",
+    "about_oss": "本アプリは whisper.cpp（MIT）・libopus（BSD-3-Clause）・Tauri（MIT/Apache-2.0）・Svelte（MIT）等のオープンソースを利用しています。第三者ライセンスの帰属は配布物の THIRD-PARTY-NOTICES とリポジトリに含まれます。",
+    "about_repo": "リポジトリ / ライセンス全文",
+    "show_onboarding": "使い方をもう一度見る",
+    "tip_show_onboarding": "初回ガイド（3ステップ）をもう一度表示します。"
   },
   "vault": {
     "back_to_list": "← 一覧へ戻る",
@@ -170,7 +177,8 @@
     "clear_all": "すべて置換しない",
     "apply": "選んだ用語を置換して更新",
     "close": "閉じる（置換しない）",
-    "replaced": "用語を{n}件置換しました"
+    "replaced": "用語を{n}件置換しました",
+    "suggestion_label": "置換後の語"
   },
   "update": {
     "downloading": "新バージョン {version} を背景でダウンロード中… {pct}%",
@@ -202,6 +210,7 @@
     "record_start_failed": "録音を開始できませんでした: {detail}",
     "record_stop_failed": "録音の停止に失敗しました: {detail}",
     "no_audio": "文字起こしできる音声が含まれていませんでした（音声は保存していません）。",
+    "empty_text": "整形するテキストがありません（ファイルが空か空白のみです）。",
     "cfg_aws_region": "AWSリージョンを設定してください。",
     "cfg_workspace_id": "Claude Platform on AWS には workspace_id が必要です。",
     "cfg_aws_keys": "AWSアクセスキー/シークレットを設定してください。",

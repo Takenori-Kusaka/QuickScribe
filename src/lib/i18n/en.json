@@ -43,6 +43,7 @@
     "group_record_source": "Recording source (mic / system audio)",
     "group_stt": "Transcription engine",
     "group_transcribe_meta": "Transcription metadata",
+    "group_refine": "Refine",
     "group_save": "Saving",
     "group_app": "General",
     "save_dir": "Save location: {dir}",
@@ -128,7 +129,13 @@
     "tip_output_4": " (refined).",
     "tip_taskbar": "Record/stop and show-window buttons on the taskbar (Windows). Turn off to hide them.",
     "tip_autostart": "Starts QuickScribe automatically when you log in to the OS and keeps it in the tray (no window appears).",
-    "shortcut_modifier_required": "Combine with a modifier key (Ctrl/Alt/Shift) and press."
+    "shortcut_modifier_required": "Combine with a modifier key (Ctrl/Alt/Shift) and press.",
+    "group_about": "About",
+    "about_license": "License: MIT",
+    "about_oss": "This app uses open source including whisper.cpp (MIT), libopus (BSD-3-Clause), Tauri (MIT/Apache-2.0) and Svelte (MIT). Third-party attributions are included in THIRD-PARTY-NOTICES with the distribution and in the repository.",
+    "about_repo": "Repository / full license",
+    "show_onboarding": "Show the intro again",
+    "tip_show_onboarding": "Shows the first-run guide (3 steps) again."
   },
   "vault": {
     "back_to_list": "← Back to list",
@@ -170,7 +177,8 @@
     "clear_all": "Replace none",
     "apply": "Replace selected terms and update",
     "close": "Close (replace none)",
-    "replaced": "Replaced {n} term(s)"
+    "replaced": "Replaced {n} term(s)",
+    "suggestion_label": "Replacement term"
   },
   "update": {
     "downloading": "Downloading new version {version} in the background… {pct}%",
@@ -202,6 +210,7 @@
     "record_start_failed": "Could not start recording: {detail}",
     "record_stop_failed": "Could not stop recording: {detail}",
     "no_audio": "No transcribable audio was found (audio was not saved).",
+    "empty_text": "There is no text to refine (the file is empty or whitespace only).",
     "cfg_aws_region": "Please set an AWS region.",
     "cfg_workspace_id": "Claude Platform on AWS requires a workspace_id.",
     "cfg_aws_keys": "Please set your AWS access key / secret.",
