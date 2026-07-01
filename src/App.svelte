@@ -874,6 +874,11 @@
     if (typeof selected !== "string") return;
     try {
       const text = await invoke<string>("read_text_file", { path: selected });
+      // 空・空白のみのファイルは整形しても意味が無く、無駄なAPI呼び出しになる(#18)。
+      if (!text.trim()) {
+        error = $_("errors.empty_text");
+        return;
+      }
       transcript = text;
       refined = null;
       segments = [];
@@ -1909,6 +1914,16 @@
           {$_("settings.autostart")}
         </label>
         <p class="tip">{$_("settings.tip_autostart")}</p>
+        <!-- オンボーディングを再表示する導線(#397)。一度閉じると出なくなるため、後から見返せるように。 -->
+        <button
+          type="button"
+          class="btn small ghost"
+          onclick={() => {
+            showSettings = false;
+            showOnboarding = true;
+          }}>{$_("settings.show_onboarding")}</button
+        >
+        <p class="tip">{$_("settings.tip_show_onboarding")}</p>
       </details>
 
       <div class="settings-actions">

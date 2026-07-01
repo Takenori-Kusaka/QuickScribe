@@ -128,7 +128,9 @@
     "tip_output_4": " (refined).",
     "tip_taskbar": "Record/stop and show-window buttons on the taskbar (Windows). Turn off to hide them.",
     "tip_autostart": "Starts QuickScribe automatically when you log in to the OS and keeps it in the tray (no window appears).",
-    "shortcut_modifier_required": "Combine with a modifier key (Ctrl/Alt/Shift) and press."
+    "shortcut_modifier_required": "Combine with a modifier key (Ctrl/Alt/Shift) and press.",
+    "show_onboarding": "Show the intro again",
+    "tip_show_onboarding": "Shows the first-run guide (3 steps) again."
   },
   "vault": {
     "back_to_list": "← Back to list",
@@ -203,6 +205,7 @@
     "record_start_failed": "Could not start recording: {detail}",
     "record_stop_failed": "Could not stop recording: {detail}",
     "no_audio": "No transcribable audio was found (audio was not saved).",
+    "empty_text": "There is no text to refine (the file is empty or whitespace only).",
     "cfg_aws_region": "Please set an AWS region.",
     "cfg_workspace_id": "Claude Platform on AWS requires a workspace_id.",
     "cfg_aws_keys": "Please set your AWS access key / secret.",

@@ -128,7 +128,9 @@
     "tip_output_4": "（整理）。",
     "tip_taskbar": "任务栏上的录音/停止、显示窗口按钮（Windows）。关闭后将隐藏。",
     "tip_autostart": "登录操作系统时自动启动 QuickScribe 并常驻托盘（不会出现窗口）。",
-    "shortcut_modifier_required": "请与修饰键（Ctrl/Alt/Shift）组合后按下。"
+    "shortcut_modifier_required": "请与修饰键（Ctrl/Alt/Shift）组合后按下。",
+    "show_onboarding": "再次查看使用说明",
+    "tip_show_onboarding": "再次显示首次引导（3 步）。"
   },
   "vault": {
     "back_to_list": "← 返回列表",
@@ -203,6 +205,7 @@
     "record_start_failed": "无法开始录音：{detail}",
     "record_stop_failed": "无法停止录音：{detail}",
     "no_audio": "未发现可转写的音频（音频未保存）。",
+    "empty_text": "没有可整理的文本（文件为空或仅有空白）。",
     "cfg_aws_region": "请设置 AWS 区域。",
     "cfg_workspace_id": "Claude Platform on AWS 需要 workspace_id。",
     "cfg_aws_keys": "请设置 AWS 访问密钥/秘密密钥。",
