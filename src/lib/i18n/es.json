@@ -27,6 +27,13 @@
     "settings": "Ajustes",
     "close": "Cerrar"
   },
+  "privacy": {
+    "on_device": "Totalmente en el dispositivo",
+    "on_device_desc": "La transcripción y el refinado se ejecutan en este dispositivo. No se envía ningún audio ni texto.",
+    "cloud": "Se usa la nube",
+    "cloud_desc": "Tu transcripción/refinado actual usa la nube, por lo que se envía audio o texto a una API.",
+    "make_offline": "Cambiar a sin conexión"
+  },
   "settings": {
     "title": "Ajustes",
     "language": "Idioma",
@@ -48,6 +55,9 @@
     "label_aws_region": "Región de AWS",
     "label_auth_mode": "Autenticación",
     "label_refine_style": "Estilo de refinado (también se aplica al refinado automático tras grabar)",
+    "translate_output": "Traducir el resultado refinado al idioma elegido",
+    "output_language": "Idioma de salida",
+    "tip_translate": "Cuando está activado, el resultado refinado se genera en el idioma elegido sin importar el idioma que hablaste (se conserva la transcripción original). Útil para unificar en un idioma durante un periodo de trabajo.",
     "add_custom": "Añadir patrón personalizado",
     "press_key": "Pulsa una tecla… (Esc para cancelar)",
     "reset_default": "Restablecer",

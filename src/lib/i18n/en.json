@@ -27,6 +27,13 @@
     "settings": "Settings",
     "close": "Close"
   },
+  "privacy": {
+    "on_device": "Fully on-device",
+    "on_device_desc": "Transcription and refine both run on this device. No audio or text is ever sent out.",
+    "cloud": "Cloud is used",
+    "cloud_desc": "Your current transcription/refine uses the cloud, so audio or text is sent to an API.",
+    "make_offline": "Switch to offline"
+  },
   "settings": {
     "title": "Settings",
     "language": "Language",
@@ -48,6 +55,9 @@
     "label_aws_region": "AWS region",
     "label_auth_mode": "Authentication",
     "label_refine_style": "Refine style (also applied to auto-refine after recording)",
+    "translate_output": "Translate the refined output into a chosen language",
+    "output_language": "Output language",
+    "tip_translate": "When on, the refined output is produced in the chosen language regardless of the language you spoke (the original-language transcript is kept). Useful when standardizing on one language for a work period.",
     "add_custom": "Add custom pattern",
     "press_key": "Press a key… (Esc to cancel)",
     "reset_default": "Reset to default",
