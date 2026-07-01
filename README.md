@@ -13,9 +13,13 @@
 > 企画・設計の背景は [docs/vision.md](docs/vision.md) と [docs/adr/](docs/adr/) を参照。
 > 使い方の詳細・ダウンロードは **[ドキュメントサイト](https://takenori-kusaka.github.io/QuickScribe/)** へ。
 
-![QuickScribe メイン画面（プレースホルダ）](docs/assets/screenshot-main.placeholder.png)
+![QuickScribe メイン画面（録音→文字起こし→整形）](docs/assets/screenshot-main.png)
 
-> 📸 上記は**プレースホルダ画像**です。実スクリーンショットは v1.0.0 リリース時に **CI で自動生成**して差し替えます（Vite + Playwright でフロントをヘッドレス描画・Tauri IPCをモック）。
+| ジャーナル（横断発見） | 設定 | 初回オンボーディング |
+|---|---|---|
+| ![ジャーナル](docs/assets/screenshot-vault.png) | ![設定](docs/assets/screenshot-settings.png) | ![オンボーディング](docs/assets/screenshot-onboarding.png) |
+
+> スクリーンショットは **CI（Vite + Playwright・Tauri IPCモック）** で自動生成しています（`.github/workflows/screenshots.yml`）。
 
 
 ## QuickScribe とは
@@ -26,6 +30,19 @@
 - 🧠 **ニュアンス保持の整形**: 言い淀みや迷いも消し去らず、考えの流れを保ったまま読みやすく整える。用語補正フェーズで誤変換も確認・置換。
 - 🔒 **ローカル完結・プライバシー優先**: 録音とローカル文字起こしは端末内で完結。**音声は既定で外部送信されません。** クラウド連携は明示的オプトインのみ。
 - 🗂 **ジャーナル**: 記録はプレーンな Markdown / テキストで保存。横断的な振り返り・絞り込みが可能。
+
+## なぜ QuickScribe？（他ツールとの違い）
+
+音声からテキストを作るツールは多くありますが、QuickScribe は**用途を「自分のための思考整理・ジャーナリング」に絞り、ニュアンスを残す整形とローカル完結**に投資しています。
+
+| | 会議ノート系<br>(Otter / Granola) | 高速ディクテーション系<br>(superwhisper 等) | クラウド日記<br>(Day One 等) | **QuickScribe** |
+|---|---|---|---|---|
+| 主用途 | 会議の要約・議事録 | 素早い文字入力 | 日記（クラウド同期） | **思考整理・自己理解** |
+| 整形の思想 | 要約して**捨てる** | 清書・整えるのみ | 手書きのまま | **ニュアンスを残して育てる** |
+| プライバシー | クラウド前提 | 多くはクラウド | クラウド同期 | **ローカル完結が選べる**（whisper＋Ollama） |
+| 物理トリガー | — | ホットキー中心 | — | ホットキー/物理ボタン/フットスイッチ統合 |
+
+要するに **「要約して捨てる」のではなく「ニュアンスを残して整え、後から見返して育てる」** ——そのための、ローカルで完結できる声のジャーナルです。差別化の詳細は [docs/research/competitive-landscape.md](docs/research/competitive-landscape.md) を参照。
 
 ## クイックスタート（ダウンロード）
 
