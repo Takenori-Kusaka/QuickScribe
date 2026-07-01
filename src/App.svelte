@@ -1658,84 +1658,103 @@
         <p class="tip">{$_("settings.tip_auto_pipeline")}</p>
       </details>
 
-      <label>
-        {$_("settings.label_refine_provider")}
-        <select bind:value={provider} onchange={() => resolveCurrentModel()}>
-          <option value="gemini">Gemini</option>
-          <option value="anthropic">Anthropic (Claude)</option>
-          <option value="openai">OpenAI</option>
-          <option value="ollama">{$_("settings.provider_ollama")}</option>
-          <option value="bedrock">AWS Bedrock</option>
-          <option value="claude-aws">Claude Platform on AWS</option>
-        </select>
-      </label>
-      {#if LOCAL_PROVIDERS.includes(provider)}
-        <p class="muted">
-          {$_("settings.ollama_note_1")}<code>ollama serve</code>{$_("settings.ollama_note_2")}<code
-            >ollama pull llama3.1</code
-          >{$_("settings.ollama_note_3")}
-        </p>
-      {:else if AWS_PROVIDERS.includes(provider)}
-        <!-- AWSプロバイダ(Bedrock / Claude Platform on AWS) / ADR-0011。SigV4 or APIキー。 -->
+      <details class="meta-group" open>
+        <summary class="meta-title">{$_("settings.group_refine")}</summary>
         <label>
-          {$_("settings.label_aws_region")}
-          <input type="text" bind:value={awsRegion} placeholder="us-east-1" autocomplete="off" />
-        </label>
-        {#if provider === "claude-aws"}
-          <label>
-            {$_("settings.label_workspace_id")}
-            <input
-              type="text"
-              bind:value={awsWorkspaceId}
-              placeholder="wrkspc_..."
-              autocomplete="off"
-            />
-          </label>
-        {/if}
-        {#if provider === "bedrock"}
-          <label>
-            {$_("settings.label_bedrock_model")}
-            <input
-              type="text"
-              bind:value={bedrockModel}
-              placeholder="anthropic.claude-sonnet-4-6"
-              autocomplete="off"
-            />
-          </label>
-        {/if}
-        <label>
-          {$_("settings.label_auth_mode")}
-          <select bind:value={awsAuthMode}>
-            <option value="sigv4">{$_("settings.auth_sigv4")}</option>
-            <option value="apikey">{$_("settings.auth_apikey")}</option>
+          {$_("settings.label_refine_provider")}
+          <select bind:value={provider} onchange={() => resolveCurrentModel()}>
+            <option value="gemini">Gemini</option>
+            <option value="anthropic">Anthropic (Claude)</option>
+            <option value="openai">OpenAI</option>
+            <option value="ollama">{$_("settings.provider_ollama")}</option>
+            <option value="bedrock">AWS Bedrock</option>
+            <option value="claude-aws">Claude Platform on AWS</option>
           </select>
         </label>
-        {#if awsAuthMode === "sigv4"}
+        {#if LOCAL_PROVIDERS.includes(provider)}
+          <p class="muted">
+            {$_("settings.ollama_note_1")}<code>ollama serve</code>{$_(
+              "settings.ollama_note_2",
+            )}<code>ollama pull llama3.1</code>{$_("settings.ollama_note_3")}
+          </p>
+        {:else if AWS_PROVIDERS.includes(provider)}
+          <!-- AWSプロバイダ(Bedrock / Claude Platform on AWS) / ADR-0011。SigV4 or APIキー。 -->
           <label>
-            {$_("settings.label_aws_access_key")}
-            <input
-              type="password"
-              bind:value={awsAccessKey}
-              placeholder="AKIA..."
-              autocomplete="off"
-            />
+            {$_("settings.label_aws_region")}
+            <input type="text" bind:value={awsRegion} placeholder="us-east-1" autocomplete="off" />
           </label>
+          {#if provider === "claude-aws"}
+            <label>
+              {$_("settings.label_workspace_id")}
+              <input
+                type="text"
+                bind:value={awsWorkspaceId}
+                placeholder="wrkspc_..."
+                autocomplete="off"
+              />
+            </label>
+          {/if}
+          {#if provider === "bedrock"}
+            <label>
+              {$_("settings.label_bedrock_model")}
+              <input
+                type="text"
+                bind:value={bedrockModel}
+                placeholder="anthropic.claude-sonnet-4-6"
+                autocomplete="off"
+              />
+            </label>
+          {/if}
           <label>
-            {$_("settings.label_aws_secret_key")}
-            <input type="password" bind:value={awsSecretKey} placeholder="..." autocomplete="off" />
+            {$_("settings.label_auth_mode")}
+            <select bind:value={awsAuthMode}>
+              <option value="sigv4">{$_("settings.auth_sigv4")}</option>
+              <option value="apikey">{$_("settings.auth_apikey")}</option>
+            </select>
           </label>
-          <label>
-            {$_("settings.label_aws_session")}
-            <input
-              type="password"
-              bind:value={awsSessionToken}
-              placeholder={$_("settings.session_optional_ph")}
-              autocomplete="off"
-            />
-          </label>
+          {#if awsAuthMode === "sigv4"}
+            <label>
+              {$_("settings.label_aws_access_key")}
+              <input
+                type="password"
+                bind:value={awsAccessKey}
+                placeholder="AKIA..."
+                autocomplete="off"
+              />
+            </label>
+            <label>
+              {$_("settings.label_aws_secret_key")}
+              <input
+                type="password"
+                bind:value={awsSecretKey}
+                placeholder="..."
+                autocomplete="off"
+              />
+            </label>
+            <label>
+              {$_("settings.label_aws_session")}
+              <input
+                type="password"
+                bind:value={awsSessionToken}
+                placeholder={$_("settings.session_optional_ph")}
+                autocomplete="off"
+              />
+            </label>
+          {:else}
+            <label>
+              {$_("settings.api_key_save", { values: { provider: PROVIDER_LABELS[provider] } })}
+              <input
+                type="password"
+                bind:value={apiKeys[provider]}
+                placeholder={KEY_PLACEHOLDERS[provider]}
+                autocomplete="off"
+              />
+            </label>
+          {/if}
+          <p class="muted">{$_("settings.secret_local_note")}</p>
         {:else}
           <label>
-            {$_("settings.api_key_save", { values: { provider: PROVIDER_LABELS[provider] } })}
+            {$_("settings.api_key_refine", { values: { provider: PROVIDER_LABELS[provider] } })}
             <input
               type="password"
               bind:value={apiKeys[provider]}
@@ -1744,64 +1763,55 @@
             />
           </label>
         {/if}
-        <p class="muted">{$_("settings.secret_local_note")}</p>
-      {:else}
+        <p class="muted model-hint">
+          {#if provider === "bedrock"}
+            {$_("settings.model_label")}<code>{bedrockModel || FALLBACK_MODELS[provider]}</code>{$_(
+              "settings.model_bedrock_suffix",
+            )}
+          {:else if provider === "claude-aws"}
+            {$_("settings.model_label")}<code>{FALLBACK_MODELS[provider]}</code>{$_(
+              "settings.model_claude_aws_suffix",
+            )}
+          {:else}
+            {$_("settings.model_label")}<code
+              >{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code
+            >
+            {#if resolvingModel}{$_(
+                "settings.model_resolving",
+              )}{:else if resolvedModel[provider]}{$_("settings.model_latest_auto")}{:else}{$_(
+                "settings.model_latest_midrange",
+              )}{/if}
+          {/if}
+        </p>
         <label>
-          {$_("settings.api_key_refine", { values: { provider: PROVIDER_LABELS[provider] } })}
-          <input
-            type="password"
-            bind:value={apiKeys[provider]}
-            placeholder={KEY_PLACEHOLDERS[provider]}
-            autocomplete="off"
-          />
-        </label>
-      {/if}
-      <p class="muted model-hint">
-        {#if provider === "bedrock"}
-          {$_("settings.model_label")}<code>{bedrockModel || FALLBACK_MODELS[provider]}</code>{$_(
-            "settings.model_bedrock_suffix",
-          )}
-        {:else if provider === "claude-aws"}
-          {$_("settings.model_label")}<code>{FALLBACK_MODELS[provider]}</code>{$_(
-            "settings.model_claude_aws_suffix",
-          )}
-        {:else}
-          {$_("settings.model_label")}<code
-            >{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code
-          >
-          {#if resolvingModel}{$_("settings.model_resolving")}{:else if resolvedModel[provider]}{$_(
-              "settings.model_latest_auto",
-            )}{:else}{$_("settings.model_latest_midrange")}{/if}
-        {/if}
-      </p>
-      <label>
-        {$_("settings.label_refine_style")}
-        <select bind:value={refineStyle}>
-          {#each allStyles as s}
-            <option value={s.value} title={s.desc}>{s.label}</option>
-          {/each}
-        </select>
-      </label>
-      <!-- 選択中スタイルの解説を常時表示(マウスオーバーに頼らず各モードの違いを示す)。 -->
-      <p class="style-desc">{currentStyle.desc}</p>
-
-      <!-- 整形出力言語(翻訳 / #453)。既定OFF。ONにすると出力言語を選べる(progressive disclosure)。
-           原語の文字起こしは常に保持し、翻訳は整形結果にのみ適用する。 -->
-      <label class="check">
-        <input type="checkbox" bind:checked={translateOutput} />
-        {$_("settings.translate_output")}
-      </label>
-      {#if translateOutput}
-        <label>
-          {$_("settings.output_language")}
-          <select bind:value={outputLang}>
-            {#each LANGUAGES as l}
-              <option value={l.code}>{l.label}</option>
+          {$_("settings.label_refine_style")}
+          <select bind:value={refineStyle}>
+            {#each allStyles as s}
+              <option value={s.value} title={s.desc}>{s.label}</option>
             {/each}
           </select>
         </label>
-      {/if}
-      <p class="tip">{$_("settings.tip_translate")}</p>
+        <!-- 選択中スタイルの解説を常時表示(マウスオーバーに頼らず各モードの違いを示す)。 -->
+        <p class="style-desc">{currentStyle.desc}</p>
+
+        <!-- 整形出力言語(翻訳 / #453)。既定OFF。ONにすると出力言語を選べる(progressive disclosure)。
+           原語の文字起こしは常に保持し、翻訳は整形結果にのみ適用する。 -->
+        <label class="check">
+          <input type="checkbox" bind:checked={translateOutput} />
+          {$_("settings.translate_output")}
+        </label>
+        {#if translateOutput}
+          <label>
+            {$_("settings.output_language")}
+            <select bind:value={outputLang}>
+              {#each LANGUAGES as l}
+                <option value={l.code}>{l.label}</option>
+              {/each}
+            </select>
+          </label>
+        {/if}
+        <p class="tip">{$_("settings.tip_translate")}</p>
+      </details>
 
       <!-- カスタム整形パターン(S3.3): ユーザー定義の指示を追加・管理する。 -->
       <details class="meta-group">
