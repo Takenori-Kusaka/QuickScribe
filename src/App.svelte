@@ -616,6 +616,8 @@
     if (!capturing) return;
     e.preventDefault();
     if (e.key === "Escape") {
+      // ホットキー取得のキャンセルに留め、設定ダイアログ全体を閉じさせない(#395)。
+      e.stopPropagation();
       cancelCapture();
       return;
     }
@@ -1092,7 +1094,13 @@
     {/if}
 
     <div class="actions">
-      <button class="btn primary" class:recording data-testid="record-btn" onclick={toggle}>
+      <button
+        class="btn primary"
+        class:recording
+        data-testid="record-btn"
+        aria-pressed={recording}
+        onclick={toggle}
+      >
         <span class="dot" class:on={recording}></span>
         {recording ? $_("main.record_stop") : $_("main.record_start")}
       </button>
@@ -1188,13 +1196,20 @@
     {/if}
 
     {#if busy || transcribing || status}
-      <div class="panel">
+      <div class="panel" role="status" aria-live="polite">
         <div class="status-row">
           <span class="spinner" aria-hidden="true"></span>
           <span class="status-text">{status || $_("results.processing")}</span>
         </div>
         {#if progress > 0}
-          <div class="progress" role="progressbar" aria-valuenow={progress}>
+          <div
+            class="progress"
+            role="progressbar"
+            aria-label={$_("results.processing")}
+            aria-valuenow={progress}
+            aria-valuemin="0"
+            aria-valuemax="100"
+          >
             <div class="bar" style="width: {progress}%"></div>
           </div>
           <div class="progress-meta">
@@ -1259,7 +1274,12 @@
                       <span class="correction-orig">{c.original}</span>
                       <span class="correction-arrow">→</span>
                     </label>
-                    <input class="correction-sugg" type="text" bind:value={c.suggestion} />
+                    <input
+                      class="correction-sugg"
+                      type="text"
+                      bind:value={c.suggestion}
+                      aria-label={$_("corrections.suggestion_label")}
+                    />
                     {#if c.reason}<span class="correction-reason" title={c.reason}>{c.reason}</span
                       >{/if}
                   </li>
@@ -1282,6 +1302,7 @@
             class="tags-input"
             type="text"
             bind:value={entryTags}
+            aria-label={$_("results.tags_placeholder")}
             placeholder={$_("results.tags_placeholder")}
           />
         </div>
@@ -1341,7 +1362,7 @@
     {/if}
 
     {#if error}
-      <p class="error">{error}</p>
+      <p class="error" role="alert">{error}</p>
     {/if}
   </div>
 </main>
@@ -1398,6 +1419,7 @@
           class="tags-input"
           type="text"
           bind:value={entrySearch}
+          aria-label={$_("vault.search_placeholder")}
           placeholder={$_("vault.search_placeholder")}
         />
         {#if allTags.length > 0}
@@ -1515,12 +1537,12 @@
       <p class="tip">
         {$_("settings.tip_hotkey", { values: { key: displayShortcut(recordShortcut, IS_MAC) } })}
       </p>
-      {#if shortcutMsg}<p class="muted">{shortcutMsg}</p>{/if}
+      {#if shortcutMsg}<p class="muted" role="status" aria-live="polite">{shortcutMsg}</p>{/if}
 
       <details class="meta-group" open>
         <summary class="meta-title">{$_("settings.group_record_mode")}</summary>
         <div class="device-row">
-          <select bind:value={recordMode}>
+          <select bind:value={recordMode} aria-label={$_("settings.group_record_mode")}>
             <option value="toggle">{$_("settings.mode_toggle")}</option>
             <option value="momentary">{$_("settings.mode_momentary")}</option>
           </select>
@@ -1535,7 +1557,11 @@
       <details class="meta-group">
         <summary class="meta-title">{$_("settings.group_record_source")}</summary>
         <div class="device-row">
-          <select value={`${inputDeviceKind}|${inputDevice}`} onchange={onSourceChange}>
+          <select
+            value={`${inputDeviceKind}|${inputDevice}`}
+            onchange={onSourceChange}
+            aria-label={$_("settings.group_record_source")}
+          >
             <option value="input|">{$_("settings.source_default_mic")}</option>
             {#if IS_WINDOWS}
               <option value="mix|">{$_("settings.source_mix")}</option>
@@ -1891,7 +1917,7 @@
           >{$_("settings.check_update")}</button
         >
       </div>
-      {#if updateMsg}<p class="muted">{updateMsg}</p>{/if}
+      {#if updateMsg}<p class="muted" role="status" aria-live="polite">{updateMsg}</p>{/if}
     </div>
   </div>
 {/if}
@@ -1982,7 +2008,8 @@
     background: none;
     border: none;
     cursor: pointer;
-    opacity: 0.55;
+    /* WCAG AA 非テキストコントラスト(#395): 旧 opacity 0.55 は実効 2.58:1。0.8 で 3:1 を満たす。 */
+    opacity: 0.8;
     color: #4b5563;
     line-height: 1;
     padding: 0.3rem;
@@ -2447,7 +2474,8 @@
   }
 
   .hint {
-    color: #6b7280;
+    /* WCAG AA(#395): body背景 #f3f4f6 上でも 4.5:1 を満たす濃さにする(旧 #6b7280 は 4.34:1)。 */
+    color: #4b5563;
     font-size: 0.72rem;
     text-align: center;
     margin: 0.7rem 0 1.1rem;
