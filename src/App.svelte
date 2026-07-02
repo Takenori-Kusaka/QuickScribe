@@ -471,7 +471,11 @@
     }
     sttModel = localStorage.getItem("sttModel") || "";
     sttAzureResource = localStorage.getItem("sttAzureResource") || "";
-    whisperModel = localStorage.getItem("whisperModel") || "base";
+    // ローカルwhisperの既定: 日本語UIのユーザーは日本語特化 kotoba-whisper 量子化を推奨既定に、
+    // それ以外は汎用 base(#511)。保存済みがあればそれを優先。
+    whisperModel =
+      localStorage.getItem("whisperModel") ||
+      (($locale ?? "ja").split("-")[0] === "ja" ? "kotoba-q5" : "base");
     try {
       customStyles = JSON.parse(localStorage.getItem("customStyles") || "[]");
     } catch {
@@ -1735,6 +1739,7 @@
               "settings.tip_whisper_2",
             )}
           </p>
+          <p class="tip">{$_("settings.tip_model_download")}</p>
         {/if}
       </details>
 

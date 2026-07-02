@@ -126,6 +126,7 @@
     "tip_stt_warn_2": ". Each provider states it does not use API audio for training by default, but if privacy matters use “Local”. Keys are stored in this device’s secure storage.",
     "tip_whisper_1": "Local whisper runs entirely on-device (audio is never sent out). For mostly-Japanese, ",
     "tip_whisper_2": " is highly accurate. The selected model is downloaded automatically on first recording (large models take time).",
+    "tip_model_download": "Models are downloaded on first use and stored on your device (not bundled with the app). The size shown is the approximate download size.",
     "tip_output_1": "Save format for the raw transcript. Markdown prepends the creation time, kind, and tags. ",
     "tip_output_strong": "Refined results are structured Markdown, so they are always saved as .md",
     "tip_output_2": ". Filenames also distinguish ",
