@@ -268,6 +268,15 @@ describe("App.svelte オンボーディング", () => {
     await fireEvent.click(await screen.findByRole("button", { name: "スキップ" }));
     expect(screen.queryByText("QuickScribe へようこそ")).not.toBeInTheDocument();
   });
+
+  it("『サンプルで試す』でサンプル文字起こしが表示される(aha)", async () => {
+    localStorage.removeItem("onboarded");
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "サンプルで試す" }));
+    // オンボが閉じ、文字起こしカードが出る。
+    expect(screen.queryByText("QuickScribe へようこそ")).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "文字起こし" })).toBeInTheDocument();
+  });
 });
 
 describe("App.svelte 更新確認", () => {
