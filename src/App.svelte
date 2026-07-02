@@ -15,7 +15,7 @@
   import { errorText } from "./lib/errors";
   import { modal } from "./lib/a11y";
   import { displayShortcut, accelFromEvent } from "./lib/shortcut";
-  import { kindLabel } from "./lib/entry";
+  import { kindLabel, filterEntries } from "./lib/entry";
   import { validateRefineConfig, type RefineConfigError } from "./lib/provider-config";
   import { clampProvider, clampSttProvider, clampOneOf, isValidRefineStyle } from "./lib/settings";
   import { computeStreak } from "./lib/streak";
@@ -144,15 +144,7 @@
     return [...count.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
   });
   // 検索語(name/preview/tags)＋選択タグ(AND)で絞り込んだ一覧。
-  const filteredEntries = $derived.by(() => {
-    const q = entrySearch.trim().toLowerCase();
-    return entries.filter((e) => {
-      if (selectedTags.length > 0 && !selectedTags.every((t) => e.tags.includes(t))) return false;
-      if (!q) return true;
-      const hay = `${e.name} ${e.preview} ${e.tags.join(" ")}`.toLowerCase();
-      return hay.includes(q);
-    });
-  });
+  const filteredEntries = $derived.by(() => filterEntries(entries, entrySearch, selectedTags));
   // エントリ種別の日本語ラベル（生の文字起こし/整形済み/メモ）。
   async function openEntry(e: EntrySummary) {
     try {
