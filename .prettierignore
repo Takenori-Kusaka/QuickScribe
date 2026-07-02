@@ -9,3 +9,6 @@ site/
 docs/assets/
 package-lock.json
 *.md
+
+# vendored minified JS
+e2e/vendor/

@@ -1607,7 +1607,7 @@
       <details class="meta-group" open>
         <summary class="meta-title">{$_("settings.group_stt")}</summary>
         <div class="device-row">
-          <select bind:value={sttProvider}>
+          <select bind:value={sttProvider} aria-label={$_("settings.group_stt")}>
             {#each Object.keys(STT_LABELS) as p}
               <option value={p}>{STT_LABELS[p as SttProvider]}</option>
             {/each}

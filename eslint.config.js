@@ -18,6 +18,7 @@ export default ts.config(
       "playwright-report/",
       "test-results/",
       "e2e/mocks/**",
+      "e2e/vendor/**", // vendored な第三者ミニファイ済みJS(axe-core)はlint対象外。
     ],
   },
   js.configs.recommended,
