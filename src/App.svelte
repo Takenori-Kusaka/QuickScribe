@@ -16,6 +16,7 @@
   import { modal } from "./lib/a11y";
   import { displayShortcut, accelFromEvent } from "./lib/shortcut";
   import { kindLabel, filterEntries } from "./lib/entry";
+  import { parseRecordSource } from "./lib/record-source";
   import { validateRefineConfig, type RefineConfigError } from "./lib/provider-config";
   import { clampProvider, clampSttProvider, clampOneOf, isValidRefineStyle } from "./lib/settings";
   import { computeStreak } from "./lib/streak";
@@ -294,10 +295,9 @@
 
   // プルダウンは "kind|id" を値に使う（id がレンダーデバイスIDでも安全に分解できる）。
   function onSourceChange(e: Event) {
-    const v = (e.currentTarget as HTMLSelectElement).value;
-    const sep = v.indexOf("|");
-    inputDeviceKind = v.slice(0, sep);
-    inputDevice = v.slice(sep + 1);
+    const { kind, id } = parseRecordSource((e.currentTarget as HTMLSelectElement).value);
+    inputDeviceKind = kind;
+    inputDevice = id;
   }
 
   // タスクバーウィジェットの表示有効/無効をバックエンドへ反映する（Windowsのみ実体動作）。
