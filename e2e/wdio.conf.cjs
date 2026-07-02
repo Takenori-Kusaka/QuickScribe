@@ -71,6 +71,16 @@ exports.config = {
     timeout: 120000,
   },
 
+  // expect マッチャの既定待ちも waitforTimeout に揃える(短い既定だと非同期状態を取りこぼす/#412)。
+  before: () => {
+    try {
+      const { setOptions } = require("expect-webdriverio");
+      setOptions({ wait: 20000, interval: 200 });
+    } catch {
+      /* expect-webdriverio が無い環境では既定のまま */
+    }
+  },
+
   // セッション開始前に tauri-driver（WebDriver中継）を起動し、ポートが待受になるまでポーリングで待つ。
   beforeSession: async () => {
     tauriDriver = spawn(path.resolve(os.homedir(), ".cargo", "bin", "tauri-driver"), [], {
