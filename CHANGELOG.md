@@ -5,6 +5,49 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [0.10.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v0.9.0...v0.10.0) (2026-07-02)
+
+
+### ✨ 新機能 / Features
+
+* **journal:** 習慣ストリーク(寛容)をジャーナルに表示([#58](https://github.com/Takenori-Kusaka/QuickScribe/issues/58) S9.4 第1弾) ([#502](https://github.com/Takenori-Kusaka/QuickScribe/issues/502)) ([aa2ebe9](https://github.com/Takenori-Kusaka/QuickScribe/commit/aa2ebe9ce2bf427a15754413b1575a4acbc974e0))
+* **metrics:** リリースDL数の計測とテレメトリ方針の明文化([#60](https://github.com/Takenori-Kusaka/QuickScribe/issues/60) S9.6) ([#501](https://github.com/Takenori-Kusaka/QuickScribe/issues/501)) ([5772be8](https://github.com/Takenori-Kusaka/QuickScribe/commit/5772be816d77358fa06cac1cd4cf9c80c3cea5b7))
+* **onboarding:** カードを操作ボタンより上部へ配置([#510](https://github.com/Takenori-Kusaka/QuickScribe/issues/510)) ([#518](https://github.com/Takenori-Kusaka/QuickScribe/issues/518)) ([b3da691](https://github.com/Takenori-Kusaka/QuickScribe/commit/b3da691d3412ac5bd0c03b6a8cb1a342e847c44c))
+* **onboarding:** 初回のaha体験「サンプルで試す」([#57](https://github.com/Takenori-Kusaka/QuickScribe/issues/57) S9.3) ([#505](https://github.com/Takenori-Kusaka/QuickScribe/issues/505)) ([92b53fa](https://github.com/Takenori-Kusaka/QuickScribe/commit/92b53fafdbac8f4db1dd6d113fa2f98848a0fbf5))
+* **privacy:** オフライン固定モードの実体化([#465](https://github.com/Takenori-Kusaka/QuickScribe/issues/465)) ([#508](https://github.com/Takenori-Kusaka/QuickScribe/issues/508)) ([113d512](https://github.com/Takenori-Kusaka/QuickScribe/commit/113d512c46ac8240aafacb55bcf5ab5972b24a62))
+* **readme:** コアループのデモGIFを追加([#55](https://github.com/Takenori-Kusaka/QuickScribe/issues/55) S9.1) ([#503](https://github.com/Takenori-Kusaka/QuickScribe/issues/503)) ([9444725](https://github.com/Takenori-Kusaka/QuickScribe/commit/944472505497203989d21fa704eb9977f29d321a))
+* **settings:** 「整形」セクションを折りたたみグループ化([#404](https://github.com/Takenori-Kusaka/QuickScribe/issues/404)) ([#488](https://github.com/Takenori-Kusaka/QuickScribe/issues/488)) ([d97f735](https://github.com/Takenori-Kusaka/QuickScribe/commit/d97f73514534f5b42141b75070e335de3bf10c38))
+* **settings:** 未設定時の動線改善(不足明示・フォーカス・保存ガード)([#516](https://github.com/Takenori-Kusaka/QuickScribe/issues/516)) ([#519](https://github.com/Takenori-Kusaka/QuickScribe/issues/519)) ([72aaaf1](https://github.com/Takenori-Kusaka/QuickScribe/commit/72aaaf16965a754817f7e86ca57869fb57785af3))
+* **settings:** 設定を5タブに再編し到達性を改善([#512](https://github.com/Takenori-Kusaka/QuickScribe/issues/512)) ([#521](https://github.com/Takenori-Kusaka/QuickScribe/issues/521)) ([e006e34](https://github.com/Takenori-Kusaka/QuickScribe/commit/e006e340eaddb9ee5b12a594d9a623c70b1002b4))
+* **stt:** モデルのDL方式明示と日本語ロケール既定をkotobaに([#511](https://github.com/Takenori-Kusaka/QuickScribe/issues/511) 一部) ([#520](https://github.com/Takenori-Kusaka/QuickScribe/issues/520)) ([646ad0a](https://github.com/Takenori-Kusaka/QuickScribe/commit/646ad0a38e0eb6115ceed5f9bf1c47673d43c837))
+* **ux:** 既定幅拡大・ブレスト削除・「文字起こしから整形」に改称([#513](https://github.com/Takenori-Kusaka/QuickScribe/issues/513)/[#514](https://github.com/Takenori-Kusaka/QuickScribe/issues/514)/[#515](https://github.com/Takenori-Kusaka/QuickScribe/issues/515)) ([#517](https://github.com/Takenori-Kusaka/QuickScribe/issues/517)) ([32b2257](https://github.com/Takenori-Kusaka/QuickScribe/commit/32b22576da5bef3d3825ef587e3d1a2c69bce955))
+* **ux:** 空テキスト整形ガードとオンボーディング再表示([#397](https://github.com/Takenori-Kusaka/QuickScribe/issues/397)/[#398](https://github.com/Takenori-Kusaka/QuickScribe/issues/398)) ([#484](https://github.com/Takenori-Kusaka/QuickScribe/issues/484)) ([912b414](https://github.com/Takenori-Kusaka/QuickScribe/commit/912b414b334c0590a2735f5d74dd35e1efd50510))
+
+
+### 🐛 修正 / Bug Fixes
+
+* **a11y:** WCAG2.0 AA / JIS X 8341-3 のAA違反を是正([#395](https://github.com/Takenori-Kusaka/QuickScribe/issues/395)) ([#482](https://github.com/Takenori-Kusaka/QuickScribe/issues/482)) ([69eb9ee](https://github.com/Takenori-Kusaka/QuickScribe/commit/69eb9ee19c7af406e97b406b19d7661aa2d86d25))
+* **backend:** 入力検証の堅牢化と用語是正([#398](https://github.com/Takenori-Kusaka/QuickScribe/issues/398)/[#18](https://github.com/Takenori-Kusaka/QuickScribe/issues/18)) ([#486](https://github.com/Takenori-Kusaka/QuickScribe/issues/486)) ([24da526](https://github.com/Takenori-Kusaka/QuickScribe/commit/24da526dbc95516c3a5608ac8c0916c755b0a395))
+* **e2e:** トグル検証を非同期状態待ちに変更しフレークを根治([#412](https://github.com/Takenori-Kusaka/QuickScribe/issues/412)) ([#506](https://github.com/Takenori-Kusaka/QuickScribe/issues/506)) ([cb9df80](https://github.com/Takenori-Kusaka/QuickScribe/commit/cb9df8085cdf852e124465fb175910c589e1c240))
+* **security:** quick-xml DoS勧告を根拠付きignoreで監査を正常化([#526](https://github.com/Takenori-Kusaka/QuickScribe/issues/526)) ([#527](https://github.com/Takenori-Kusaka/QuickScribe/issues/527)) ([58fc410](https://github.com/Takenori-Kusaka/QuickScribe/commit/58fc410bb9d8049f28711fee711a9f958e77cd8a))
+* **ux:** レビュー指摘の是正(幅コンパクト回帰/ブレスト復活/whisper既定)([#513](https://github.com/Takenori-Kusaka/QuickScribe/issues/513)/[#514](https://github.com/Takenori-Kusaka/QuickScribe/issues/514)/[#511](https://github.com/Takenori-Kusaka/QuickScribe/issues/511)) ([#523](https://github.com/Takenori-Kusaka/QuickScribe/issues/523)) ([b8af470](https://github.com/Takenori-Kusaka/QuickScribe/commit/b8af470b72ea49f969374956f7921e52cb01357e))
+
+
+### ♻️ リファクタ / Refactor
+
+* **solid:** エントリ絞り込みロジックをlib抽出しテスト追加([#392](https://github.com/Takenori-Kusaka/QuickScribe/issues/392)) ([#524](https://github.com/Takenori-Kusaka/QuickScribe/issues/524)) ([35f81c7](https://github.com/Takenori-Kusaka/QuickScribe/commit/35f81c7594f5c39ad9ff46c84542ddbc4cea23ed))
+* **solid:** 録音ソース値パースをlib抽出＋潜在バグ修正([#392](https://github.com/Takenori-Kusaka/QuickScribe/issues/392)) ([#525](https://github.com/Takenori-Kusaka/QuickScribe/issues/525)) ([2d3a4bf](https://github.com/Takenori-Kusaka/QuickScribe/commit/2d3a4bfd976f29166ee82aa4025da258b15d13a4))
+
+
+### 📝 ドキュメント / Docs
+
+* 「なぜQuickScribe？」競合比較を読み手向けに公開([#396](https://github.com/Takenori-Kusaka/QuickScribe/issues/396)/[#399](https://github.com/Takenori-Kusaka/QuickScribe/issues/399)) ([#490](https://github.com/Takenori-Kusaka/QuickScribe/issues/490)) ([1d803ea](https://github.com/Takenori-Kusaka/QuickScribe/commit/1d803ea1206ef33c8766ce6a23f0b0272a0531a5))
+* **marketing:** ローンチキット(HN/Reddit/PH/LinkedIn文面+チェックリスト)([#59](https://github.com/Takenori-Kusaka/QuickScribe/issues/59) S9.5) ([#504](https://github.com/Takenori-Kusaka/QuickScribe/issues/504)) ([3b3b430](https://github.com/Takenori-Kusaka/QuickScribe/commit/3b3b4307a47cb978b62563fa660c1bd5c798e9e7))
+* NFRの誤ステータス是正とADR-0018/0019追加([#390](https://github.com/Takenori-Kusaka/QuickScribe/issues/390)/[#393](https://github.com/Takenori-Kusaka/QuickScribe/issues/393)) ([#485](https://github.com/Takenori-Kusaka/QuickScribe/issues/485)) ([3b2b747](https://github.com/Takenori-Kusaka/QuickScribe/commit/3b2b747e87f252b153c789febad19f14e4759b26))
+* **process:** バージョニング/チャネル/鍵分離の方針を明文化([#52](https://github.com/Takenori-Kusaka/QuickScribe/issues/52) S8.5) ([#528](https://github.com/Takenori-Kusaka/QuickScribe/issues/528)) ([663e695](https://github.com/Takenori-Kusaka/QuickScribe/commit/663e695d1acd4d8ba2589a13d212f730471a800d))
+* **readme:** 実スクリーンショット差替とCI自動化の修正([#396](https://github.com/Takenori-Kusaka/QuickScribe/issues/396)/[#387](https://github.com/Takenori-Kusaka/QuickScribe/issues/387)/S9.1) ([#487](https://github.com/Takenori-Kusaka/QuickScribe/issues/487)) ([adf1528](https://github.com/Takenori-Kusaka/QuickScribe/commit/adf1528f782699f4d4bfe57036ce8c7dfd4e8361))
+* 未署名の事実を反映しSignPath「利用/整備中」表記を是正([#50](https://github.com/Takenori-Kusaka/QuickScribe/issues/50)) ([#522](https://github.com/Takenori-Kusaka/QuickScribe/issues/522)) ([c549d3e](https://github.com/Takenori-Kusaka/QuickScribe/commit/c549d3e097e543d254baed5e7fd696e3d29ce611))
+
 ## [0.9.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v0.8.0...v0.9.0) (2026-07-01)
 
 
