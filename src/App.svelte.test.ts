@@ -173,6 +173,16 @@ describe("App.svelte 設定操作", () => {
     expect(invokeMock).toHaveBeenCalledWith("set_save_settings", expect.anything());
   });
 
+  it("オフラインモードONで整形プロバイダ選択が無効化される(#465)", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    const cb = (await screen.findByLabelText(/オフラインモードで固定/)) as HTMLInputElement;
+    await fireEvent.click(cb);
+    const providerSelect = (await screen.findByLabelText("整形プロバイダ")) as HTMLSelectElement;
+    expect(providerSelect.disabled).toBe(true);
+    expect(await screen.findByText("オンデバイス完結")).toBeInTheDocument();
+  });
+
   it("翻訳トグルをONにすると出力言語ピッカーが現れる", async () => {
     render(App);
     await fireEvent.click(await screen.findByRole("button", { name: "設定" }));

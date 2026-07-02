@@ -394,11 +394,24 @@
   // プライバシー状態(#465): 整形=ローカル(Ollama) かつ 文字起こし=ローカルwhisper のときだけ
   // 「オンデバイス完結」。それ以外は音声/文字がクラウドAPIへ送信されうる。誇張なく現状を可視化。
   const isFullyLocal = $derived(LOCAL_PROVIDERS.includes(provider) && sttProvider === "local");
+  // オフライン固定モード(#465): ONの間はクラウドプロバイダ選択を無効化し、常にローカルに固定する
+  // (プライバシーを運用として強制する)。永続化し起動時にも適用する。
+  let offlineMode = $state<boolean>(false);
   // ワンクリックでローカルAI(整形=Ollama / STT=ローカルwhisper)へ切り替える(#465)。
   function makeOffline() {
     provider = "ollama";
     sttProvider = "local";
     void syncSttSettings();
+  }
+  // オフラインモードの切替。ONにするとローカルへ固定＋クラウド選択不可、永続化する。
+  function setOfflineMode(on: boolean) {
+    offlineMode = on;
+    try {
+      localStorage.setItem("offlineMode", String(on));
+    } catch {
+      /* localStorage 不可環境では状態のみ */
+    }
+    if (on) makeOffline();
   }
 
   // カスタムパターンの編集フォーム状態（新規追加）。
@@ -451,6 +464,12 @@
     translateOutput = localStorage.getItem("translateOutput") === "true";
     outputLang = localStorage.getItem("outputLang") || ($locale ?? "ja").split("-")[0] || "ja";
     sttProvider = (localStorage.getItem("sttProvider") as SttProvider) || "local";
+    // オフライン固定モード(#465)。ON なら起動時からローカルに固定する(クラウド設定が残っていても無視)。
+    offlineMode = localStorage.getItem("offlineMode") === "true";
+    if (offlineMode) {
+      if (!LOCAL_PROVIDERS.includes(provider)) provider = "ollama";
+      sttProvider = "local";
+    }
     sttModel = localStorage.getItem("sttModel") || "";
     sttAzureResource = localStorage.getItem("sttAzureResource") || "";
     whisperModel = localStorage.getItem("whisperModel") || "base";
@@ -1534,12 +1553,21 @@
           <strong>{isFullyLocal ? $_("privacy.on_device") : $_("privacy.cloud")}</strong>
           <p>{isFullyLocal ? $_("privacy.on_device_desc") : $_("privacy.cloud_desc")}</p>
         </div>
-        {#if !isFullyLocal}
+        {#if !isFullyLocal && !offlineMode}
           <button type="button" class="btn small ghost" onclick={makeOffline}
             >{$_("privacy.make_offline")}</button
           >
         {/if}
       </div>
+      <label class="check">
+        <input
+          type="checkbox"
+          checked={offlineMode}
+          onchange={(e) => setOfflineMode(e.currentTarget.checked)}
+        />
+        {$_("privacy.offline_mode")}
+      </label>
+      <p class="tip">{$_("privacy.offline_mode_desc")}</p>
 
       <span class="meta-title">{$_("settings.group_hotkey")}</span>
       <div class="hotkey-row">
@@ -1607,7 +1635,11 @@
       <details class="meta-group" open>
         <summary class="meta-title">{$_("settings.group_stt")}</summary>
         <div class="device-row">
-          <select bind:value={sttProvider} aria-label={$_("settings.group_stt")}>
+          <select
+            bind:value={sttProvider}
+            aria-label={$_("settings.group_stt")}
+            disabled={offlineMode}
+          >
             {#each Object.keys(STT_LABELS) as p}
               <option value={p}>{STT_LABELS[p as SttProvider]}</option>
             {/each}
@@ -1684,7 +1716,11 @@
         <summary class="meta-title">{$_("settings.group_refine")}</summary>
         <label>
           {$_("settings.label_refine_provider")}
-          <select bind:value={provider} onchange={() => resolveCurrentModel()}>
+          <select
+            bind:value={provider}
+            onchange={() => resolveCurrentModel()}
+            disabled={offlineMode}
+          >
             <option value="gemini">Gemini</option>
             <option value="anthropic">Anthropic (Claude)</option>
             <option value="openai">OpenAI</option>
