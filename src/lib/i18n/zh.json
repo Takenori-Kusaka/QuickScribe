@@ -4,7 +4,7 @@
     "record_start": "开始录音",
     "record_stop": "停止",
     "from_file": "从音频文件转写",
-    "from_memo": "从备忘录 / 文本整理",
+    "from_memo": "从笔记/转写整理",
     "formats_hint": "支持：音频 {exts}（最大 {max}MB）· 文本 txt / md",
     "hotkey_hint": "录音热键：{key}（可在设置中更改）",
     "empty_cta": "先从录音开始。按麦克风按钮或 {key} 开始说话。"
