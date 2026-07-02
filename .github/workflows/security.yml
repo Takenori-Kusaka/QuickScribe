@@ -35,7 +35,10 @@ jobs:
           cargo install cargo-about --locked --features cli
       - name: cargo audit (脆弱性データベース照合)
         working-directory: src-tauri
-        run: cargo audit
+        # RUSTSEC-2026-0194/0195: quick-xml の XML パース DoS。quick-xml は plist(macOS向け
+        # bundler/ビルド系)経由の推移的依存で、QuickScribe は実行時に未信頼XML/plistを解析しない
+        # ため攻撃経路に非該当。依存木が patched quick-xml を引いた時点で ignore を外す(#526)。
+        run: cargo audit --ignore RUSTSEC-2026-0194 --ignore RUSTSEC-2026-0195
       - name: cargo deny advisories (脆弱性/重複 — 衛生課題は v1.0.0)
         working-directory: src-tauri
         run: cargo deny check advisories || true
