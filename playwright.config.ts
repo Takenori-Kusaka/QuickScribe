@@ -4,7 +4,7 @@ import { defineConfig, devices } from "@playwright/test";
 // ヘッドレス Chromium でフロントを描画して docs/assets に出力する。
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: /(screenshots|a11y)\.spec\.ts/,
+  testMatch: /(screenshots|a11y|demo)\.spec\.ts/,
   fullyParallel: false,
   reporter: "list",
   use: {

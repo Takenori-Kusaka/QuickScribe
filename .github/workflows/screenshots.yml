@@ -34,15 +34,23 @@ jobs:
       - name: Generate screenshots
         run: npm run screenshots
 
-      # main はブランチ保護のため直push不可。差分があれば PR を作成/更新する(全5枚対象)。
+      - name: Install ffmpeg (for demo GIF)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Generate demo GIF
+        run: npm run demo:gif
+
+      # main はブランチ保護のため直push不可。差分があれば PR を作成/更新する(全5枚+GIF)。
       - name: Open PR with updated screenshots
         uses: peter-evans/create-pull-request@v7
         with:
-          add-paths: docs/assets/screenshot-*.png
+          add-paths: |
+            docs/assets/screenshot-*.png
+            docs/assets/demo.gif
           branch: chore/screenshots-auto
           delete-branch: true
-          commit-message: "chore(assets): スクリーンショット自動更新"
-          title: "chore(assets): スクリーンショット自動更新"
+          commit-message: "chore(assets): スクリーンショット/デモGIF自動更新"
+          title: "chore(assets): スクリーンショット/デモGIF自動更新"
           body: |
-            CI(Vite+Playwright)が生成した最新スクリーンショット。README/サイト用。
+            CI(Vite+Playwright+ffmpeg)が生成した最新スクリーンショット/デモGIF。README/サイト用。
             マージ前に見た目を確認してください。

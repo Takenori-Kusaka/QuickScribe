@@ -13,13 +13,13 @@
 > 企画・設計の背景は [docs/vision.md](docs/vision.md) と [docs/adr/](docs/adr/) を参照。
 > 使い方の詳細・ダウンロードは **[ドキュメントサイト](https://takenori-kusaka.github.io/QuickScribe/)** へ。
 
-![QuickScribe メイン画面（録音→文字起こし→整形）](docs/assets/screenshot-main.png)
+![QuickScribe デモ（録音 → 文字起こし → 整形）](docs/assets/demo.gif)
 
-| ジャーナル（横断発見） | 設定 | 初回オンボーディング |
-|---|---|---|
-| ![ジャーナル](docs/assets/screenshot-vault.png) | ![設定](docs/assets/screenshot-settings.png) | ![オンボーディング](docs/assets/screenshot-onboarding.png) |
+| メイン画面 | ジャーナル（横断発見） | 設定 | 初回オンボーディング |
+|---|---|---|---|
+| ![メイン](docs/assets/screenshot-main.png) | ![ジャーナル](docs/assets/screenshot-vault.png) | ![設定](docs/assets/screenshot-settings.png) | ![オンボーディング](docs/assets/screenshot-onboarding.png) |
 
-> スクリーンショットは **CI（Vite + Playwright・Tauri IPCモック）** で自動生成しています（`.github/workflows/screenshots.yml`）。
+> デモGIF・スクリーンショットは **CI（Vite + Playwright・Tauri IPCモック）** で自動生成しています（`.github/workflows/screenshots.yml`）。
 
 
 ## QuickScribe とは
