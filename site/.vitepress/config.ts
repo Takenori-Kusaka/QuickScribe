@@ -44,7 +44,7 @@ export default defineConfig({
       { icon: "github", link: "https://github.com/Takenori-Kusaka/QuickScribe" },
     ],
     footer: {
-      message: "MIT License. コード署名は SignPath Foundation を利用。",
+      message: "MIT License. Windows は現在未署名（コード署名は将来対応予定）。",
       copyright: "© Takenori Kusaka",
     },
     outline: { label: "このページの内容" },
