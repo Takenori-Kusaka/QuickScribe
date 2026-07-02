@@ -297,11 +297,11 @@ impl FormattingEngine for GeminiEngine {
         );
         let body = json!({ "contents": [{ "parts": [{ "text": text }] }] });
 
-        let resp = ureq::post(&url)
-            .set("Content-Type", "application/json")
-            .send_json(body)
+        let mut resp = ureq::post(&url)
+            .header("Content-Type", "application/json")
+            .send_json(&body)
             .map_err(|e| format!("整形APIの呼び出しに失敗(Gemini): {e}"))?;
-        let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+        let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
 
         let mut out = String::new();
         if let Some(parts) = v
@@ -341,13 +341,13 @@ impl FormattingEngine for AnthropicEngine {
             ]
         });
 
-        let resp = ureq::post("https://api.anthropic.com/v1/messages")
-            .set("Content-Type", "application/json")
-            .set("x-api-key", req.api_key)
-            .set("anthropic-version", "2023-06-01")
-            .send_json(body)
+        let mut resp = ureq::post("https://api.anthropic.com/v1/messages")
+            .header("Content-Type", "application/json")
+            .header("x-api-key", req.api_key)
+            .header("anthropic-version", "2023-06-01")
+            .send_json(&body)
             .map_err(|e| format!("整形APIの呼び出しに失敗(Anthropic): {e}"))?;
-        let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+        let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
 
         // 応答は content[] のブロック配列。type=="text" の text を連結する。
         let mut out = String::new();
@@ -383,12 +383,12 @@ impl FormattingEngine for OpenAiEngine {
             ]
         });
 
-        let resp = ureq::post("https://api.openai.com/v1/chat/completions")
-            .set("Content-Type", "application/json")
-            .set("Authorization", &format!("Bearer {}", req.api_key))
-            .send_json(body)
+        let mut resp = ureq::post("https://api.openai.com/v1/chat/completions")
+            .header("Content-Type", "application/json")
+            .header("Authorization", &format!("Bearer {}", req.api_key))
+            .send_json(&body)
             .map_err(|e| format!("整形APIの呼び出しに失敗(OpenAI): {e}"))?;
-        let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+        let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
 
         let out = v
             .get("choices")
@@ -425,13 +425,13 @@ impl FormattingEngine for OllamaEngine {
         });
 
         let url = format!("{}/api/chat", ollama_base());
-        let resp = ureq::post(&url)
-            .set("Content-Type", "application/json")
-            .send_json(body)
+        let mut resp = ureq::post(&url)
+            .header("Content-Type", "application/json")
+            .send_json(&body)
             .map_err(|e| {
                 format!("ローカルOllamaへの接続に失敗しました（ollamaが起動し、モデルが取得済みか確認してください）: {e}")
             })?;
-        let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+        let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
 
         let out = v
             .get("message")
@@ -447,27 +447,27 @@ impl FormattingEngine for OllamaEngine {
     }
 }
 
-/// AWSプロバイダのリクエストに認証ヘッダを付与する(APIキー or SigV4署名)。
-/// SigV4 は body_bytes を署名するため、呼び出し側は同一バイト列を send_bytes すること。
+/// AWSプロバイダに付与する認証ヘッダ(APIキー or SigV4署名)を計算して返す。
+/// SigV4 は body_bytes を署名するため、呼び出し側は同一バイト列を send すること。
 /// service: Bedrock="bedrock" / Claude Platform="aws-external-anthropic"。
-fn apply_aws_auth(
-    mut request: ureq::Request,
+fn aws_auth_headers(
     url: &str,
     body_bytes: &[u8],
     service: &str,
     aws: &AwsConfig,
     api_key: &str,
     bearer: bool,
-) -> Result<ureq::Request, String> {
+) -> Result<Vec<(String, String)>, String> {
+    let mut headers: Vec<(String, String)> = Vec::new();
     match &aws.auth {
         AwsAuth::ApiKey => {
             if api_key.trim().is_empty() {
                 return Err("APIキーが未設定です（設定から入力してください）".into());
             }
             if bearer {
-                request = request.set("Authorization", &format!("Bearer {}", api_key.trim()));
+                headers.push(("Authorization".into(), format!("Bearer {}", api_key.trim())));
             } else {
-                request = request.set("x-api-key", api_key.trim());
+                headers.push(("x-api-key".into(), api_key.trim().into()));
             }
         }
         AwsAuth::SigV4 {
@@ -484,12 +484,10 @@ fn apply_aws_auth(
                 session_token: session_token.clone().filter(|s| !s.trim().is_empty()),
                 region: aws.region.clone(),
             };
-            for (k, v) in sign_post(url, body_bytes, service, &creds)? {
-                request = request.set(&k, &v);
-            }
+            headers.extend(sign_post(url, body_bytes, service, &creds)?);
         }
     }
-    Ok(request)
+    Ok(headers)
 }
 
 /// AWS Bedrock(InvokeModel)で整形する / ADR-0011。
@@ -524,12 +522,14 @@ impl FormattingEngine for BedrockEngine {
         });
         let body_bytes = serde_json::to_vec(&body).map_err(|e| e.to_string())?;
 
-        let request = ureq::post(&url).set("Content-Type", "application/json");
-        let request = apply_aws_auth(request, &url, &body_bytes, "bedrock", aws, req.api_key, true)?;
-        let resp = request
-            .send_bytes(&body_bytes)
+        let mut request = ureq::post(&url).header("Content-Type", "application/json");
+        for (k, v) in aws_auth_headers(&url, &body_bytes, "bedrock", aws, req.api_key, true)? {
+            request = request.header(k.as_str(), v.as_str());
+        }
+        let mut resp = request
+            .send(&body_bytes[..])
             .map_err(|e| format!("整形APIの呼び出しに失敗(Bedrock): {e}"))?;
-        let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+        let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
 
         let out = anthropic_text(&v);
         let body = extract_tagged_body(&out);
@@ -566,17 +566,20 @@ impl FormattingEngine for ClaudePlatformAwsEngine {
         let body_bytes = serde_json::to_vec(&body).map_err(|e| e.to_string())?;
 
         let mut request = ureq::post(&url)
-            .set("Content-Type", "application/json")
-            .set("anthropic-version", "2023-06-01");
+            .header("Content-Type", "application/json")
+            .header("anthropic-version", "2023-06-01");
         if !aws.workspace_id.trim().is_empty() {
-            request = request.set("anthropic-workspace-id", aws.workspace_id.trim());
+            request = request.header("anthropic-workspace-id", aws.workspace_id.trim());
         }
-        let request =
-            apply_aws_auth(request, &url, &body_bytes, "aws-external-anthropic", aws, req.api_key, false)?;
-        let resp = request
-            .send_bytes(&body_bytes)
+        for (k, v) in
+            aws_auth_headers(&url, &body_bytes, "aws-external-anthropic", aws, req.api_key, false)?
+        {
+            request = request.header(k.as_str(), v.as_str());
+        }
+        let mut resp = request
+            .send(&body_bytes[..])
             .map_err(|e| format!("整形APIの呼び出しに失敗(Claude Platform on AWS): {e}"))?;
-        let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+        let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
 
         let out = anthropic_text(&v);
         let body = extract_tagged_body(&out);
@@ -610,10 +613,10 @@ pub fn resolve_latest_model(provider: &str, api_key: &str) -> Result<String, Str
 /// 取得不可（未起動/未取得）なら呼び出し側が既定モデルにフォールバックする。
 fn latest_ollama() -> Result<String, String> {
     let url = format!("{}/api/tags", ollama_base());
-    let resp = ureq::get(&url)
+    let mut resp = ureq::get(&url)
         .call()
         .map_err(|e| format!("Ollamaモデル一覧の取得に失敗: {e}"))?;
-    let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+    let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
     v.get("models")
         .and_then(|m| m.as_array())
         .and_then(|a| a.first())
@@ -628,12 +631,12 @@ fn latest_anthropic(api_key: &str) -> Result<String, String> {
     if api_key.trim().is_empty() {
         return Err("Anthropic APIキーが未設定です".into());
     }
-    let resp = ureq::get("https://api.anthropic.com/v1/models?limit=1000")
-        .set("x-api-key", api_key)
-        .set("anthropic-version", "2023-06-01")
+    let mut resp = ureq::get("https://api.anthropic.com/v1/models?limit=1000")
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2023-06-01")
         .call()
         .map_err(|e| format!("モデル一覧の取得に失敗(Anthropic): {e}"))?;
-    let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+    let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
     let data = v
         .get("data")
         .and_then(|d| d.as_array())
@@ -654,11 +657,11 @@ fn latest_openai(api_key: &str) -> Result<String, String> {
     if api_key.trim().is_empty() {
         return Err("OpenAI APIキーが未設定です".into());
     }
-    let resp = ureq::get("https://api.openai.com/v1/models")
-        .set("Authorization", &format!("Bearer {api_key}"))
+    let mut resp = ureq::get("https://api.openai.com/v1/models")
+        .header("Authorization", &format!("Bearer {api_key}"))
         .call()
         .map_err(|e| format!("モデル一覧の取得に失敗(OpenAI): {e}"))?;
-    let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+    let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
     let data = v
         .get("data")
         .and_then(|d| d.as_array())
@@ -715,10 +718,10 @@ fn latest_gemini(api_key: &str) -> Result<String, String> {
     let url = format!(
         "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key={api_key}"
     );
-    let resp = ureq::get(&url)
+    let mut resp = ureq::get(&url)
         .call()
         .map_err(|e| format!("モデル一覧の取得に失敗(Gemini): {e}"))?;
-    let v: serde_json::Value = resp.into_json().map_err(|e| e.to_string())?;
+    let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
     let models = v
         .get("models")
         .and_then(|m| m.as_array())

@@ -264,26 +264,15 @@ impl TranscriptionEngine for OpenAiCompatibleSttEngine {
         fields.push(("response_format", "json"));
         let (content_type, body) = build_multipart(&fields, "file", "audio.wav", "audio/wav", &wav);
         on_progress(30);
-        let resp = match ureq::post(&url)
-            .set("Authorization", &format!("Bearer {}", self.api_key))
-            .set("Content-Type", &content_type)
-            .send_bytes(&body)
-        {
-            Ok(r) => r,
-            Err(ureq::Error::Status(code, r)) => {
-                let detail: String = r
-                    .into_string()
-                    .unwrap_or_default()
-                    .chars()
-                    .take(300)
-                    .collect();
-                return Err(format!("クラウドSTTエラー({code}): {detail}"));
-            }
-            Err(e) => return Err(format!("クラウドSTT通信に失敗: {e}")),
-        };
-        let json: serde_json::Value = resp
-            .into_json()
-            .map_err(|e| format!("クラウドSTT応答の解析に失敗: {e}"))?;
+        let json = read_json_response(
+            ureq::post(&url)
+                .config()
+                .http_status_as_error(false)
+                .build()
+                .header("Authorization", &format!("Bearer {}", self.api_key))
+                .header("Content-Type", &content_type)
+                .send(&body[..]),
+        )?;
         let text = json
             .get("text")
             .and_then(|t| t.as_str())
@@ -298,20 +287,27 @@ impl TranscriptionEngine for OpenAiCompatibleSttEngine {
     }
 }
 
-/// ureqのPOST応答をJSONにし、HTTPエラーは状態と短い詳細でErrにする共通処理。
+/// ureq3のPOST応答をJSONにし、非2xxは状態と短い詳細でErrにする共通処理。
+/// ureq3 は既定で非2xxを Err(StatusCode) にして本文を捨てるため、呼び出し側は
+/// `.config().http_status_as_error(false).build()` で 4xx/5xx も Ok として渡すこと。
 fn read_json_response(
-    result: Result<ureq::Response, ureq::Error>,
+    result: Result<http::Response<ureq::Body>, ureq::Error>,
 ) -> Result<serde_json::Value, String> {
-    match result {
-        Ok(r) => r
-            .into_json()
-            .map_err(|e| format!("クラウドSTT応答の解析に失敗: {e}")),
-        Err(ureq::Error::Status(code, r)) => {
-            let detail: String = r.into_string().unwrap_or_default().chars().take(300).collect();
-            Err(format!("クラウドSTTエラー({code}): {detail}"))
-        }
-        Err(e) => Err(format!("クラウドSTT通信に失敗: {e}")),
+    let mut r = result.map_err(|e| format!("クラウドSTT通信に失敗: {e}"))?;
+    let code = r.status().as_u16();
+    if !(200..300).contains(&code) {
+        let detail: String = r
+            .body_mut()
+            .read_to_string()
+            .unwrap_or_default()
+            .chars()
+            .take(300)
+            .collect();
+        return Err(format!("クラウドSTTエラー({code}): {detail}"));
     }
+    r.body_mut()
+        .read_json()
+        .map_err(|e| format!("クラウドSTT応答の解析に失敗: {e}"))
 }
 
 /// Deepgram 文字起こし（pre-recorded / ADR-0016 Phase B）。
@@ -345,9 +341,12 @@ impl TranscriptionEngine for DeepgramSttEngine {
         on_progress(30);
         let json = read_json_response(
             ureq::post(&url)
-                .set("Authorization", &format!("Token {}", self.api_key))
-                .set("Content-Type", "audio/wav")
-                .send_bytes(&wav),
+                .config()
+                .http_status_as_error(false)
+                .build()
+                .header("Authorization", &format!("Token {}", self.api_key))
+                .header("Content-Type", "audio/wav")
+                .send(&wav[..]),
         )?;
         let text = json
             .pointer("/results/channels/0/alternatives/0/transcript")
@@ -401,9 +400,12 @@ impl TranscriptionEngine for AzureSttEngine {
         on_progress(30);
         let json = read_json_response(
             ureq::post(&url)
-                .set("Ocp-Apim-Subscription-Key", self.api_key.trim())
-                .set("Content-Type", &content_type)
-                .send_bytes(&body),
+                .config()
+                .http_status_as_error(false)
+                .build()
+                .header("Ocp-Apim-Subscription-Key", self.api_key.trim())
+                .header("Content-Type", &content_type)
+                .send(&body[..]),
         )?;
         let text = json
             .pointer("/combinedPhrases/0/text")

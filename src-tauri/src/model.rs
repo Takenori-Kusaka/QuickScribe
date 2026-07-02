@@ -152,10 +152,17 @@ fn download_to<F: FnMut(u64, Option<u64>)>(
     let resp = ureq::get(url)
         .call()
         .map_err(|e| format!("モデルのダウンロードに失敗: {e}"))?;
-    let total: Option<u64> = resp.header("Content-Length").and_then(|s| s.parse().ok());
+    let total: Option<u64> = resp
+        .headers()
+        .get("Content-Length")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse().ok());
 
     let tmp = path.with_extension("part");
-    let mut reader = resp.into_reader();
+    // ureq3 の読取は既定で上限があるため、大容量モデル(最大~1.5GB)が切り詰められないよう
+    // 上限を実質無制限にしてストリーム読みする(整合性は後段の SHA256/サイズ照合で担保)。
+    let mut body = resp.into_body();
+    let mut reader = body.with_config().limit(u64::MAX).reader();
     let mut file = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
     let mut hasher = Sha256::new();
     let mut buf = [0u8; 65536];
