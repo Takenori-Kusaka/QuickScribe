@@ -84,6 +84,15 @@
       /* localStorage 不可環境では単に閉じる */
     }
   }
+  // 初回の aha 体験（#57 S9.3）: マイク無しでもサンプル文でコアループ(文字起こし→整形)を
+  // 即座に体験させる。整形は本人が「整形する」で実行(プロバイダ未設定なら設定へ誘導)。
+  function trySample() {
+    transcript = $_("onboarding.sample_text");
+    refined = null;
+    segments = [];
+    error = null;
+    dismissOnboarding();
+  }
 
   // 保管庫エントリの横断（S4.3 Phase1）。一覧＋タグ/全文絞り込み＋閲覧。
   type EntrySummary = {
@@ -1196,7 +1205,10 @@
           </li>
         </ol>
         <div class="onboarding-actions">
-          <button class="btn small" onclick={dismissOnboarding}>{$_("onboarding.start")}</button>
+          <button class="btn small" onclick={trySample}>{$_("onboarding.try_sample")}</button>
+          <button class="btn small ghost" onclick={dismissOnboarding}
+            >{$_("onboarding.start")}</button
+          >
         </div>
       </section>
     {:else if !recording && !busy && !transcribing && !status && !transcript && !refined}
