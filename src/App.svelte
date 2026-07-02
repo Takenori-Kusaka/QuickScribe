@@ -471,11 +471,10 @@
     }
     sttModel = localStorage.getItem("sttModel") || "";
     sttAzureResource = localStorage.getItem("sttAzureResource") || "";
-    // ローカルwhisperの既定: 日本語UIのユーザーは日本語特化 kotoba-whisper 量子化を推奨既定に、
-    // それ以外は汎用 base(#511)。保存済みがあればそれを優先。
-    whisperModel =
-      localStorage.getItem("whisperModel") ||
-      (($locale ?? "ja").split("-")[0] === "ja" ? "kotoba-q5" : "base");
+    // ローカルwhisperの既定は汎用 base(#511)。初回DLの摩擦(kotoba量子化=約538MB)を避け、
+    // 「ワンボタン→着地までの摩擦ゼロ」(vision)を優先する。日本語話者へは kotoba を UIで“推奨”
+    // 提示して明示選択に委ねる(精度は vision で差別化にしないコモディティ)。保存済みは優先。
+    whisperModel = localStorage.getItem("whisperModel") || "base";
     try {
       customStyles = JSON.parse(localStorage.getItem("customStyles") || "[]");
     } catch {
@@ -2941,11 +2940,15 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    /* コンパクト幅(スマホ的Quick比)を保つため、詰まらせず折り返す(#513再設計)。 */
+    flex-wrap: wrap;
+    gap: 0.4rem 0.6rem;
     margin-bottom: 0.5rem;
   }
   .refine-controls {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 0.4rem;
   }
   /* 処理画面: 整形スタイルは表示のみ(選択は設定画面)。ホバーで解説を出す。 */
