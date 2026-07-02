@@ -98,6 +98,11 @@ beforeEach(() => {
   relaunchMock.mockReset();
   relaunchMock.mockResolvedValue(undefined);
   listeners.clear();
+  // テスト間の localStorage 汚染(offlineMode/customStyles等)を排除し、既定を再設定する。
+  localStorage.clear();
+  localStorage.setItem("locale", "ja");
+  localStorage.setItem("provider", "ollama");
+  localStorage.setItem("autoPipeline", "true");
 });
 
 // listen の登録は onMount 内で非同期に走る。登録完了を待つ。
@@ -171,6 +176,17 @@ describe("App.svelte 設定操作", () => {
     const saveBtn = await screen.findByRole("button", { name: "保存" });
     await fireEvent.click(saveBtn);
     expect(invokeMock).toHaveBeenCalledWith("set_save_settings", expect.anything());
+  });
+
+  it("クラウド選択で鍵未入力だと保存できず不足設定を明示する(#516)", async () => {
+    // クラウド(gemini)を鍵未入力で起動 → 保存はガードされる。
+    localStorage.setItem("provider", "gemini");
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "保存" }));
+    // 不足設定(APIキー)が設定内に明示され、保存はガードされて設定は開いたまま。
+    expect(await screen.findByText(/APIキーが必要です/)).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "設定" })).toBeInTheDocument();
   });
 
   it("オフラインモードONで整形プロバイダ選択が無効化される(#465)", async () => {
