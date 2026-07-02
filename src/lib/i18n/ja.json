@@ -40,6 +40,11 @@
   },
   "settings": {
     "title": "設定",
+    "tab_general": "一般",
+    "tab_recording": "録音",
+    "tab_transcription": "文字起こし",
+    "tab_refine": "整形",
+    "tab_output": "出力",
     "language": "言語",
     "group_custom_style": "カスタム整形パターン",
     "group_hotkey": "録音開始/停止のホットキー",

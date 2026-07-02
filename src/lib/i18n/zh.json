@@ -40,6 +40,11 @@
   },
   "settings": {
     "title": "设置",
+    "tab_general": "常规",
+    "tab_recording": "录音",
+    "tab_transcription": "转写",
+    "tab_refine": "整理",
+    "tab_output": "输出",
     "language": "语言",
     "group_custom_style": "自定义整理模式",
     "group_hotkey": "开始/停止录音热键",
