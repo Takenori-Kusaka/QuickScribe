@@ -98,6 +98,12 @@ jobs:
       - name: clippy (lint)
         continue-on-error: true
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      # rustdoc の検証(#393): intra-doc リンク切れ・doc警告を検出。段階導入(continue-on-error)。
+      - name: cargo doc (rustdoc warnings as errors)
+        continue-on-error: true
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --manifest-path src-tauri/Cargo.toml --no-deps --document-private-items
 
   # Rust カバレッジ計測（#402/#392）。フロントは vitest で計測済み、Rust側の分母を可視化する。
   # cargo-llvm-cov で instrument ビルド。段階導入: まずは可視化(continue-on-error)、
