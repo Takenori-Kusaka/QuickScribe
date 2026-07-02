@@ -176,9 +176,8 @@
   async function discoverAcross() {
     const cfgErr = refineConfigError();
     if (cfgErr) {
-      error = $_(cfgErr.code, { values: cfgErr.params }) + $_("errors.config_suffix");
       showEntries = false;
-      showSettings = true;
+      openSettingsForConfig(cfgErr);
       return;
     }
     const { targets, truncated } = selectDiscoveryTargets(filteredEntries, DISCOVERY_MAX);
@@ -600,6 +599,14 @@
     }
   }
   function saveSettings() {
+    // 必須設定(選択中プロバイダのAPIキー/AWS資格情報)が未入力なら保存せず、不足項目を明示＋
+    // フォーカスして誘導する(#516)。ローカル/オフラインは要件なしでそのまま保存できる。
+    const cfgErr = refineConfigError();
+    if (cfgErr) {
+      openSettingsForConfig(cfgErr);
+      return;
+    }
+    settingsError = "";
     localStorage.setItem("provider", provider);
     // 鍵(API鍵/AWS鍵)は keyring に保存する(localStorageには置かない / S3.2)。
     void saveSecrets();
@@ -793,6 +800,30 @@
     });
   }
 
+  // 未設定時の動線(#516): 設定パネル内に表示する検証エラーと、不足項目へのフォーカス。
+  let settingsError = $state<string>("");
+  // エラーコード→フォーカス対象の要素id。該当項目まで誘導する。
+  function configFieldId(code: string): string | null {
+    if (code === "errors.cfg_api_key" || code === "errors.cfg_api_key_aws") return "cfg-api-key";
+    if (code === "errors.cfg_aws_region") return "cfg-aws-region";
+    if (code === "errors.cfg_workspace_id") return "cfg-aws-workspace";
+    if (code === "errors.cfg_aws_keys") return "cfg-aws-access";
+    return null;
+  }
+  // 設定を開いて不足項目を明示＋フォーカスする(#516)。整形導線から設定不足時に呼ぶ。
+  function openSettingsForConfig(err: RefineConfigError) {
+    showSettings = true;
+    settingsError = $_(err.code, { values: err.params });
+    const id = configFieldId(err.code);
+    if (id) {
+      queueMicrotask(() => {
+        const el = document.getElementById(id);
+        el?.scrollIntoView?.({ block: "center" });
+        (el as HTMLElement | null)?.focus?.();
+      });
+    }
+  }
+
   // refine_text に渡す追加引数（AWS時のみ資格情報。非AWSは undefined＝後方互換）。
   // styleOverride: 結果から別スタイルで整形し直す時に既定スタイルを上書きする(S3.5・行き来)。
   function refineArgs(styleOverride?: string) {
@@ -820,8 +851,7 @@
     if (!transcript) return;
     const cfgErr = refineConfigError();
     if (cfgErr) {
-      showSettings = true;
-      error = $_(cfgErr.code, { values: cfgErr.params }) + $_("errors.config_suffix");
+      openSettingsForConfig(cfgErr);
       return;
     }
     error = null;
@@ -854,8 +884,7 @@
     if (!transcript) return;
     const cfgErr = refineConfigError();
     if (cfgErr) {
-      showSettings = true;
-      error = $_(cfgErr.code, { values: cfgErr.params }) + $_("errors.config_suffix");
+      openSettingsForConfig(cfgErr);
       return;
     }
     error = null;
@@ -1096,7 +1125,10 @@
             data-testid="settings-btn"
             title={$_("header.settings")}
             aria-label={$_("header.settings")}
-            onclick={() => (showSettings = !showSettings)}
+            onclick={() => {
+              settingsError = "";
+              showSettings = !showSettings;
+            }}
           >
             <svg
               class="ic"
@@ -1548,6 +1580,11 @@
         >
       </div>
 
+      <!-- 不足設定の明示(#516): 保存不可/整形不可の原因を設定内で表示し、該当項目へ誘導。 -->
+      {#if settingsError}
+        <p class="settings-error" role="alert">{settingsError}{$_("errors.config_suffix")}</p>
+      {/if}
+
       <!-- プライバシー状態インジケータ(#465): 現在の構成が完全オンデバイスか、クラウド送信を
            伴うかを常時可視化。クラウド時はワンクリックでローカルAIへ切り替えられる。 -->
       <div class="privacy-status" class:local={isFullyLocal} class:cloud={!isFullyLocal}>
@@ -1742,13 +1779,20 @@
           <!-- AWSプロバイダ(Bedrock / Claude Platform on AWS) / ADR-0011。SigV4 or APIキー。 -->
           <label>
             {$_("settings.label_aws_region")}
-            <input type="text" bind:value={awsRegion} placeholder="us-east-1" autocomplete="off" />
+            <input
+              id="cfg-aws-region"
+              type="text"
+              bind:value={awsRegion}
+              placeholder="us-east-1"
+              autocomplete="off"
+            />
           </label>
           {#if provider === "claude-aws"}
             <label>
               {$_("settings.label_workspace_id")}
               <input
                 type="text"
+                id="cfg-aws-workspace"
                 bind:value={awsWorkspaceId}
                 placeholder="wrkspc_..."
                 autocomplete="off"
@@ -1778,6 +1822,7 @@
               {$_("settings.label_aws_access_key")}
               <input
                 type="password"
+                id="cfg-aws-access"
                 bind:value={awsAccessKey}
                 placeholder="AKIA..."
                 autocomplete="off"
@@ -1817,6 +1862,7 @@
           <label>
             {$_("settings.api_key_refine", { values: { provider: PROVIDER_LABELS[provider] } })}
             <input
+              id="cfg-api-key"
               type="password"
               bind:value={apiKeys[provider]}
               placeholder={KEY_PLACEHOLDERS[provider]}
@@ -2050,6 +2096,15 @@
     padding: 1.5rem;
     overflow-y: auto;
     z-index: 50;
+  }
+  .settings-error {
+    margin: 0 0 0.8rem;
+    padding: 0.6rem 0.8rem;
+    border-radius: 8px;
+    background: color-mix(in srgb, crimson 14%, transparent);
+    color: color-mix(in srgb, crimson 75%, black);
+    font-size: 0.9rem;
+    font-weight: 600;
   }
   .settings-head {
     display: flex;
