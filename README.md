@@ -57,7 +57,7 @@
 
 インストール後はアプリ内の自動アップデートで最新版に更新されます（配布物の完全性は Tauri updater 署名で担保）。
 
-> **Windows の SmartScreen 警告**: 現在 Windows バイナリは未署名のため「発行元不明」警告が出る場合があります。「詳細情報」→「実行」で起動できます。コード署名は [SignPath Foundation](https://signpath.org/)（OSS向け無償）での整備を進めています。
+> **Windows の SmartScreen 警告**: 現在 Windows バイナリは**未署名**のため「発行元不明」警告が出る場合があります。「詳細情報」→「実行」で起動できます。コード署名は将来対応予定です（プロジェクトの認知が広がり次第、OSS向け署名プログラムへ再申請します）。
 
 詳細は **[ダウンロードページ](https://takenori-kusaka.github.io/QuickScribe/download)** を参照。
 
