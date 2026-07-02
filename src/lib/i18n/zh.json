@@ -34,7 +34,9 @@
     "on_device_desc": "转写和整理都在本设备完成。音频和文字都不会发送到外部。",
     "cloud": "使用云端",
     "cloud_desc": "当前的转写/整理使用云端，因此音频或文字会发送到 API。",
-    "make_offline": "切换为离线"
+    "make_offline": "切换为离线",
+    "offline_mode": "锁定离线模式（禁用云端）",
+    "offline_mode_desc": "开启时，整理与转写固定在本地，且无法选择云端提供商。"
   },
   "settings": {
     "title": "设置",

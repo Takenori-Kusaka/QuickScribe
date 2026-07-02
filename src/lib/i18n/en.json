@@ -34,7 +34,9 @@
     "on_device_desc": "Transcription and refine both run on this device. No audio or text is ever sent out.",
     "cloud": "Cloud is used",
     "cloud_desc": "Your current transcription/refine uses the cloud, so audio or text is sent to an API.",
-    "make_offline": "Switch to offline"
+    "make_offline": "Switch to offline",
+    "offline_mode": "Lock to offline mode (disable cloud)",
+    "offline_mode_desc": "While on, refinement and transcription stay local and cloud providers cannot be selected."
   },
   "settings": {
     "title": "Settings",

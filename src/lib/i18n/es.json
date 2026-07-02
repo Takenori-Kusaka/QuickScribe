@@ -34,7 +34,9 @@
     "on_device_desc": "La transcripción y el refinado se ejecutan en este dispositivo. No se envía ningún audio ni texto.",
     "cloud": "Se usa la nube",
     "cloud_desc": "Tu transcripción/refinado actual usa la nube, por lo que se envía audio o texto a una API.",
-    "make_offline": "Cambiar a sin conexión"
+    "make_offline": "Cambiar a sin conexión",
+    "offline_mode": "Bloquear en modo sin conexión (desactivar la nube)",
+    "offline_mode_desc": "Mientras está activo, el refinado y la transcripción permanecen locales y no se pueden elegir proveedores en la nube."
   },
   "settings": {
     "title": "Ajustes",
