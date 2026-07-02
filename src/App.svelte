@@ -804,6 +804,10 @@
     });
   }
 
+  // 設定のタブ(#512): 一般/録音/文字起こし/整形/出力で目的の設定に素早く到達する。
+  let settingsTab = $state<"general" | "recording" | "transcription" | "refine" | "output">(
+    "general",
+  );
   // 未設定時の動線(#516): 設定パネル内に表示する検証エラーと、不足項目へのフォーカス。
   let settingsError = $state<string>("");
   // エラーコード→フォーカス対象の要素id。該当項目まで誘導する。
@@ -817,6 +821,7 @@
   // 設定を開いて不足項目を明示＋フォーカスする(#516)。整形導線から設定不足時に呼ぶ。
   function openSettingsForConfig(err: RefineConfigError) {
     showSettings = true;
+    settingsTab = "refine"; // 整形の鍵/AWS設定は整形タブにあるため、そのタブへ切替えて誘導。
     settingsError = $_(err.code, { values: err.params });
     const id = configFieldId(err.code);
     if (id) {
@@ -1589,272 +1594,305 @@
         <p class="settings-error" role="alert">{settingsError}{$_("errors.config_suffix")}</p>
       {/if}
 
-      <!-- プライバシー状態インジケータ(#465): 現在の構成が完全オンデバイスか、クラウド送信を
-           伴うかを常時可視化。クラウド時はワンクリックでローカルAIへ切り替えられる。 -->
-      <div class="privacy-status" class:local={isFullyLocal} class:cloud={!isFullyLocal}>
-        <span class="privacy-dot" aria-hidden="true"></span>
-        <div class="privacy-text">
-          <strong>{isFullyLocal ? $_("privacy.on_device") : $_("privacy.cloud")}</strong>
-          <p>{isFullyLocal ? $_("privacy.on_device_desc") : $_("privacy.cloud_desc")}</p>
-        </div>
-        {#if !isFullyLocal && !offlineMode}
-          <button type="button" class="btn small ghost" onclick={makeOffline}
-            >{$_("privacy.make_offline")}</button
+      <!-- 設定タブ(#512): 5分類で目的の設定へ素早く到達する。 -->
+      <div class="settings-tabs" role="tablist">
+        {#each [["general", "tab_general"], ["recording", "tab_recording"], ["transcription", "tab_transcription"], ["refine", "tab_refine"], ["output", "tab_output"]] as [id, key] (id)}
+          <button
+            type="button"
+            role="tab"
+            class="settings-tab"
+            class:active={settingsTab === id}
+            aria-selected={settingsTab === id}
+            onclick={() => (settingsTab = id as typeof settingsTab)}>{$_("settings." + key)}</button
           >
-        {/if}
+        {/each}
       </div>
-      <label class="check">
-        <input
-          type="checkbox"
-          checked={offlineMode}
-          onchange={(e) => setOfflineMode(e.currentTarget.checked)}
-        />
-        {$_("privacy.offline_mode")}
-      </label>
-      <p class="tip">{$_("privacy.offline_mode_desc")}</p>
 
-      <span class="meta-title">{$_("settings.group_hotkey")}</span>
-      <div class="hotkey-row">
-        <button
-          type="button"
-          class="hotkey-capture"
-          class:capturing
-          onclick={startCapture}
-          onkeydown={onCaptureKeydown}
-          onblur={cancelCapture}
-        >
-          {#if capturing}
-            {$_("settings.press_key")}
-          {:else}
-            {displayShortcut(recordShortcut, IS_MAC)}
+      {#if settingsTab === "general"}
+        <!-- プライバシー状態インジケータ(#465): 現在の構成が完全オンデバイスか、クラウド送信を
+           伴うかを常時可視化。クラウド時はワンクリックでローカルAIへ切り替えられる。 -->
+        <div class="privacy-status" class:local={isFullyLocal} class:cloud={!isFullyLocal}>
+          <span class="privacy-dot" aria-hidden="true"></span>
+          <div class="privacy-text">
+            <strong>{isFullyLocal ? $_("privacy.on_device") : $_("privacy.cloud")}</strong>
+            <p>{isFullyLocal ? $_("privacy.on_device_desc") : $_("privacy.cloud_desc")}</p>
+          </div>
+          {#if !isFullyLocal && !offlineMode}
+            <button type="button" class="btn small ghost" onclick={makeOffline}
+              >{$_("privacy.make_offline")}</button
+            >
           {/if}
-        </button>
-        <button type="button" class="btn small ghost" onclick={resetShortcut}
-          >{$_("settings.reset_default")}</button
-        >
-      </div>
-      <p class="tip">
-        {$_("settings.tip_hotkey", { values: { key: displayShortcut(recordShortcut, IS_MAC) } })}
-      </p>
-      {#if shortcutMsg}<p class="muted" role="status" aria-live="polite">{shortcutMsg}</p>{/if}
+        </div>
+        <label class="check">
+          <input
+            type="checkbox"
+            checked={offlineMode}
+            onchange={(e) => setOfflineMode(e.currentTarget.checked)}
+          />
+          {$_("privacy.offline_mode")}
+        </label>
+        <p class="tip">{$_("privacy.offline_mode_desc")}</p>
+      {/if}
 
-      <details class="meta-group" open>
-        <summary class="meta-title">{$_("settings.group_record_mode")}</summary>
-        <div class="device-row">
-          <select bind:value={recordMode} aria-label={$_("settings.group_record_mode")}>
-            <option value="toggle">{$_("settings.mode_toggle")}</option>
-            <option value="momentary">{$_("settings.mode_momentary")}</option>
-          </select>
+      {#if settingsTab === "recording"}
+        <span class="meta-title">{$_("settings.group_hotkey")}</span>
+        <div class="hotkey-row">
+          <button
+            type="button"
+            class="hotkey-capture"
+            class:capturing
+            onclick={startCapture}
+            onkeydown={onCaptureKeydown}
+            onblur={cancelCapture}
+          >
+            {#if capturing}
+              {$_("settings.press_key")}
+            {:else}
+              {displayShortcut(recordShortcut, IS_MAC)}
+            {/if}
+          </button>
+          <button type="button" class="btn small ghost" onclick={resetShortcut}
+            >{$_("settings.reset_default")}</button
+          >
         </div>
         <p class="tip">
-          {$_("settings.tip_momentary_1")}<strong>{$_("settings.tip_momentary_strong")}</strong>{$_(
-            "settings.tip_momentary_2",
-          )}
+          {$_("settings.tip_hotkey", { values: { key: displayShortcut(recordShortcut, IS_MAC) } })}
         </p>
-      </details>
+        {#if shortcutMsg}<p class="muted" role="status" aria-live="polite">{shortcutMsg}</p>{/if}
 
-      <details class="meta-group">
-        <summary class="meta-title">{$_("settings.group_record_source")}</summary>
-        <div class="device-row">
-          <select
-            value={`${inputDeviceKind}|${inputDevice}`}
-            onchange={onSourceChange}
-            aria-label={$_("settings.group_record_source")}
-          >
-            <option value="input|">{$_("settings.source_default_mic")}</option>
-            {#if IS_WINDOWS}
-              <option value="mix|">{$_("settings.source_mix")}</option>
-            {/if}
-            {#each audioSources as s}
-              <option value={`${s.kind}|${s.id}`}>{s.label}</option>
-            {/each}
-          </select>
-          <button type="button" class="btn small ghost" onclick={() => void loadAudioSources()}>
-            {$_("settings.reload")}
-          </button>
-        </div>
-        <p class="tip">{$_("settings.tip_record_source")}</p>
-      </details>
-
-      <details class="meta-group" open>
-        <summary class="meta-title">{$_("settings.group_stt")}</summary>
-        <div class="device-row">
-          <select
-            bind:value={sttProvider}
-            aria-label={$_("settings.group_stt")}
-            disabled={offlineMode}
-          >
-            {#each Object.keys(STT_LABELS) as p}
-              <option value={p}>{STT_LABELS[p as SttProvider]}</option>
-            {/each}
-          </select>
-        </div>
-        {#if STT_CLOUD.includes(sttProvider)}
-          <label>
-            {$_("settings.stt_api_key", { values: { provider: STT_LABELS[sttProvider] } })}
-            <input
-              type="password"
-              bind:value={sttKeys[sttProvider]}
-              placeholder={STT_KEY_PLACEHOLDERS[sttProvider]}
-            />
-          </label>
-          {#if sttProvider === "azure"}
-            <label>
-              {$_("settings.azure_resource")}
-              <input
-                type="text"
-                bind:value={sttAzureResource}
-                placeholder={$_("settings.azure_resource_ph")}
-              />
-            </label>
-          {/if}
-          {#if sttProvider !== "azure"}
-            <label>
-              {$_("settings.stt_model_optional")}
-              <input
-                type="text"
-                bind:value={sttModel}
-                placeholder={STT_MODEL_PLACEHOLDERS[sttProvider]}
-              />
-            </label>
-          {/if}
-          <p class="tip warn">
-            {$_("settings.tip_stt_warn_1")}<strong
-              >{$_("settings.tip_stt_warn_strong", {
-                values: { provider: STT_LABELS[sttProvider] },
-              })}</strong
-            >{$_("settings.tip_stt_warn_2")}
+        <details class="meta-group" open>
+          <summary class="meta-title">{$_("settings.group_record_mode")}</summary>
+          <div class="device-row">
+            <select bind:value={recordMode} aria-label={$_("settings.group_record_mode")}>
+              <option value="toggle">{$_("settings.mode_toggle")}</option>
+              <option value="momentary">{$_("settings.mode_momentary")}</option>
+            </select>
+          </div>
+          <p class="tip">
+            {$_("settings.tip_momentary_1")}<strong>{$_("settings.tip_momentary_strong")}</strong
+            >{$_("settings.tip_momentary_2")}
           </p>
-        {:else}
-          <label>
-            {$_("settings.stt_model")}
-            <select bind:value={whisperModel}>
-              {#each whisperModels as m}
-                <option value={m.id}>{m.label}</option>
+        </details>
+
+        <details class="meta-group">
+          <summary class="meta-title">{$_("settings.group_record_source")}</summary>
+          <div class="device-row">
+            <select
+              value={`${inputDeviceKind}|${inputDevice}`}
+              onchange={onSourceChange}
+              aria-label={$_("settings.group_record_source")}
+            >
+              <option value="input|">{$_("settings.source_default_mic")}</option>
+              {#if IS_WINDOWS}
+                <option value="mix|">{$_("settings.source_mix")}</option>
+              {/if}
+              {#each audioSources as s}
+                <option value={`${s.kind}|${s.id}`}>{s.label}</option>
               {/each}
             </select>
-          </label>
-          <p class="tip">
-            {$_("settings.tip_whisper_1")}<strong>kotoba-whisper</strong>{$_(
-              "settings.tip_whisper_2",
-            )}
-          </p>
-          <p class="tip">{$_("settings.tip_model_download")}</p>
-        {/if}
-      </details>
+            <button type="button" class="btn small ghost" onclick={() => void loadAudioSources()}>
+              {$_("settings.reload")}
+            </button>
+          </div>
+          <p class="tip">{$_("settings.tip_record_source")}</p>
+        </details>
+      {/if}
 
-      <details class="meta-group">
-        <summary class="meta-title">{$_("settings.group_transcribe_meta")}</summary>
-        <label class="check">
-          <input type="checkbox" bind:checked={includeTimestamps} />
-          {$_("settings.include_timestamps")}
-        </label>
-        <p class="tip">{$_("settings.tip_timestamps")}</p>
-        <label class="check">
-          <input type="checkbox" bind:checked={autoPipeline} />
-          {$_("settings.auto_pipeline")}
-        </label>
-        <p class="tip">{$_("settings.tip_auto_pipeline")}</p>
-      </details>
-
-      <details class="meta-group" open>
-        <summary class="meta-title">{$_("settings.group_refine")}</summary>
-        <label>
-          {$_("settings.label_refine_provider")}
-          <select
-            bind:value={provider}
-            onchange={() => resolveCurrentModel()}
-            disabled={offlineMode}
-          >
-            <option value="gemini">Gemini</option>
-            <option value="anthropic">Anthropic (Claude)</option>
-            <option value="openai">OpenAI</option>
-            <option value="ollama">{$_("settings.provider_ollama")}</option>
-            <option value="bedrock">AWS Bedrock</option>
-            <option value="claude-aws">Claude Platform on AWS</option>
-          </select>
-        </label>
-        {#if LOCAL_PROVIDERS.includes(provider)}
-          <p class="muted">
-            {$_("settings.ollama_note_1")}<code>ollama serve</code>{$_(
-              "settings.ollama_note_2",
-            )}<code>ollama pull llama3.1</code>{$_("settings.ollama_note_3")}
-          </p>
-        {:else if AWS_PROVIDERS.includes(provider)}
-          <!-- AWSプロバイダ(Bedrock / Claude Platform on AWS) / ADR-0011。SigV4 or APIキー。 -->
-          <label>
-            {$_("settings.label_aws_region")}
-            <input
-              id="cfg-aws-region"
-              type="text"
-              bind:value={awsRegion}
-              placeholder="us-east-1"
-              autocomplete="off"
-            />
-          </label>
-          {#if provider === "claude-aws"}
-            <label>
-              {$_("settings.label_workspace_id")}
-              <input
-                type="text"
-                id="cfg-aws-workspace"
-                bind:value={awsWorkspaceId}
-                placeholder="wrkspc_..."
-                autocomplete="off"
-              />
-            </label>
-          {/if}
-          {#if provider === "bedrock"}
-            <label>
-              {$_("settings.label_bedrock_model")}
-              <input
-                type="text"
-                bind:value={bedrockModel}
-                placeholder="anthropic.claude-sonnet-4-6"
-                autocomplete="off"
-              />
-            </label>
-          {/if}
-          <label>
-            {$_("settings.label_auth_mode")}
-            <select bind:value={awsAuthMode}>
-              <option value="sigv4">{$_("settings.auth_sigv4")}</option>
-              <option value="apikey">{$_("settings.auth_apikey")}</option>
+      {#if settingsTab === "transcription"}
+        <details class="meta-group" open>
+          <summary class="meta-title">{$_("settings.group_stt")}</summary>
+          <div class="device-row">
+            <select
+              bind:value={sttProvider}
+              aria-label={$_("settings.group_stt")}
+              disabled={offlineMode}
+            >
+              {#each Object.keys(STT_LABELS) as p}
+                <option value={p}>{STT_LABELS[p as SttProvider]}</option>
+              {/each}
             </select>
-          </label>
-          {#if awsAuthMode === "sigv4"}
+          </div>
+          {#if STT_CLOUD.includes(sttProvider)}
             <label>
-              {$_("settings.label_aws_access_key")}
+              {$_("settings.stt_api_key", { values: { provider: STT_LABELS[sttProvider] } })}
               <input
                 type="password"
-                id="cfg-aws-access"
-                bind:value={awsAccessKey}
-                placeholder="AKIA..."
-                autocomplete="off"
+                bind:value={sttKeys[sttProvider]}
+                placeholder={STT_KEY_PLACEHOLDERS[sttProvider]}
               />
             </label>
-            <label>
-              {$_("settings.label_aws_secret_key")}
-              <input
-                type="password"
-                bind:value={awsSecretKey}
-                placeholder="..."
-                autocomplete="off"
-              />
-            </label>
-            <label>
-              {$_("settings.label_aws_session")}
-              <input
-                type="password"
-                bind:value={awsSessionToken}
-                placeholder={$_("settings.session_optional_ph")}
-                autocomplete="off"
-              />
-            </label>
+            {#if sttProvider === "azure"}
+              <label>
+                {$_("settings.azure_resource")}
+                <input
+                  type="text"
+                  bind:value={sttAzureResource}
+                  placeholder={$_("settings.azure_resource_ph")}
+                />
+              </label>
+            {/if}
+            {#if sttProvider !== "azure"}
+              <label>
+                {$_("settings.stt_model_optional")}
+                <input
+                  type="text"
+                  bind:value={sttModel}
+                  placeholder={STT_MODEL_PLACEHOLDERS[sttProvider]}
+                />
+              </label>
+            {/if}
+            <p class="tip warn">
+              {$_("settings.tip_stt_warn_1")}<strong
+                >{$_("settings.tip_stt_warn_strong", {
+                  values: { provider: STT_LABELS[sttProvider] },
+                })}</strong
+              >{$_("settings.tip_stt_warn_2")}
+            </p>
           {:else}
             <label>
-              {$_("settings.api_key_save", { values: { provider: PROVIDER_LABELS[provider] } })}
+              {$_("settings.stt_model")}
+              <select bind:value={whisperModel}>
+                {#each whisperModels as m}
+                  <option value={m.id}>{m.label}</option>
+                {/each}
+              </select>
+            </label>
+            <p class="tip">
+              {$_("settings.tip_whisper_1")}<strong>kotoba-whisper</strong>{$_(
+                "settings.tip_whisper_2",
+              )}
+            </p>
+            <p class="tip">{$_("settings.tip_model_download")}</p>
+          {/if}
+        </details>
+
+        <details class="meta-group">
+          <summary class="meta-title">{$_("settings.group_transcribe_meta")}</summary>
+          <label class="check">
+            <input type="checkbox" bind:checked={includeTimestamps} />
+            {$_("settings.include_timestamps")}
+          </label>
+          <p class="tip">{$_("settings.tip_timestamps")}</p>
+          <label class="check">
+            <input type="checkbox" bind:checked={autoPipeline} />
+            {$_("settings.auto_pipeline")}
+          </label>
+          <p class="tip">{$_("settings.tip_auto_pipeline")}</p>
+        </details>
+      {/if}
+
+      {#if settingsTab === "refine"}
+        <details class="meta-group" open>
+          <summary class="meta-title">{$_("settings.group_refine")}</summary>
+          <label>
+            {$_("settings.label_refine_provider")}
+            <select
+              bind:value={provider}
+              onchange={() => resolveCurrentModel()}
+              disabled={offlineMode}
+            >
+              <option value="gemini">Gemini</option>
+              <option value="anthropic">Anthropic (Claude)</option>
+              <option value="openai">OpenAI</option>
+              <option value="ollama">{$_("settings.provider_ollama")}</option>
+              <option value="bedrock">AWS Bedrock</option>
+              <option value="claude-aws">Claude Platform on AWS</option>
+            </select>
+          </label>
+          {#if LOCAL_PROVIDERS.includes(provider)}
+            <p class="muted">
+              {$_("settings.ollama_note_1")}<code>ollama serve</code>{$_(
+                "settings.ollama_note_2",
+              )}<code>ollama pull llama3.1</code>{$_("settings.ollama_note_3")}
+            </p>
+          {:else if AWS_PROVIDERS.includes(provider)}
+            <!-- AWSプロバイダ(Bedrock / Claude Platform on AWS) / ADR-0011。SigV4 or APIキー。 -->
+            <label>
+              {$_("settings.label_aws_region")}
               <input
+                id="cfg-aws-region"
+                type="text"
+                bind:value={awsRegion}
+                placeholder="us-east-1"
+                autocomplete="off"
+              />
+            </label>
+            {#if provider === "claude-aws"}
+              <label>
+                {$_("settings.label_workspace_id")}
+                <input
+                  type="text"
+                  id="cfg-aws-workspace"
+                  bind:value={awsWorkspaceId}
+                  placeholder="wrkspc_..."
+                  autocomplete="off"
+                />
+              </label>
+            {/if}
+            {#if provider === "bedrock"}
+              <label>
+                {$_("settings.label_bedrock_model")}
+                <input
+                  type="text"
+                  bind:value={bedrockModel}
+                  placeholder="anthropic.claude-sonnet-4-6"
+                  autocomplete="off"
+                />
+              </label>
+            {/if}
+            <label>
+              {$_("settings.label_auth_mode")}
+              <select bind:value={awsAuthMode}>
+                <option value="sigv4">{$_("settings.auth_sigv4")}</option>
+                <option value="apikey">{$_("settings.auth_apikey")}</option>
+              </select>
+            </label>
+            {#if awsAuthMode === "sigv4"}
+              <label>
+                {$_("settings.label_aws_access_key")}
+                <input
+                  type="password"
+                  id="cfg-aws-access"
+                  bind:value={awsAccessKey}
+                  placeholder="AKIA..."
+                  autocomplete="off"
+                />
+              </label>
+              <label>
+                {$_("settings.label_aws_secret_key")}
+                <input
+                  type="password"
+                  bind:value={awsSecretKey}
+                  placeholder="..."
+                  autocomplete="off"
+                />
+              </label>
+              <label>
+                {$_("settings.label_aws_session")}
+                <input
+                  type="password"
+                  bind:value={awsSessionToken}
+                  placeholder={$_("settings.session_optional_ph")}
+                  autocomplete="off"
+                />
+              </label>
+            {:else}
+              <label>
+                {$_("settings.api_key_save", { values: { provider: PROVIDER_LABELS[provider] } })}
+                <input
+                  type="password"
+                  bind:value={apiKeys[provider]}
+                  placeholder={KEY_PLACEHOLDERS[provider]}
+                  autocomplete="off"
+                />
+              </label>
+            {/if}
+            <p class="muted">{$_("settings.secret_local_note")}</p>
+          {:else}
+            <label>
+              {$_("settings.api_key_refine", { values: { provider: PROVIDER_LABELS[provider] } })}
+              <input
+                id="cfg-api-key"
                 type="password"
                 bind:value={apiKeys[provider]}
                 placeholder={KEY_PLACEHOLDERS[provider]}
@@ -1862,199 +1900,191 @@
               />
             </label>
           {/if}
-          <p class="muted">{$_("settings.secret_local_note")}</p>
-        {:else}
+          <p class="muted model-hint">
+            {#if provider === "bedrock"}
+              {$_("settings.model_label")}<code>{bedrockModel || FALLBACK_MODELS[provider]}</code
+              >{$_("settings.model_bedrock_suffix")}
+            {:else if provider === "claude-aws"}
+              {$_("settings.model_label")}<code>{FALLBACK_MODELS[provider]}</code>{$_(
+                "settings.model_claude_aws_suffix",
+              )}
+            {:else}
+              {$_("settings.model_label")}<code
+                >{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code
+              >
+              {#if resolvingModel}{$_(
+                  "settings.model_resolving",
+                )}{:else if resolvedModel[provider]}{$_("settings.model_latest_auto")}{:else}{$_(
+                  "settings.model_latest_midrange",
+                )}{/if}
+            {/if}
+          </p>
           <label>
-            {$_("settings.api_key_refine", { values: { provider: PROVIDER_LABELS[provider] } })}
-            <input
-              id="cfg-api-key"
-              type="password"
-              bind:value={apiKeys[provider]}
-              placeholder={KEY_PLACEHOLDERS[provider]}
-              autocomplete="off"
-            />
+            {$_("settings.label_refine_style")}
+            <select bind:value={refineStyle}>
+              {#each allStyles as s}
+                <option value={s.value} title={s.desc}>{s.label}</option>
+              {/each}
+            </select>
           </label>
-        {/if}
-        <p class="muted model-hint">
-          {#if provider === "bedrock"}
-            {$_("settings.model_label")}<code>{bedrockModel || FALLBACK_MODELS[provider]}</code>{$_(
-              "settings.model_bedrock_suffix",
-            )}
-          {:else if provider === "claude-aws"}
-            {$_("settings.model_label")}<code>{FALLBACK_MODELS[provider]}</code>{$_(
-              "settings.model_claude_aws_suffix",
-            )}
-          {:else}
-            {$_("settings.model_label")}<code
-              >{resolvedModel[provider] || FALLBACK_MODELS[provider]}</code
-            >
-            {#if resolvingModel}{$_(
-                "settings.model_resolving",
-              )}{:else if resolvedModel[provider]}{$_("settings.model_latest_auto")}{:else}{$_(
-                "settings.model_latest_midrange",
-              )}{/if}
-          {/if}
-        </p>
-        <label>
-          {$_("settings.label_refine_style")}
-          <select bind:value={refineStyle}>
-            {#each allStyles as s}
-              <option value={s.value} title={s.desc}>{s.label}</option>
-            {/each}
-          </select>
-        </label>
-        <!-- 選択中スタイルの解説を常時表示(マウスオーバーに頼らず各モードの違いを示す)。 -->
-        <p class="style-desc">{currentStyle.desc}</p>
+          <!-- 選択中スタイルの解説を常時表示(マウスオーバーに頼らず各モードの違いを示す)。 -->
+          <p class="style-desc">{currentStyle.desc}</p>
 
-        <!-- 整形出力言語(翻訳 / #453)。既定OFF。ONにすると出力言語を選べる(progressive disclosure)。
+          <!-- 整形出力言語(翻訳 / #453)。既定OFF。ONにすると出力言語を選べる(progressive disclosure)。
            原語の文字起こしは常に保持し、翻訳は整形結果にのみ適用する。 -->
-        <label class="check">
-          <input type="checkbox" bind:checked={translateOutput} />
-          {$_("settings.translate_output")}
-        </label>
-        {#if translateOutput}
+          <label class="check">
+            <input type="checkbox" bind:checked={translateOutput} />
+            {$_("settings.translate_output")}
+          </label>
+          {#if translateOutput}
+            <label>
+              {$_("settings.output_language")}
+              <select bind:value={outputLang}>
+                {#each LANGUAGES as l}
+                  <option value={l.code}>{l.label}</option>
+                {/each}
+              </select>
+            </label>
+          {/if}
+          <p class="tip">{$_("settings.tip_translate")}</p>
+        </details>
+
+        <!-- カスタム整形パターン(S3.3): ユーザー定義の指示を追加・管理する。 -->
+        <details class="meta-group">
+          <summary class="meta-title">{$_("settings.group_custom_style")}</summary>
+          {#if customStyles.length > 0}
+            <ul class="custom-list">
+              {#each customStyles as c}
+                <li class="custom-item">
+                  <span class="custom-name">{c.label}</span>
+                  <button
+                    type="button"
+                    class="btn small ghost"
+                    onclick={() => removeCustomStyle(c.id)}>{$_("settings.delete")}</button
+                  >
+                </li>
+              {/each}
+            </ul>
+          {/if}
+          <input
+            class="custom-name-input"
+            type="text"
+            bind:value={newCustomLabel}
+            placeholder={$_("settings.custom_name_ph")}
+          />
+          <textarea
+            class="custom-instruction-input"
+            bind:value={newCustomInstruction}
+            rows="4"
+            placeholder={$_("settings.custom_instruction_ph")}></textarea>
+          <button type="button" class="btn small" onclick={addCustomStyle}>
+            {$_("settings.add_custom")}
+          </button>
+          <p class="tip">{$_("settings.tip_custom")}</p>
+        </details>
+      {/if}
+
+      {#if settingsTab === "output"}
+        <details class="meta-group" open>
+          <summary class="meta-title">{$_("settings.group_save")}</summary>
+          <label class="check">
+            <input type="checkbox" bind:checked={keepText} />
+            {$_("settings.keep_text")}
+          </label>
+          <label class="check">
+            <input type="checkbox" bind:checked={saveAudio} />
+            {$_("settings.save_audio")}
+          </label>
+          {#if saveAudio}
+            <label>
+              {$_("settings.audio_format")}
+              <select bind:value={audioFormat}>
+                <option value="opus">{$_("settings.fmt_opus")}</option>
+                <option value="wav">{$_("settings.fmt_wav")}</option>
+              </select>
+            </label>
+            <p class="tip">{$_("settings.tip_audio_format")}</p>
+          {/if}
+          <div class="dir-row">
+            <span class="tip"
+              >{$_("settings.save_dir", {
+                values: { dir: saveDir || $_("settings.save_dir_default") },
+              })}</span
+            >
+            <button class="btn small ghost" onclick={pickSaveDir}>{$_("settings.change")}</button>
+            <button class="btn small ghost" onclick={openVault}>{$_("settings.open_output")}</button
+            >
+          </div>
           <label>
-            {$_("settings.output_language")}
-            <select bind:value={outputLang}>
-              {#each LANGUAGES as l}
+            {$_("settings.output_format")}
+            <select bind:value={outputFormat}>
+              <option value="txt">{$_("settings.out_txt")}</option>
+              <option value="md">{$_("settings.out_md")}</option>
+            </select>
+          </label>
+          <p class="tip">
+            {$_("settings.tip_output_1")}<strong>{$_("settings.tip_output_strong")}</strong>{$_(
+              "settings.tip_output_2",
+            )}<code>transcript-…</code>{$_("settings.tip_output_3")}<code>refined-…</code>{$_(
+              "settings.tip_output_4",
+            )}
+          </p>
+        </details>
+      {/if}
+
+      {#if settingsTab === "general"}
+        <details class="meta-group">
+          <summary class="meta-title">{$_("settings.group_app")}</summary>
+          <label>
+            {$_("settings.language")}
+            <select
+              value={($locale ?? "ja").split("-")[0]}
+              onchange={(e) => {
+                locale.set(e.currentTarget.value);
+                localStorage.setItem(LOCALE_STORAGE_KEY, e.currentTarget.value);
+              }}
+            >
+              {#each LANGUAGES.filter((l) => l.ui) as l}
                 <option value={l.code}>{l.label}</option>
               {/each}
             </select>
           </label>
-        {/if}
-        <p class="tip">{$_("settings.tip_translate")}</p>
-      </details>
-
-      <!-- カスタム整形パターン(S3.3): ユーザー定義の指示を追加・管理する。 -->
-      <details class="meta-group">
-        <summary class="meta-title">{$_("settings.group_custom_style")}</summary>
-        {#if customStyles.length > 0}
-          <ul class="custom-list">
-            {#each customStyles as c}
-              <li class="custom-item">
-                <span class="custom-name">{c.label}</span>
-                <button
-                  type="button"
-                  class="btn small ghost"
-                  onclick={() => removeCustomStyle(c.id)}>{$_("settings.delete")}</button
-                >
-              </li>
-            {/each}
-          </ul>
-        {/if}
-        <input
-          class="custom-name-input"
-          type="text"
-          bind:value={newCustomLabel}
-          placeholder={$_("settings.custom_name_ph")}
-        />
-        <textarea
-          class="custom-instruction-input"
-          bind:value={newCustomInstruction}
-          rows="4"
-          placeholder={$_("settings.custom_instruction_ph")}></textarea>
-        <button type="button" class="btn small" onclick={addCustomStyle}>
-          {$_("settings.add_custom")}
-        </button>
-        <p class="tip">{$_("settings.tip_custom")}</p>
-      </details>
-
-      <details class="meta-group" open>
-        <summary class="meta-title">{$_("settings.group_save")}</summary>
-        <label class="check">
-          <input type="checkbox" bind:checked={keepText} />
-          {$_("settings.keep_text")}
-        </label>
-        <label class="check">
-          <input type="checkbox" bind:checked={saveAudio} />
-          {$_("settings.save_audio")}
-        </label>
-        {#if saveAudio}
-          <label>
-            {$_("settings.audio_format")}
-            <select bind:value={audioFormat}>
-              <option value="opus">{$_("settings.fmt_opus")}</option>
-              <option value="wav">{$_("settings.fmt_wav")}</option>
-            </select>
-          </label>
-          <p class="tip">{$_("settings.tip_audio_format")}</p>
-        {/if}
-        <div class="dir-row">
-          <span class="tip"
-            >{$_("settings.save_dir", {
-              values: { dir: saveDir || $_("settings.save_dir_default") },
-            })}</span
-          >
-          <button class="btn small ghost" onclick={pickSaveDir}>{$_("settings.change")}</button>
-          <button class="btn small ghost" onclick={openVault}>{$_("settings.open_output")}</button>
-        </div>
-        <label>
-          {$_("settings.output_format")}
-          <select bind:value={outputFormat}>
-            <option value="txt">{$_("settings.out_txt")}</option>
-            <option value="md">{$_("settings.out_md")}</option>
-          </select>
-        </label>
-        <p class="tip">
-          {$_("settings.tip_output_1")}<strong>{$_("settings.tip_output_strong")}</strong>{$_(
-            "settings.tip_output_2",
-          )}<code>transcript-…</code>{$_("settings.tip_output_3")}<code>refined-…</code>{$_(
-            "settings.tip_output_4",
-          )}
-        </p>
-      </details>
-
-      <details class="meta-group">
-        <summary class="meta-title">{$_("settings.group_app")}</summary>
-        <label>
-          {$_("settings.language")}
-          <select
-            value={($locale ?? "ja").split("-")[0]}
-            onchange={(e) => {
-              locale.set(e.currentTarget.value);
-              localStorage.setItem(LOCALE_STORAGE_KEY, e.currentTarget.value);
-            }}
-          >
-            {#each LANGUAGES.filter((l) => l.ui) as l}
-              <option value={l.code}>{l.label}</option>
-            {/each}
-          </select>
-        </label>
-        {#if IS_WINDOWS}
+          {#if IS_WINDOWS}
+            <label class="check">
+              <input type="checkbox" bind:checked={taskbarWidget} />
+              {$_("settings.taskbar_widget")}
+            </label>
+            <p class="tip">{$_("settings.tip_taskbar")}</p>
+          {/if}
           <label class="check">
-            <input type="checkbox" bind:checked={taskbarWidget} />
-            {$_("settings.taskbar_widget")}
+            <input
+              type="checkbox"
+              bind:checked={autoStart}
+              onchange={() => void onAutoStartChange()}
+            />
+            {$_("settings.autostart")}
           </label>
-          <p class="tip">{$_("settings.tip_taskbar")}</p>
-        {/if}
-        <label class="check">
-          <input
-            type="checkbox"
-            bind:checked={autoStart}
-            onchange={() => void onAutoStartChange()}
-          />
-          {$_("settings.autostart")}
-        </label>
-        <p class="tip">{$_("settings.tip_autostart")}</p>
-        <!-- オンボーディングを再表示する導線(#397)。一度閉じると出なくなるため、後から見返せるように。 -->
-        <button
-          type="button"
-          class="btn small ghost"
-          onclick={() => {
-            showSettings = false;
-            showOnboarding = true;
-          }}>{$_("settings.show_onboarding")}</button
-        >
-        <p class="tip">{$_("settings.tip_show_onboarding")}</p>
-      </details>
+          <p class="tip">{$_("settings.tip_autostart")}</p>
+          <!-- オンボーディングを再表示する導線(#397)。一度閉じると出なくなるため、後から見返せるように。 -->
+          <button
+            type="button"
+            class="btn small ghost"
+            onclick={() => {
+              showSettings = false;
+              showOnboarding = true;
+            }}>{$_("settings.show_onboarding")}</button
+          >
+          <p class="tip">{$_("settings.tip_show_onboarding")}</p>
+        </details>
 
-      <!-- このアプリについて（ライセンス表示 / #394 監査項目5）。OSS帰属をアプリ内で明示。 -->
-      <details class="meta-group">
-        <summary class="meta-title">{$_("settings.group_about")}</summary>
-        <p class="tip">QuickScribe — {$_("settings.about_license")}</p>
-        <p class="tip">{$_("settings.about_oss")}</p>
-        <p class="tip">{$_("settings.about_repo")}: github.com/Takenori-Kusaka/QuickScribe</p>
-      </details>
+        <!-- このアプリについて（ライセンス表示 / #394 監査項目5）。OSS帰属をアプリ内で明示。 -->
+        <details class="meta-group">
+          <summary class="meta-title">{$_("settings.group_about")}</summary>
+          <p class="tip">QuickScribe — {$_("settings.about_license")}</p>
+          <p class="tip">{$_("settings.about_oss")}</p>
+          <p class="tip">{$_("settings.about_repo")}: github.com/Takenori-Kusaka/QuickScribe</p>
+        </details>
+      {/if}
 
       <div class="settings-actions">
         <button class="btn small" onclick={saveSettings}>{$_("settings.save")}</button>
@@ -2101,6 +2131,29 @@
     padding: 1.5rem;
     overflow-y: auto;
     z-index: 50;
+  }
+  .settings-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+    padding-bottom: 0.5rem;
+  }
+  .settings-tab {
+    padding: 0.35rem 0.8rem;
+    border: none;
+    border-radius: 8px 8px 0 0;
+    background: transparent;
+    color: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    opacity: 0.6;
+  }
+  .settings-tab.active {
+    opacity: 1;
+    background: color-mix(in srgb, currentColor 10%, transparent);
   }
   .settings-error {
     margin: 0 0 0.8rem;

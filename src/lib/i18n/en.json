@@ -40,6 +40,11 @@
   },
   "settings": {
     "title": "Settings",
+    "tab_general": "General",
+    "tab_recording": "Recording",
+    "tab_transcription": "Transcription",
+    "tab_refine": "Refine",
+    "tab_output": "Output",
     "language": "Language",
     "group_custom_style": "Custom refine patterns",
     "group_hotkey": "Record start/stop hotkey",

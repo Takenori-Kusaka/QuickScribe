@@ -40,6 +40,11 @@
   },
   "settings": {
     "title": "Ajustes",
+    "tab_general": "General",
+    "tab_recording": "Grabación",
+    "tab_transcription": "Transcripción",
+    "tab_refine": "Refinado",
+    "tab_output": "Salida",
     "language": "Idioma",
     "group_custom_style": "Patrones de refinado personalizados",
     "group_hotkey": "Atajo de inicio/parada de grabación",

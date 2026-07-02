@@ -105,6 +105,11 @@ beforeEach(() => {
   localStorage.setItem("autoPipeline", "true");
 });
 
+// 設定タブ(#512)を開く。設定ダイアログを開いた後に対象タブへ切替える。
+async function gotoTab(name: string) {
+  await fireEvent.click(await screen.findByRole("tab", { name }));
+}
+
 // listen の登録は onMount 内で非同期に走る。登録完了を待つ。
 async function waitForListeners() {
   for (let i = 0; i < 50 && !listeners.has("transcribe-done"); i++) {
@@ -170,6 +175,22 @@ describe("App.svelte メモ整形フロー", () => {
 });
 
 describe("App.svelte 設定操作", () => {
+  it("設定タブを切替えると各カテゴリの内容が表示される(#512)", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    // 一般: オフラインモード。
+    expect(await screen.findByLabelText(/オフラインモードで固定/)).toBeInTheDocument();
+    await gotoTab("録音");
+    expect(await screen.findByText("録音モード")).toBeInTheDocument();
+    await gotoTab("文字起こし");
+    const combos = screen.getAllByRole("combobox") as HTMLSelectElement[];
+    expect(combos.some((c) => c.value === "local")).toBe(true);
+    await gotoTab("整形");
+    expect(await screen.findByLabelText("整形プロバイダ")).toBeInTheDocument();
+    await gotoTab("出力");
+    expect(await screen.findByLabelText("録音音声を保存")).toBeInTheDocument();
+  });
+
   it("設定の保存で set_save_settings が呼ばれる", async () => {
     render(App);
     await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
@@ -194,14 +215,17 @@ describe("App.svelte 設定操作", () => {
     await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
     const cb = (await screen.findByLabelText(/オフラインモードで固定/)) as HTMLInputElement;
     await fireEvent.click(cb);
+    // 一般タブでオンデバイス表示を確認 → 整形タブでプロバイダ選択が無効化されていること。
+    expect(await screen.findByText("オンデバイス完結")).toBeInTheDocument();
+    await gotoTab("整形");
     const providerSelect = (await screen.findByLabelText("整形プロバイダ")) as HTMLSelectElement;
     expect(providerSelect.disabled).toBe(true);
-    expect(await screen.findByText("オンデバイス完結")).toBeInTheDocument();
   });
 
   it("翻訳トグルをONにすると出力言語ピッカーが現れる", async () => {
     render(App);
     await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    await gotoTab("整形");
     const cb = (await screen.findByLabelText(/翻訳して出力/)) as HTMLInputElement;
     expect(cb.checked).toBe(false);
     await fireEvent.click(cb);
@@ -212,6 +236,7 @@ describe("App.svelte 設定操作", () => {
   it("カスタム整形: ラベルと指示が空だとエラー", async () => {
     render(App);
     await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    await gotoTab("整形");
     // カスタム整形の追加ボタン（指示未入力）を押すとエラー。
     const addBtn = await screen.findByRole("button", { name: /追加/ });
     await fireEvent.click(addBtn);
@@ -331,6 +356,7 @@ describe("App.svelte カスタム整形パターン", () => {
   it("ラベルと指示を入力して追加すると一覧に現れる", async () => {
     render(App);
     await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    await gotoTab("整形");
     // カスタム整形パターンは折りたたみ <details> 内なので開く。
     await fireEvent.click(await screen.findByText("カスタム整形パターン"));
     const nameInput = await screen.findByPlaceholderText(/パターン名/);
@@ -358,6 +384,7 @@ describe("App.svelte AWSプロバイダ", () => {
   it("プロバイダを Bedrock にすると region 入力が現れる", async () => {
     render(App);
     await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    await gotoTab("整形");
     const providerSelect = (await screen.findByLabelText("整形プロバイダ")) as HTMLSelectElement;
     await fireEvent.change(providerSelect, { target: { value: "bedrock" } });
     expect(await screen.findByPlaceholderText("us-east-1")).toBeInTheDocument();
@@ -366,6 +393,7 @@ describe("App.svelte AWSプロバイダ", () => {
   it("STTをクラウド(OpenAI)にするとAPIキー欄が現れる", async () => {
     render(App);
     await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    await gotoTab("文字起こし");
     // STTプロバイダの select は value=local で一意に特定できる。
     const combos = screen.getAllByRole("combobox") as HTMLSelectElement[];
     const sttSelect = combos.find((c) => c.value === "local")!;
@@ -423,6 +451,7 @@ describe("App.svelte 音声保存設定", () => {
   it("録音音声を保存をONにすると音声形式の選択が現れる", async () => {
     render(App);
     await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    await gotoTab("出力");
     const cb = (await screen.findByLabelText("録音音声を保存")) as HTMLInputElement;
     await fireEvent.click(cb);
     expect(await screen.findByLabelText("音声形式")).toBeInTheDocument();
@@ -431,6 +460,7 @@ describe("App.svelte 音声保存設定", () => {
   it("STTをAzureにすると Azure リソース欄が現れる", async () => {
     render(App);
     await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    await gotoTab("文字起こし");
     const combos = screen.getAllByRole("combobox") as HTMLSelectElement[];
     const sttSelect = combos.find((c) => c.value === "local")!;
     await fireEvent.change(sttSelect, { target: { value: "azure" } });
@@ -529,6 +559,7 @@ describe("App.svelte 追加フロー", () => {
   it("STTをクラウドにして保存すると set_stt_settings が呼ばれる", async () => {
     render(App);
     await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    await gotoTab("文字起こし");
     const combos = screen.getAllByRole("combobox") as HTMLSelectElement[];
     const sttSelect = combos.find((c) => c.value === "local")!;
     await fireEvent.change(sttSelect, { target: { value: "openai" } });
