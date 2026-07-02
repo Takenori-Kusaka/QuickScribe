@@ -1131,6 +1131,53 @@
       </div>
     {/if}
 
+    <!-- オンボーディングは操作ボタンより上部に置き、初回に最初に認識させる(#510)。 -->
+    {#if showOnboarding && !recording && !busy && !transcribing && !status && !transcript && !refined}
+      <section class="onboarding-card" aria-labelledby="onboarding-title">
+        <div class="onboarding-head">
+          <h2 id="onboarding-title">{$_("onboarding.title")}</h2>
+          <button
+            class="close"
+            aria-label={$_("onboarding.skip")}
+            onclick={dismissOnboarding}
+            onkeydown={(e) => {
+              if (e.key === "Escape") dismissOnboarding();
+            }}>×</button
+          >
+        </div>
+        <p class="onboarding-local">{$_("onboarding.local_note")}</p>
+        <ol class="onboarding-steps">
+          <li>
+            <span class="onboarding-step-n" aria-hidden="true">1</span>
+            <div>
+              <strong>{$_("onboarding.step1_title")}</strong>
+              <p>{$_("onboarding.step1_desc")}</p>
+            </div>
+          </li>
+          <li>
+            <span class="onboarding-step-n" aria-hidden="true">2</span>
+            <div>
+              <strong>{$_("onboarding.step2_title")}</strong>
+              <p>{$_("onboarding.step2_desc")}</p>
+            </div>
+          </li>
+          <li>
+            <span class="onboarding-step-n" aria-hidden="true">3</span>
+            <div>
+              <strong>{$_("onboarding.step3_title")}</strong>
+              <p>{$_("onboarding.step3_desc")}</p>
+            </div>
+          </li>
+        </ol>
+        <div class="onboarding-actions">
+          <button class="btn small" onclick={trySample}>{$_("onboarding.try_sample")}</button>
+          <button class="btn small ghost" onclick={dismissOnboarding}
+            >{$_("onboarding.start")}</button
+          >
+        </div>
+      </section>
+    {/if}
+
     <div class="actions">
       <button
         class="btn primary"
@@ -1186,51 +1233,7 @@
     <!-- 初回オンボーディング（#397）: 初回はコア体験3ステップ＋ローカル完結を非ブロッキングの
          インラインカードで案内（リッチすぎて簡便さを損なわないよう、操作を妨げない）。
          以降の空状態では軽量な「まず録音」導線のみ。 -->
-    {#if showOnboarding && !recording && !busy && !transcribing && !status && !transcript && !refined}
-      <section class="onboarding-card" aria-labelledby="onboarding-title">
-        <div class="onboarding-head">
-          <h2 id="onboarding-title">{$_("onboarding.title")}</h2>
-          <button
-            class="close"
-            aria-label={$_("onboarding.skip")}
-            onclick={dismissOnboarding}
-            onkeydown={(e) => {
-              if (e.key === "Escape") dismissOnboarding();
-            }}>×</button
-          >
-        </div>
-        <p class="onboarding-local">{$_("onboarding.local_note")}</p>
-        <ol class="onboarding-steps">
-          <li>
-            <span class="onboarding-step-n" aria-hidden="true">1</span>
-            <div>
-              <strong>{$_("onboarding.step1_title")}</strong>
-              <p>{$_("onboarding.step1_desc")}</p>
-            </div>
-          </li>
-          <li>
-            <span class="onboarding-step-n" aria-hidden="true">2</span>
-            <div>
-              <strong>{$_("onboarding.step2_title")}</strong>
-              <p>{$_("onboarding.step2_desc")}</p>
-            </div>
-          </li>
-          <li>
-            <span class="onboarding-step-n" aria-hidden="true">3</span>
-            <div>
-              <strong>{$_("onboarding.step3_title")}</strong>
-              <p>{$_("onboarding.step3_desc")}</p>
-            </div>
-          </li>
-        </ol>
-        <div class="onboarding-actions">
-          <button class="btn small" onclick={trySample}>{$_("onboarding.try_sample")}</button>
-          <button class="btn small ghost" onclick={dismissOnboarding}
-            >{$_("onboarding.start")}</button
-          >
-        </div>
-      </section>
-    {:else if !recording && !busy && !transcribing && !status && !transcript && !refined}
+    {#if !showOnboarding && !recording && !busy && !transcribing && !status && !transcript && !refined}
       <p class="empty-cta">
         {$_("main.empty_cta", { values: { key: displayShortcut(recordShortcut, IS_MAC) } })}
       </p>
