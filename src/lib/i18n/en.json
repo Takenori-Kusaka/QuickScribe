@@ -4,7 +4,7 @@
     "record_start": "Start recording",
     "record_stop": "Stop",
     "from_file": "Transcribe from audio file",
-    "from_memo": "Refine from memo / text",
+    "from_memo": "Refine from a note/transcript",
     "formats_hint": "Supported: audio {exts} (max {max}MB) · text txt / md",
     "hotkey_hint": "Recording hotkey: {key} (change in Settings)",
     "empty_cta": "Start by recording. Press the mic button or {key} to begin speaking."

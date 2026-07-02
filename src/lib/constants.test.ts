@@ -47,12 +47,11 @@ describe("STTプロバイダ定義の整合(SSOT)", () => {
 });
 
 describe("整形スタイルと定数", () => {
-  it("REFINE_STYLES の value は一意で主要4スタイルを含む", () => {
+  it("REFINE_STYLES の value は一意で主要3スタイルを含む(ブレストは#514で除外)", () => {
     const values = REFINE_STYLES.map((s) => s.value);
     expect(new Set(values).size).toBe(values.length);
-    expect(values).toEqual(
-      expect.arrayContaining(["structured", "verbatim", "summary", "brainstorm"]),
-    );
+    expect(values).toEqual(expect.arrayContaining(["structured", "verbatim", "summary"]));
+    expect(values).not.toContain("brainstorm");
     for (const s of REFINE_STYLES) expect(s.desc.length).toBeGreaterThan(0);
   });
 

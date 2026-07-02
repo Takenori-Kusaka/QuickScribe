@@ -4,7 +4,7 @@
     "record_start": "Empezar a grabar",
     "record_stop": "Detener",
     "from_file": "Transcribir desde archivo de audio",
-    "from_memo": "Refinar desde nota / texto",
+    "from_memo": "Refinar desde una nota/transcripción",
     "formats_hint": "Compatibles: audio {exts} (máx. {max}MB) · texto txt / md",
     "hotkey_hint": "Atajo de grabación: {key} (cámbialo en Ajustes)",
     "empty_cta": "Empieza grabando. Pulsa el botón del micrófono o {key} para empezar a hablar."
