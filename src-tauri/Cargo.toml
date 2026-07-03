@@ -37,7 +37,7 @@ hex = "0.4"
 # 物理コア数の取得（whisperスレッド数の最適化。論理コア全指定は逆効果）。
 num_cpus = "1"
 # whisperモデルの初回自動取得(HTTPダウンロード)+整形APIのJSON送受信。
-ureq = { version = "2", features = ["json"] }
+ureq = { version = "3", features = ["json"] }
 # マイク録音(S1.1)。既定入力デバイスからのキャプチャ(Win:WASAPI / Linux:ALSA)。
 cpal = "0.15"
 # 録音音声の保存(WAV / 純Rust・依存ゼロ・確実)。
