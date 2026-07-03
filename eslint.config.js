@@ -32,7 +32,8 @@ export default ts.config(
     },
   },
   {
-    files: ["**/*.svelte"],
+    // .svelte に加え、Svelte5 runes モジュール(.svelte.ts/.svelte.js / #392)も TS パーサで解析する。
+    files: ["**/*.svelte", "**/*.svelte.ts", "**/*.svelte.js"],
     languageOptions: {
       parserOptions: { parser: ts.parser },
     },
