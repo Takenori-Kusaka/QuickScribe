@@ -8,8 +8,11 @@ export interface DiscoveryItem {
 }
 
 /**
- * 横断発見の対象エントリを上限件数で切り出す。
- * プロンプト肥大を避けるため max 件まで。truncated は超過したか。
+ * 横断発見の対象エントリを上限件数で切り出す（プロンプト肥大の防止）。
+ * @typeParam T エントリ型（本関数は先頭 max 件を取るだけで内容に依存しない）。
+ * @param entries 対象候補（絞り込み済みの順序を尊重する）。
+ * @param max 取り出す最大件数。
+ * @returns `targets`（先頭 max 件）と `truncated`（超過したか）。
  */
 export function selectDiscoveryTargets<T>(
   entries: T[],
@@ -21,6 +24,8 @@ export function selectDiscoveryTargets<T>(
 /**
  * 対象エントリ群を、AIへ渡す単一テキストへ整形する。
  * 各エントリは `### <日時> #tag...` の見出し＋本文、区切りは `---`。
+ * @param items 整形対象のエントリ（日時・タグ・本文）。
+ * @returns 連結した単一プロンプトテキスト。
  */
 export function buildDiscoveryText(items: DiscoveryItem[]): string {
   return items

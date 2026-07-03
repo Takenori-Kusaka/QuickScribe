@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "docs:check": "npx -y typedoc@0.28.5",
     "test": "vitest run",
     "coverage": "vitest run --coverage",
     "e2e": "wdio run e2e/wdio.conf.cjs",

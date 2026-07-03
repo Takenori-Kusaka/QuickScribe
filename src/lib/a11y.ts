@@ -19,11 +19,14 @@ export interface ModalOptions {
 }
 
 /**
- * モーダル要素に適用する Svelte アクション。
+ * モーダル要素に適用する Svelte アクション（`use:modal={{ onClose }}`）。
  * - マウント時: トリガー要素を記憶し、最初のフォーカス可能要素へフォーカス移動。
- * - Escape: onClose() を呼ぶ。
+ * - Escape: `onClose()` を呼ぶ。
  * - Tab/Shift+Tab: モーダル内で循環（フォーカストラップ）。
  * - 破棄時: 記憶したトリガー要素へフォーカスを復帰。
+ * @param node アクションを適用するモーダルのルート要素。
+ * @param opts オプション（`onClose`: Escape 押下時のクローズ処理）。
+ * @returns Svelte アクションのライフサイクル（`update`/`destroy`）。
  */
 export function modal(node: HTMLElement, opts: ModalOptions) {
   let options = opts;

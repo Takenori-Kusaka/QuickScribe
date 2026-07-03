@@ -1,9 +1,9 @@
 // 保管庫エントリ／タグ関連の純粋関数（#402）。App.svelte から抽出してテスト可能化。
 
 /**
- * エントリ種別を i18n キーへ（#401）。未知の値はそのまま返す。
- * 呼び出し側で `$_(kindLabel(kind))` のように翻訳する。キー欠如時は
- * svelte-i18n がキー文字列を返すため、未知値はそのまま表示される。
+ * エントリ種別を i18n キーへ（#401）。呼び出し側で `$_(kindLabel(kind))` と翻訳する。
+ * @param kind 種別文字列（transcript/refined/note など）。
+ * @returns 対応する i18n キー。未知の値はそのまま返す（キー欠如時に素通し表示）。
  */
 export function kindLabel(kind: string): string {
   switch (kind) {
@@ -27,8 +27,11 @@ export interface FilterableEntry {
 
 /**
  * エントリを検索語と選択タグで絞り込む（純粋 / #402・#392）。
- * - selectedTags: 指定タグを全て含む（AND）ものだけ通す。
- * - query: 空なら全通し。非空ならファイル名/本文プレビュー/タグの部分一致（大文字小文字無視）。
+ * @typeParam T 少なくとも {@link FilterableEntry} を満たすエントリ型。
+ * @param entries 絞り込み対象のエントリ配列。
+ * @param query 検索語（空なら全通し。非空ならファイル名/本文プレビュー/タグの部分一致・大小無視）。
+ * @param selectedTags AND 条件のタグ（指定タグを全て含むものだけ通す）。既定は空。
+ * @returns 条件を満たすエントリのみを含む新しい配列。
  */
 export function filterEntries<T extends FilterableEntry>(
   entries: T[],
@@ -47,6 +50,8 @@ export function filterEntries<T extends FilterableEntry>(
 /**
  * 入力文字列をタグ配列へ変換する。
  * カンマ/全角カンマ/空白区切り、前後空白除去、先頭の # 除去、空・重複は除く。
+ * @param s ユーザー入力のタグ文字列。
+ * @returns 正規化済みのタグ配列（順序維持・重複排除）。
  */
 export function parseTags(s: string): string[] {
   const seen = new Set<string>();

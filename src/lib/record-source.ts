@@ -8,7 +8,11 @@ export interface RecordSource {
   id: string;
 }
 
-/** "kind|id" を分解する（純粋）。最初の '|' で区切り、id 側の '|' は温存。区切り無しは kind のみ。 */
+/**
+ * "kind|id" を分解する（純粋）。最初の '|' で区切り、id 側の '|' は温存する。
+ * @param value プルダウンの値（"kind|id"。区切り無しは種別のみ）。
+ * @returns 種別 `kind` とデバイス `id`（区切り無しなら id は ""）。
+ */
 export function parseRecordSource(value: string): RecordSource {
   const sep = value.indexOf("|");
   if (sep < 0) return { kind: value, id: "" };

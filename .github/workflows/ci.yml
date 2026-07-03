@@ -38,6 +38,9 @@ jobs:
         run: npm run lint
       - name: Prettier (format check)
         run: npm run format:check
+      - name: TSDoc (typedoc, warnings as errors / #393)
+        # lib の TSDoc をリンク切れ含め検証（emit なし）。npx 実行で package-lock を汚さない。
+        run: npx -y typedoc@0.28.5
       - name: Frontend license notices up to date (#394)
         run: |
           npm run licenses

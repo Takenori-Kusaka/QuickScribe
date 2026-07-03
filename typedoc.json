@@ -1,0 +1,15 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/lib"],
+  "entryPointStrategy": "expand",
+  "exclude": ["**/*.test.ts", "**/*.svelte.ts", "src/lib/i18n/**", "src/lib/constants.ts"],
+  "emit": "none",
+  "readme": "none",
+  "validation": {
+    "notExported": false,
+    "invalidLink": true,
+    "notDocumented": false
+  },
+  "treatWarningsAsErrors": true,
+  "excludeInternal": true
+}
