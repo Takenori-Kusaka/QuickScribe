@@ -89,6 +89,19 @@ pub const E_OPUS_ENCODE: &str = "E_OPUS_ENCODE";
 pub const E_OPUS_PACKET: &str = "E_OPUS_PACKET";
 pub const E_OPUS_EXPORT: &str = "E_OPUS_EXPORT";
 
+// ---- refine.rs（整形エンジンのユーザー向けエラー。プロンプト文字列は対象外）----
+pub const E_REFINE_EMPTY_INPUT: &str = "E_REFINE_EMPTY_INPUT";
+pub const E_REFINE_HTTP: &str = "E_REFINE_HTTP";
+pub const E_REFINE_EMPTY_RESULT: &str = "E_REFINE_EMPTY_RESULT";
+pub const E_REFINE_NO_KEY: &str = "E_REFINE_NO_KEY";
+pub const E_REFINE_GEMINI_NO_KEY: &str = "E_REFINE_GEMINI_NO_KEY";
+pub const E_REFINE_ANTHROPIC_NO_KEY: &str = "E_REFINE_ANTHROPIC_NO_KEY";
+pub const E_REFINE_OPENAI_NO_KEY: &str = "E_REFINE_OPENAI_NO_KEY";
+pub const E_REFINE_AWS_NO_KEYS: &str = "E_REFINE_AWS_NO_KEYS";
+pub const E_REFINE_AWS_NO_REGION: &str = "E_REFINE_AWS_NO_REGION";
+pub const E_REFINE_MODELS_HTTP: &str = "E_REFINE_MODELS_HTTP";
+pub const E_REFINE_NO_SONNET: &str = "E_REFINE_NO_SONNET";
+
 /// 全コードの SSOT（一意性テストとフロント側パリティ検証の基準）。
 pub const ALL: &[&str] = &[
     E_LOCK_STT,
@@ -151,6 +164,17 @@ pub const ALL: &[&str] = &[
     E_OPUS_ENCODE,
     E_OPUS_PACKET,
     E_OPUS_EXPORT,
+    E_REFINE_EMPTY_INPUT,
+    E_REFINE_HTTP,
+    E_REFINE_EMPTY_RESULT,
+    E_REFINE_NO_KEY,
+    E_REFINE_GEMINI_NO_KEY,
+    E_REFINE_ANTHROPIC_NO_KEY,
+    E_REFINE_OPENAI_NO_KEY,
+    E_REFINE_AWS_NO_KEYS,
+    E_REFINE_AWS_NO_REGION,
+    E_REFINE_MODELS_HTTP,
+    E_REFINE_NO_SONNET,
 ];
 
 #[cfg(test)]
