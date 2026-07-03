@@ -13,9 +13,9 @@
   import { parseCorrections, applyCorrections, type Correction } from "./lib/corrections";
   import { errorText } from "./lib/errors";
   import { modal } from "./lib/a11y";
-  import { displayShortcut, accelFromEvent } from "./lib/shortcut";
   import { kindLabel } from "./lib/entry";
   import { createVaultView } from "./lib/vault-view.svelte";
+  import { createShortcut } from "./lib/shortcut-store.svelte";
   import { getSecret, setSecret, loadSecretMigrating } from "./lib/secrets";
   import { parseRecordSource } from "./lib/record-source";
   import { validateRefineConfig, type RefineConfigError } from "./lib/provider-config";
@@ -42,7 +42,6 @@
     REFINE_STYLES,
     MODEL_TTL_MS,
     DISCOVERY_MAX,
-    DEFAULT_SHORTCUT,
     MAX_INPUT_MB,
     SUPPORTED_AUDIO_EXTS,
     LANGUAGES,
@@ -178,19 +177,11 @@
   // AWS Bedrock のモデルID(リージョン/アカウント依存のため手入力可)。
   let bedrockModel = $state<string>("");
 
-  // 録音トグルのグローバルホットキー。内部・保存・登録は Tauri アクセラレータ表記
-  // ("CommandOrControl+Shift+R")だが、表示は実行環境に合わせて Ctrl/Cmd に変換する。
-  let recordShortcut = $state<string>(DEFAULT_SHORTCUT);
-  let shortcutMsg = $state<string>("");
+  // 録音トグルのグローバルホットキー（状態＋キャプチャ／登録は lib/shortcut-store へ集約 / #392）。
+  const shortcut = createShortcut($_);
   // 録音モード（S1.5 / ADR-0014）: toggle=1押しで開始/停止 / momentary=押している間だけ録音。
   let recordMode = $state<"toggle" | "momentary">("toggle");
-  // ホットキーのキャプチャモード（変更ボタン押下中＝キー入力待ち）。
-  let capturing = $state<boolean>(false);
 
-  // 実行環境(OS)を判定し、修飾キーを親しみやすい表記にする。
-  const IS_MAC =
-    typeof navigator !== "undefined" &&
-    /mac/i.test(`${navigator.userAgent} ${navigator.platform ?? ""}`);
   // タスクバーウィジェットは Windows 専用機能。設定UIの出し分けに使う。
   const IS_WINDOWS =
     typeof navigator !== "undefined" &&
@@ -382,7 +373,7 @@
     const s = readSettings(($locale ?? "ja").split("-")[0] || "ja");
     provider = s.provider;
     resolvedModel = s.resolvedModel;
-    recordShortcut = s.recordShortcut;
+    shortcut.recordShortcut = s.recordShortcut;
     recordMode = s.recordMode;
     includeTimestamps = s.includeTimestamps;
     autoPipeline = s.autoPipeline;
@@ -416,7 +407,7 @@
     return {
       provider,
       resolvedModel,
-      recordShortcut,
+      recordShortcut: shortcut.recordShortcut,
       recordMode,
       includeTimestamps,
       autoPipeline,
@@ -514,7 +505,7 @@
     settingsError = "";
     // 鍵(API鍵/AWS鍵)は keyring に保存する(localStorageには置かない / S3.2)。
     void saveSecrets();
-    void applyShortcut();
+    void shortcut.applyShortcut();
     // 設定フォームの値は lib/settings-persist の writeSettings で localStorage へ書き戻す。
     writeSettings(settingsSnapshot());
     void applyTaskbarWidget();
@@ -526,55 +517,6 @@
   }
 
   // キー入力イベントから Tauri アクセラレータ表記を組み立てる（修飾キー＋1キー）。
-  // ホットキー設定UX: 「変更」ボタンでキャプチャモードに入り、押したキーで登録する
-  // （VSCode/OBS/ゲーム等の定石。待機表示・Escキャンセル・修飾キー単体は待機継続）。
-  function startCapture() {
-    capturing = true;
-    shortcutMsg = "";
-  }
-  function cancelCapture() {
-    capturing = false;
-  }
-  function onCaptureKeydown(e: KeyboardEvent) {
-    if (!capturing) return;
-    e.preventDefault();
-    if (e.key === "Escape") {
-      // ホットキー取得のキャンセルに留め、設定ダイアログ全体を閉じさせない(#395)。
-      e.stopPropagation();
-      cancelCapture();
-      return;
-    }
-    // 修飾キー単体は待機を継続（組合せの確定を待つ）。
-    if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) return;
-    const accel = accelFromEvent(e);
-    if (!accel) {
-      // 修飾キー無しは誤爆防止のため不可。ヒントを出して待機継続。
-      shortcutMsg = $_("settings.shortcut_modifier_required");
-      return;
-    }
-    recordShortcut = accel;
-    capturing = false;
-    void applyShortcut();
-  }
-  function resetShortcut() {
-    recordShortcut = DEFAULT_SHORTCUT;
-    void applyShortcut();
-  }
-
-  // 現在の表記でグローバルホットキーを再登録する。
-  async function applyShortcut() {
-    try {
-      await invoke("set_record_shortcut", { accelerator: recordShortcut });
-      localStorage.setItem("recordShortcut", recordShortcut);
-      void invoke("set_taskbar_shortcut", { display: displayShortcut(recordShortcut, IS_MAC) });
-      shortcutMsg = $_("errors.hotkey_set", {
-        values: { key: displayShortcut(recordShortcut, IS_MAC) },
-      });
-    } catch (e) {
-      shortcutMsg = $_("errors.hotkey_failed", { values: { detail: errorText(e, $_) } });
-    }
-  }
-
   // 現在のプロバイダの最新ミドルレンジモデルを実行時に解決し、キャッシュする。
   // force=false かつキャッシュが新しければ何もしない。鍵未入力なら何もしない。
   async function resolveCurrentModel(force = false) {
@@ -878,7 +820,7 @@
     } catch {
       /* localStorage 不可環境では出さない */
     }
-    void applyShortcut();
+    void shortcut.applyShortcut();
     void applyTaskbarWidget();
     void loadAutoStart();
     void loadAudioSources();
@@ -1114,7 +1056,7 @@
       })}
     </p>
     <p class="hint">
-      {$_("main.hotkey_hint", { values: { key: displayShortcut(recordShortcut, IS_MAC) } })}
+      {$_("main.hotkey_hint", { values: { key: shortcut.display() } })}
     </p>
 
     <!-- 初回オンボーディング（#397）: 初回はコア体験3ステップ＋ローカル完結を非ブロッキングの
@@ -1122,7 +1064,7 @@
          以降の空状態では軽量な「まず録音」導線のみ。 -->
     {#if !showOnboarding && !recording && !busy && !transcribing && !status && !transcript && !refined}
       <p class="empty-cta">
-        {$_("main.empty_cta", { values: { key: displayShortcut(recordShortcut, IS_MAC) } })}
+        {$_("main.empty_cta", { values: { key: shortcut.display() } })}
       </p>
     {/if}
 
@@ -1490,25 +1432,27 @@
           <button
             type="button"
             class="hotkey-capture"
-            class:capturing
-            onclick={startCapture}
-            onkeydown={onCaptureKeydown}
-            onblur={cancelCapture}
+            class:capturing={shortcut.capturing}
+            onclick={shortcut.startCapture}
+            onkeydown={shortcut.onCaptureKeydown}
+            onblur={shortcut.cancelCapture}
           >
-            {#if capturing}
+            {#if shortcut.capturing}
               {$_("settings.press_key")}
             {:else}
-              {displayShortcut(recordShortcut, IS_MAC)}
+              {shortcut.display()}
             {/if}
           </button>
-          <button type="button" class="btn small ghost" onclick={resetShortcut}
+          <button type="button" class="btn small ghost" onclick={shortcut.resetShortcut}
             >{$_("settings.reset_default")}</button
           >
         </div>
         <p class="tip">
-          {$_("settings.tip_hotkey", { values: { key: displayShortcut(recordShortcut, IS_MAC) } })}
+          {$_("settings.tip_hotkey", { values: { key: shortcut.display() } })}
         </p>
-        {#if shortcutMsg}<p class="muted" role="status" aria-live="polite">{shortcutMsg}</p>{/if}
+        {#if shortcut.shortcutMsg}<p class="muted" role="status" aria-live="polite">
+            {shortcut.shortcutMsg}
+          </p>{/if}
 
         <details class="meta-group" open>
           <summary class="meta-title">{$_("settings.group_record_mode")}</summary>
