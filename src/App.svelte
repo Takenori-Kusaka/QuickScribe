@@ -4,6 +4,7 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { createUpdater } from "./lib/update.svelte";
   import { createDeviceStatus } from "./lib/device-status.svelte";
+  import { createCustomStyles } from "./lib/custom-styles.svelte";
   import { onMount } from "svelte";
   import { estimateRemaining, formatRemaining } from "./lib/note";
   import { parseCorrections, applyCorrections, type Correction } from "./lib/corrections";
@@ -24,7 +25,6 @@
   import {
     type Provider,
     type SttProvider,
-    type CustomStyle,
     ALL_PROVIDERS,
     PROVIDER_LABELS,
     LOCAL_PROVIDERS,
@@ -35,7 +35,6 @@
     STT_CLOUD,
     STT_KEY_PLACEHOLDERS,
     STT_MODEL_PLACEHOLDERS,
-    REFINE_STYLES,
     MODEL_TTL_MS,
     DISCOVERY_MAX,
     MAX_INPUT_MB,
@@ -261,19 +260,19 @@
   // 既定言語は起動時のUI言語。UI言語に限らず任意言語(Vietnamese等)を選べる(constants LANGUAGES)。
   let translateOutput = $state<boolean>(false);
   let outputLang = $state<string>("ja");
-  // 整形スタイル(REFINE_STYLES)・カスタム型は src/lib/constants.ts に集約(SSOT / #401 Phase0)。
-  let customStyles = $state<CustomStyle[]>([]);
-  // 組み込み＋カスタムを1つの選択肢リストに統合（チップ・設定ドロップダウン・解説で共用）。
-  const allStyles = $derived([
-    ...REFINE_STYLES,
-    ...customStyles.map((c) => ({
-      value: `custom:${c.id}`,
-      label: c.label || "カスタム",
-      desc: c.instruction.trim() || "ユーザー定義の整形指示。",
-    })),
-  ]);
+  // カスタム整形スタイル(#392): 状態・統合リスト(allStyles)・追加/削除は lib/custom-styles へ集約。
+  // 選択値 refineStyle は設定 state に残すため、削除時のフォールバックはコールバックで委譲する。
+  const customStyleStore = createCustomStyles({
+    t: $_,
+    onError: (m) => (error = m),
+    isActive: (v) => refineStyle === v,
+    onRemovedActive: () => (refineStyle = "structured"),
+  });
   // 現在選択中のスタイル(処理画面の表示・解説に使う)。未知値は既定にフォールバック。
-  const currentStyle = $derived(allStyles.find((s) => s.value === refineStyle) ?? allStyles[0]);
+  const currentStyle = $derived(
+    customStyleStore.allStyles.find((s) => s.value === refineStyle) ??
+      customStyleStore.allStyles[0],
+  );
 
   // プライバシー状態(#465): 整形=ローカル(Ollama) かつ 文字起こし=ローカルwhisper のときだけ
   // 「オンデバイス完結」。それ以外は音声/文字がクラウドAPIへ送信されうる。誇張なく現状を可視化。
@@ -298,35 +297,6 @@
     if (on) makeOffline();
   }
 
-  // カスタムパターンの編集フォーム状態（新規追加）。
-  let newCustomLabel = $state<string>("");
-  let newCustomInstruction = $state<string>("");
-  function addCustomStyle() {
-    const label = newCustomLabel.trim();
-    const instruction = newCustomInstruction.trim();
-    if (!label || !instruction) {
-      error = $_("errors.custom_need_both");
-      return;
-    }
-    const id =
-      typeof crypto !== "undefined" && crypto.randomUUID
-        ? crypto.randomUUID().slice(0, 8)
-        : String(Date.now());
-    customStyles = [...customStyles, { id, label, instruction }];
-    newCustomLabel = "";
-    newCustomInstruction = "";
-    persistCustomStyles();
-  }
-  function removeCustomStyle(id: string) {
-    customStyles = customStyles.filter((c) => c.id !== id);
-    // 削除したパターンを選択中なら既定へ戻す。
-    if (refineStyle === `custom:${id}`) refineStyle = "structured";
-    persistCustomStyles();
-  }
-  function persistCustomStyles() {
-    localStorage.setItem("customStyles", JSON.stringify(customStyles));
-  }
-
   // 設定の読み込み。localStorage 読み書き＋検証は lib/settings-persist.ts に集約(#392)。
   function loadSettings() {
     const s = readSettings(($locale ?? "ja").split("-")[0] || "ja");
@@ -349,7 +319,7 @@
     sttModel = s.sttModel;
     sttAzureResource = s.sttAzureResource;
     whisperModel = s.whisperModel;
-    customStyles = s.customStyles;
+    customStyleStore.customStyles = s.customStyles;
     awsRegion = s.awsRegion;
     awsWorkspaceId = s.awsWorkspaceId;
     awsAuthMode = s.awsAuthMode;
@@ -383,7 +353,7 @@
       sttModel,
       sttAzureResource,
       whisperModel,
-      customStyles,
+      customStyles: customStyleStore.customStyles,
       awsRegion,
       awsWorkspaceId,
       awsAuthMode,
@@ -588,7 +558,7 @@
       bedrockModel,
       resolvedModel: resolvedModel[provider],
       style: styleOverride ?? refineStyle,
-      customStyles,
+      customStyles: customStyleStore.customStyles,
       entryTags,
       awsRegion,
       awsWorkspaceId,
@@ -1154,7 +1124,7 @@
         <!-- 段階的深掘り(S3.5): 結果から別スタイルで整形し直す(再文字起こし不要＝逐語⇄要約⇄ブレストを行き来)。 -->
         <div class="restyle-row">
           <span class="restyle-label">{$_("results.restyle_label")}</span>
-          {#each allStyles as s}
+          {#each customStyleStore.allStyles as s}
             <button
               type="button"
               class="chip"
@@ -1679,7 +1649,7 @@
           <label>
             {$_("settings.label_refine_style")}
             <select bind:value={refineStyle}>
-              {#each allStyles as s}
+              {#each customStyleStore.allStyles as s}
                 <option value={s.value} title={s.desc}>{s.label}</option>
               {/each}
             </select>
@@ -1709,15 +1679,16 @@
         <!-- カスタム整形パターン(S3.3): ユーザー定義の指示を追加・管理する。 -->
         <details class="meta-group">
           <summary class="meta-title">{$_("settings.group_custom_style")}</summary>
-          {#if customStyles.length > 0}
+          {#if customStyleStore.customStyles.length > 0}
             <ul class="custom-list">
-              {#each customStyles as c}
+              {#each customStyleStore.customStyles as c}
                 <li class="custom-item">
                   <span class="custom-name">{c.label}</span>
                   <button
                     type="button"
                     class="btn small ghost"
-                    onclick={() => removeCustomStyle(c.id)}>{$_("settings.delete")}</button
+                    onclick={() => customStyleStore.removeCustomStyle(c.id)}
+                    >{$_("settings.delete")}</button
                   >
                 </li>
               {/each}
@@ -1726,15 +1697,15 @@
           <input
             class="custom-name-input"
             type="text"
-            bind:value={newCustomLabel}
+            bind:value={customStyleStore.newCustomLabel}
             placeholder={$_("settings.custom_name_ph")}
           />
           <textarea
             class="custom-instruction-input"
-            bind:value={newCustomInstruction}
+            bind:value={customStyleStore.newCustomInstruction}
             rows="4"
             placeholder={$_("settings.custom_instruction_ph")}></textarea>
-          <button type="button" class="btn small" onclick={addCustomStyle}>
+          <button type="button" class="btn small" onclick={customStyleStore.addCustomStyle}>
             {$_("settings.add_custom")}
           </button>
           <p class="tip">{$_("settings.tip_custom")}</p>
