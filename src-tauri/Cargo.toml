@@ -39,7 +39,7 @@ num_cpus = "1"
 # whisperモデルの初回自動取得(HTTPダウンロード)+整形APIのJSON送受信。
 ureq = { version = "3", features = ["json"] }
 # マイク録音(S1.1)。既定入力デバイスからのキャプチャ(Win:WASAPI / Linux:ALSA)。
-cpal = "0.15"
+cpal = "0.18"
 # 録音音声の保存(WAV / 純Rust・依存ゼロ・確実)。
 hound = "3"
 # モダン圧縮 Opus(.opus = Ogg Opus / audio-encode-rust 調査)。libopusはvendored staticビルドで

@@ -125,17 +125,17 @@ pub fn list_audio_sources() -> Result<Vec<AudioSource>, String> {
     if let Ok(devices) = host.input_devices() {
         let mut seen: Vec<String> = Vec::new();
         for d in devices {
-            if let Ok(name) = d.name() {
-                if seen.contains(&name) {
-                    continue;
-                }
-                seen.push(name.clone());
-                out.push(AudioSource {
-                    id: name.clone(),
-                    label: name,
-                    kind: "input".into(),
-                });
+            // cpal0.18: DeviceTrait::name() は廃止、Display で名前を得る。
+            let name = d.to_string();
+            if seen.contains(&name) {
+                continue;
             }
+            seen.push(name.clone());
+            out.push(AudioSource {
+                id: name.clone(),
+                label: name,
+                kind: "input".into(),
+            });
         }
     }
     #[cfg(windows)]
@@ -241,7 +241,7 @@ fn start_input(device_name: Option<String>) -> Result<Capture, String> {
             .and_then(|name| {
                 host.input_devices()
                     .ok()
-                    .and_then(|mut it| it.find(|d| d.name().map(|n| n == name).unwrap_or(false)))
+                    .and_then(|mut it| it.find(|d| d.to_string() == name))
             })
             .or_else(|| host.default_input_device());
         let device = match picked {
@@ -258,7 +258,8 @@ fn start_input(device_name: Option<String>) -> Result<Capture, String> {
                 return;
             }
         };
-        let sample_rate = config.sample_rate().0;
+        // cpal0.18: SampleRate は u32 のエイリアスになり .0 は不要。
+        let sample_rate = config.sample_rate();
         let channels = config.channels();
         let sample_format = config.sample_format();
         let stream_config: cpal::StreamConfig = config.into();
@@ -269,7 +270,7 @@ fn start_input(device_name: Option<String>) -> Result<Capture, String> {
         // 入力フォーマット別に [-1.0, 1.0] の f32 へ正規化して収集する。
         let stream_res = match sample_format {
             cpal::SampleFormat::F32 => device.build_input_stream(
-                &stream_config,
+                stream_config,
                 move |data: &[f32], _: &_| {
                     if let Ok(mut b) = buf.lock() {
                         b.extend_from_slice(data);
@@ -279,7 +280,7 @@ fn start_input(device_name: Option<String>) -> Result<Capture, String> {
                 None,
             ),
             cpal::SampleFormat::I16 => device.build_input_stream(
-                &stream_config,
+                stream_config,
                 move |data: &[i16], _: &_| {
                     if let Ok(mut b) = buf.lock() {
                         b.extend(data.iter().map(|&s| s as f32 / i16::MAX as f32));
@@ -289,7 +290,7 @@ fn start_input(device_name: Option<String>) -> Result<Capture, String> {
                 None,
             ),
             cpal::SampleFormat::U16 => device.build_input_stream(
-                &stream_config,
+                stream_config,
                 move |data: &[u16], _: &_| {
                     if let Ok(mut b) = buf.lock() {
                         b.extend(
