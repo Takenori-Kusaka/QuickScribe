@@ -17,6 +17,7 @@
   import { displayShortcut, accelFromEvent } from "./lib/shortcut";
   import { kindLabel } from "./lib/entry";
   import { createVaultView } from "./lib/vault-view.svelte";
+  import { getSecret, setSecret, loadSecretMigrating } from "./lib/secrets";
   import { parseRecordSource } from "./lib/record-source";
   import { validateRefineConfig, type RefineConfigError } from "./lib/provider-config";
   import { clampProvider, clampSttProvider, clampOneOf, isValidRefineStyle } from "./lib/settings";
@@ -445,40 +446,7 @@
     localStorage.setItem("settingsVersion", String(SETTINGS_VERSION));
   }
 
-  // OSセキュアストレージ(keyring)との橋渡し(S3.2)。鍵は localStorage に置かない。
-  async function getSecret(key: string): Promise<string> {
-    try {
-      return (await invoke<string | null>("get_secret", { key })) ?? "";
-    } catch (e) {
-      console.error("get_secret failed", key, e);
-      return "";
-    }
-  }
-  // 成功時 true。keyring書き込みが失敗したら false(呼び出し側は平文を消さない=鍵を失わない)。
-  async function setSecret(key: string, value: string): Promise<boolean> {
-    try {
-      await invoke("set_secret", { key, value });
-      return true;
-    } catch (e) {
-      console.error("set_secret failed", key, e);
-      return false;
-    }
-  }
-  // keyringに無ければ旧localStorage(平文)から移行する。
-  // ★移行は keyring書き込みが成功した時だけ平文を削除する(失敗時は保持＝データ損失防止)。
-  async function loadSecretMigrating(key: string, legacyLsKey: string): Promise<string> {
-    let v = await getSecret(key);
-    if (!v) {
-      const legacy = localStorage.getItem(legacyLsKey);
-      if (legacy) {
-        v = legacy;
-        if (await setSecret(key, legacy)) {
-          localStorage.removeItem(legacyLsKey);
-        }
-      }
-    }
-    return v;
-  }
+  // 秘密情報ブリッジ(keyring / S3.2)は lib/secrets.ts へ抽出(#392)。App は鍵の反映のみ担う。
   async function loadSecrets() {
     for (const p of ALL_PROVIDERS) {
       apiKeys[p] = await loadSecretMigrating(`apiKey:${p}`, `apiKey:${p}`);
