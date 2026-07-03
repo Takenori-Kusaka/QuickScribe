@@ -5,6 +5,7 @@
   import { createUpdater } from "./lib/update.svelte";
   import { createDeviceStatus } from "./lib/device-status.svelte";
   import { createCustomStyles } from "./lib/custom-styles.svelte";
+  import { createPrivacy } from "./lib/privacy.svelte";
   import { onMount } from "svelte";
   import { estimateRemaining, formatRemaining } from "./lib/note";
   import { parseCorrections, applyCorrections, type Correction } from "./lib/corrections";
@@ -200,13 +201,6 @@
   }
 
   // タスクバーウィジェットの表示有効/無効をバックエンドへ反映する（Windowsのみ実体動作）。
-  async function applyTaskbarWidget() {
-    try {
-      await invoke("set_taskbar_widget", { enabled: taskbarWidget });
-    } catch (e) {
-      console.error("set_taskbar_widget failed", e);
-    }
-  }
   // 文字起こしメタデータ設定。タイムスタンプは既定ON（整形AIが時間関係を解釈できる）。
   let includeTimestamps = $state<boolean>(true);
   // 停止後に文字起こし→整形まで自動実行する（一気通貫）。
@@ -274,28 +268,14 @@
       customStyleStore.allStyles[0],
   );
 
-  // プライバシー状態(#465): 整形=ローカル(Ollama) かつ 文字起こし=ローカルwhisper のときだけ
-  // 「オンデバイス完結」。それ以外は音声/文字がクラウドAPIへ送信されうる。誇張なく現状を可視化。
-  const isFullyLocal = $derived(LOCAL_PROVIDERS.includes(provider) && sttProvider === "local");
-  // オフライン固定モード(#465): ONの間はクラウドプロバイダ選択を無効化し、常にローカルに固定する
-  // (プライバシーを運用として強制する)。永続化し起動時にも適用する。
-  let offlineMode = $state<boolean>(false);
-  // ワンクリックでローカルAI(整形=Ollama / STT=ローカルwhisper)へ切り替える(#465)。
-  function makeOffline() {
-    provider = "ollama";
-    sttProvider = "local";
-    void syncSttSettings();
-  }
-  // オフラインモードの切替。ONにするとローカルへ固定＋クラウド選択不可、永続化する。
-  function setOfflineMode(on: boolean) {
-    offlineMode = on;
-    try {
-      localStorage.setItem("offlineMode", String(on));
-    } catch {
-      /* localStorage 不可環境では状態のみ */
-    }
-    if (on) makeOffline();
-  }
+  // ローカル完結（オフライン/プライバシー）モード(#465)は lib/privacy へ集約。provider/sttProvider は設定 state に残すため注入する(#392)。
+  const privacy = createPrivacy({
+    getProvider: () => provider,
+    setProvider: (v) => (provider = v as Provider),
+    getSttProvider: () => sttProvider,
+    setSttProvider: (v) => (sttProvider = v as SttProvider),
+    syncStt: () => void syncSttSettings(),
+  });
 
   // 設定の読み込み。localStorage 読み書き＋検証は lib/settings-persist.ts に集約(#392)。
   function loadSettings() {
@@ -315,7 +295,7 @@
     translateOutput = s.translateOutput;
     outputLang = s.outputLang;
     sttProvider = s.sttProvider;
-    offlineMode = s.offlineMode;
+    privacy.offlineMode = s.offlineMode;
     sttModel = s.sttModel;
     sttAzureResource = s.sttAzureResource;
     whisperModel = s.whisperModel;
@@ -349,7 +329,7 @@
       translateOutput,
       outputLang,
       sttProvider,
-      offlineMode,
+      offlineMode: privacy.offlineMode,
       sttModel,
       sttAzureResource,
       whisperModel,
@@ -437,7 +417,7 @@
     void shortcut.applyShortcut();
     // 設定フォームの値は lib/settings-persist の writeSettings で localStorage へ書き戻す。
     writeSettings(settingsSnapshot());
-    void applyTaskbarWidget();
+    void device.applyTaskbarWidget(taskbarWidget);
     void syncSaveSettings();
     void syncSttSettings();
     showSettings = false;
@@ -750,7 +730,7 @@
       /* localStorage 不可環境では出さない */
     }
     void shortcut.applyShortcut();
-    void applyTaskbarWidget();
+    void device.applyTaskbarWidget(taskbarWidget);
     void device.loadAutoStart();
     void device.loadAudioSources();
     void device.loadWhisperModels();
@@ -1332,14 +1312,18 @@
       {#if settingsTab === "general"}
         <!-- プライバシー状態インジケータ(#465): 現在の構成が完全オンデバイスか、クラウド送信を
            伴うかを常時可視化。クラウド時はワンクリックでローカルAIへ切り替えられる。 -->
-        <div class="privacy-status" class:local={isFullyLocal} class:cloud={!isFullyLocal}>
+        <div
+          class="privacy-status"
+          class:local={privacy.isFullyLocal}
+          class:cloud={!privacy.isFullyLocal}
+        >
           <span class="privacy-dot" aria-hidden="true"></span>
           <div class="privacy-text">
-            <strong>{isFullyLocal ? $_("privacy.on_device") : $_("privacy.cloud")}</strong>
-            <p>{isFullyLocal ? $_("privacy.on_device_desc") : $_("privacy.cloud_desc")}</p>
+            <strong>{privacy.isFullyLocal ? $_("privacy.on_device") : $_("privacy.cloud")}</strong>
+            <p>{privacy.isFullyLocal ? $_("privacy.on_device_desc") : $_("privacy.cloud_desc")}</p>
           </div>
-          {#if !isFullyLocal && !offlineMode}
-            <button type="button" class="btn small ghost" onclick={makeOffline}
+          {#if !privacy.isFullyLocal && !privacy.offlineMode}
+            <button type="button" class="btn small ghost" onclick={privacy.makeOffline}
               >{$_("privacy.make_offline")}</button
             >
           {/if}
@@ -1347,8 +1331,8 @@
         <label class="check">
           <input
             type="checkbox"
-            checked={offlineMode}
-            onchange={(e) => setOfflineMode(e.currentTarget.checked)}
+            checked={privacy.offlineMode}
+            onchange={(e) => privacy.setOfflineMode(e.currentTarget.checked)}
           />
           {$_("privacy.offline_mode")}
         </label>
@@ -1432,7 +1416,7 @@
             <select
               bind:value={sttProvider}
               aria-label={$_("settings.group_stt")}
-              disabled={offlineMode}
+              disabled={privacy.offlineMode}
             >
               {#each Object.keys(STT_LABELS) as p}
                 <option value={p}>{STT_LABELS[p as SttProvider]}</option>
@@ -1516,7 +1500,7 @@
             <select
               bind:value={provider}
               onchange={() => resolveCurrentModel()}
-              disabled={offlineMode}
+              disabled={privacy.offlineMode}
             >
               <option value="gemini">Gemini</option>
               <option value="anthropic">Anthropic (Claude)</option>

@@ -56,6 +56,15 @@ export function createDeviceStatus(deps: { t: Translator; onError: (msg: string)
     }
   }
 
+  /** タスクバーウィジェットの表示有効/無効をバックエンドへ反映する（Windowsのみ実体動作）。 */
+  async function applyTaskbarWidget(enabled: boolean) {
+    try {
+      await invoke("set_taskbar_widget", { enabled });
+    } catch (e) {
+      console.error("set_taskbar_widget failed", e);
+    }
+  }
+
   /** ローカル whisper の選択可能モデルを列挙する。 */
   async function loadWhisperModels() {
     try {
@@ -82,5 +91,6 @@ export function createDeviceStatus(deps: { t: Translator; onError: (msg: string)
     onAutoStartChange,
     loadAudioSources,
     loadWhisperModels,
+    applyTaskbarWidget,
   };
 }

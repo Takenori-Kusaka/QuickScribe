@@ -86,4 +86,11 @@ describe("createDeviceStatus", () => {
     flushSync();
     expect(d.whisperModels).toEqual([{ id: "base", label: "Base" }]);
   });
+
+  it("applyTaskbarWidget は enabled をバックエンドへ渡す", async () => {
+    invokeMock.mockResolvedValueOnce(undefined);
+    const d = make();
+    await d.applyTaskbarWidget(false);
+    expect(invokeMock).toHaveBeenCalledWith("set_taskbar_widget", { enabled: false });
+  });
 });
