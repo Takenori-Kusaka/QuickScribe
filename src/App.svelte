@@ -3,11 +3,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { open } from "@tauri-apps/plugin-dialog";
   import { createUpdater } from "./lib/update.svelte";
-  import {
-    enable as enableAutostart,
-    disable as disableAutostart,
-    isEnabled as isAutostartEnabled,
-  } from "@tauri-apps/plugin-autostart";
+  import { createDeviceStatus } from "./lib/device-status.svelte";
   import { onMount } from "svelte";
   import { estimateRemaining, formatRemaining } from "./lib/note";
   import { parseCorrections, applyCorrections, type Correction } from "./lib/corrections";
@@ -189,43 +185,13 @@
   // タスクバー上のウィジェット表示（Windows）。既定ON。設定でON/OFF可能。
   let taskbarWidget = $state<boolean>(true);
 
-  // OSログイン時の自動起動（S6.3）。実体はOSに登録されるため、状態はOSから取得する。
-  let autoStart = $state<boolean>(false);
-  async function loadAutoStart() {
-    try {
-      autoStart = await isAutostartEnabled();
-    } catch (e) {
-      console.error("isAutostartEnabled failed", e);
-    }
-  }
-  async function onAutoStartChange() {
-    try {
-      if (autoStart) await enableAutostart();
-      else await disableAutostart();
-      // OSの実際の登録状態に同期（失敗時のずれを防ぐ）。
-      autoStart = await isAutostartEnabled();
-    } catch (e) {
-      error = $_("errors.autostart_failed", { values: { detail: errorText(e, $_) } });
-      autoStart = await isAutostartEnabled().catch(() => autoStart);
-    }
-  }
+  // OS/デバイス連携（自動起動・録音ソース列挙・whisperモデル一覧）は lib/device-status へ集約(#392)。
+  const device = createDeviceStatus({ t: $_, onError: (m) => (error = m) });
 
   // 録音ソース選択（S1.2/S1.3 / #18 #19）。マイク入力＋出力デバイスのループバックを統一。
-  // inputDevice: 入力=デバイス名 / ループバック=レンダーデバイスID（空=OS既定）。
-  type AudioSource = { id: string; label: string; kind: string };
+  // inputDevice: 入力=デバイス名 / ループバック=レンダーデバイスID（空=OS既定）。永続化する。
   let inputDevice = $state<string>("");
   let inputDeviceKind = $state<string>("input");
-  let audioSources = $state<AudioSource[]>([]);
-
-  // 利用可能な録音ソースを列挙する（設定UIのプルダウン用）。失敗時は空のまま既定運用。
-  async function loadAudioSources() {
-    try {
-      audioSources = await invoke<AudioSource[]>("list_audio_sources");
-    } catch (e) {
-      console.error("list_audio_sources failed", e);
-      audioSources = [];
-    }
-  }
 
   // プルダウンは "kind|id" を値に使う（id がレンダーデバイスIDでも安全に分解できる）。
   function onSourceChange(e: Event) {
@@ -262,16 +228,9 @@
   let sttProvider = $state<SttProvider>("local");
   let sttModel = $state<string>(""); // クラウドのモデルID（空=プロバイダ既定）
   let sttAzureResource = $state<string>(""); // Azureのリソース名（azure時のみ）
-  // ローカル whisper のモデル選択（S2.2）。クラウドの sttModel とは分離。
+  // ローカル whisper のモデル選択（S2.2）。クラウドの sttModel とは分離。永続化する。
+  // 選択可能なモデル一覧(whisperModels)は device.loadWhisperModels() で列挙する。
   let whisperModel = $state<string>(""); // 空=既定 base
-  let whisperModels = $state<{ id: string; label: string }[]>([]);
-  async function loadWhisperModels() {
-    try {
-      whisperModels = await invoke<{ id: string; label: string }[]>("list_whisper_models");
-    } catch (e) {
-      console.error("list_whisper_models failed", e);
-    }
-  }
   // クラウドSTTのAPIキー（プロバイダごと）。keyringに "sttKey:<provider>" で保管。
   let sttKeys = $state<Record<string, string>>({
     groq: "",
@@ -822,9 +781,9 @@
     }
     void shortcut.applyShortcut();
     void applyTaskbarWidget();
-    void loadAutoStart();
-    void loadAudioSources();
-    void loadWhisperModels();
+    void device.loadAutoStart();
+    void device.loadAudioSources();
+    void device.loadWhisperModels();
     void syncSaveSettings();
     void resolveCurrentModel();
     void updater.checkForUpdate();
@@ -1480,11 +1439,15 @@
               {#if IS_WINDOWS}
                 <option value="mix|">{$_("settings.source_mix")}</option>
               {/if}
-              {#each audioSources as s}
+              {#each device.audioSources as s}
                 <option value={`${s.kind}|${s.id}`}>{s.label}</option>
               {/each}
             </select>
-            <button type="button" class="btn small ghost" onclick={() => void loadAudioSources()}>
+            <button
+              type="button"
+              class="btn small ghost"
+              onclick={() => void device.loadAudioSources()}
+            >
               {$_("settings.reload")}
             </button>
           </div>
@@ -1546,7 +1509,7 @@
             <label>
               {$_("settings.stt_model")}
               <select bind:value={whisperModel}>
-                {#each whisperModels as m}
+                {#each device.whisperModels as m}
                   <option value={m.id}>{m.label}</option>
                 {/each}
               </select>
@@ -1853,8 +1816,8 @@
           <label class="check">
             <input
               type="checkbox"
-              bind:checked={autoStart}
-              onchange={() => void onAutoStartChange()}
+              bind:checked={device.autoStart}
+              onchange={() => void device.onAutoStartChange()}
             />
             {$_("settings.autostart")}
           </label>
