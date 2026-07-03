@@ -4,12 +4,12 @@
 
 use std::fs::File;
 use std::path::Path;
-use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::DecoderOptions;
-use symphonia::core::formats::FormatOptions;
+use symphonia::core::codecs::audio::AudioDecoderOptions;
+use symphonia::core::codecs::CodecParameters;
+use symphonia::core::formats::probe::Hint;
+use symphonia::core::formats::{FormatOptions, TrackType};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
-use symphonia::core::probe::Hint;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 /// whisper が要求するサンプルレート。
@@ -25,45 +25,50 @@ pub fn decode_to_16k_mono(path: &Path) -> Result<Vec<f32>, String> {
         hint.with_extension(ext);
     }
 
-    let probed = symphonia::default::get_probe()
-        .format(
+    // symphonia0.6: get_probe().probe() は FormatReader を直接返す(fmt/meta opts は値渡し)。
+    let mut format = symphonia::default::get_probe()
+        .probe(
             &hint,
             mss,
-            &FormatOptions::default(),
-            &MetadataOptions::default(),
+            FormatOptions::default(),
+            MetadataOptions::default(),
         )
         .map_err(|e| format!("音声形式の判別に失敗: {e}"))?;
-    let mut format = probed.format;
 
-    let track = format.default_track().ok_or("音声トラックがありません")?;
+    let track = format
+        .default_track(TrackType::Audio)
+        .ok_or("音声トラックがありません")?;
     let track_id = track.id;
-    let src_rate = track.codec_params.sample_rate.unwrap_or(WHISPER_SR);
+    // symphonia0.6: codec_params は Option<CodecParameters> の enum。Audio を取り出す。
+    let audio_params = match &track.codec_params {
+        Some(CodecParameters::Audio(p)) => p,
+        _ => return Err("音声コーデックパラメータがありません".into()),
+    };
+    let src_rate = audio_params.sample_rate.unwrap_or(WHISPER_SR);
     let mut decoder = symphonia::default::get_codecs()
-        .make(&track.codec_params, &DecoderOptions::default())
+        .make_audio_decoder(audio_params, &AudioDecoderOptions::default())
         .map_err(|e| format!("デコーダ生成に失敗: {e}"))?;
 
     let mut mono: Vec<f32> = Vec::new();
-    let mut sample_buf: Option<SampleBuffer<f32>> = None;
-    let mut channels = 1usize;
+    let mut interleaved: Vec<f32> = Vec::new();
 
-    while let Ok(packet) = format.next_packet() {
-        if packet.track_id() != track_id {
+    // symphonia0.6: next_packet() は EOF で Ok(None) を返す。SampleBuffer は廃止され、
+    // GenericAudioBufferRef::copy_to_vec_interleaved で f32 インターリーブを取得する。
+    while let Some(packet) = format
+        .next_packet()
+        .map_err(|e| format!("パケット読み取りに失敗: {e}"))?
+    {
+        if packet.track_id != track_id {
             continue;
         }
         match decoder.decode(&packet) {
             Ok(decoded) => {
-                if sample_buf.is_none() {
-                    let spec = *decoded.spec();
-                    channels = spec.channels.count().max(1);
-                    let dur = decoded.capacity() as u64;
-                    sample_buf = Some(SampleBuffer::<f32>::new(dur, spec));
-                }
-                if let Some(buf) = sample_buf.as_mut() {
-                    buf.copy_interleaved_ref(decoded);
-                    for frame in buf.samples().chunks(channels) {
-                        let sum: f32 = frame.iter().copied().sum();
-                        mono.push(sum / channels as f32);
-                    }
+                let channels = decoded.spec().channels().count().max(1);
+                interleaved.clear();
+                decoded.copy_to_vec_interleaved(&mut interleaved);
+                for frame in interleaved.chunks(channels) {
+                    let sum: f32 = frame.iter().copied().sum();
+                    mono.push(sum / channels as f32);
                 }
             }
             Err(symphonia::core::errors::Error::DecodeError(_)) => continue,
@@ -513,6 +518,39 @@ mod tests {
     fn resample_same_rate_is_identity() {
         let v = vec![0.1, 0.2, 0.3];
         assert_eq!(resample_linear(&v, 16000, 16000), v);
+    }
+
+    /// symphonia デコード経路の実行時検証(#467 symphonia0.6 移行の回帰ガード)。
+    /// 48kHz ステレオ WAV を書き出し → 16k mono へデコード。ダウンミックス・リサンプル・
+    /// copy_to_vec_interleaved が機能し、期待長の非空サンプルが得られることを確認する。
+    #[test]
+    fn decodes_wav_to_16k_mono() {
+        let path = std::env::temp_dir().join("qs_symphonia_decode_test.wav");
+        let spec = hound::WavSpec {
+            channels: 2,
+            sample_rate: 48000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        {
+            let mut w = hound::WavWriter::create(&path, spec).unwrap();
+            // 0.1秒ぶんのステレオ(4800フレーム)。L/Rに同値の単純波形。
+            for i in 0..4800i32 {
+                let v = ((i as f32 * 0.05).sin() * 8000.0) as i16;
+                w.write_sample(v).unwrap();
+                w.write_sample(v).unwrap();
+            }
+            w.finalize().unwrap();
+        }
+        let out = decode_to_16k_mono(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        // 48k→16k で約1/3。0.1秒 ≈ 1600 サンプル前後(境界の丸め許容)。
+        assert!(!out.is_empty(), "デコード結果が空");
+        assert!(
+            (1200..2200).contains(&out.len()),
+            "想定外のサンプル長: {}",
+            out.len()
+        );
     }
 
     fn cfg(provider: &str) -> SttConfig {
