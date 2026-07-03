@@ -1,0 +1,157 @@
+// 設定の永続化（localStorage 読み書き＋スキーマ検証 / S5.3・ADR-0017 / #392 App.svelte 分割）。
+// localStorage のキー名・既定値・クランプ（破損耐性）の知識をここへ集約し、App.svelte からは
+// readSettings()/writeSettings() の2関数で扱う。秘密情報(API鍵/AWS鍵)は keyring 側(lib/secrets)。
+import {
+  ALL_PROVIDERS,
+  PROVIDER_LABELS,
+  LOCAL_PROVIDERS,
+  DEFAULT_SHORTCUT,
+  type Provider,
+  type SttProvider,
+  type CustomStyle,
+} from "./constants";
+import { clampProvider, clampSttProvider, clampOneOf, isValidRefineStyle } from "./settings";
+
+/** 設定スキーマ版（ADR-0017）。形式が将来変わってもクランプ＋移行で壊れないようにする。 */
+export const SETTINGS_VERSION = 1;
+
+/** localStorage に永続化される設定一式（秘密情報は含まない）。 */
+export interface AppSettings {
+  provider: Provider;
+  resolvedModel: Record<Provider, string>;
+  recordShortcut: string;
+  recordMode: "toggle" | "momentary";
+  includeTimestamps: boolean;
+  autoPipeline: boolean;
+  keepText: boolean;
+  saveAudio: boolean;
+  audioFormat: string;
+  saveDir: string;
+  outputFormat: string;
+  refineStyle: string;
+  translateOutput: boolean;
+  outputLang: string;
+  sttProvider: SttProvider;
+  offlineMode: boolean;
+  sttModel: string;
+  sttAzureResource: string;
+  whisperModel: string;
+  customStyles: CustomStyle[];
+  awsRegion: string;
+  awsWorkspaceId: string;
+  awsAuthMode: "sigv4" | "apikey";
+  bedrockModel: string;
+  taskbarWidget: boolean;
+  inputDevice: string;
+  inputDeviceKind: string;
+}
+
+function emptyModelMap(): Record<Provider, string> {
+  return Object.fromEntries(ALL_PROVIDERS.map((p) => [p, ""])) as Record<Provider, string>;
+}
+
+/**
+ * localStorage から設定を読み、破損/旧値は既定へクランプして返す（非破壊: 未知キーは保持）。
+ * @param localeDefault 出力言語の既定（未保存時に使う起動時UI言語 例 "ja"）。
+ * @returns 検証済みの設定一式。offlineMode 時は provider/sttProvider をローカルへ固定する。
+ */
+export function readSettings(localeDefault: string): AppSettings {
+  const ls = localStorage;
+  let provider = (ls.getItem("provider") as Provider) || "gemini";
+  if (!(provider in PROVIDER_LABELS)) provider = "gemini";
+
+  const resolvedModel = emptyModelMap();
+  for (const p of ALL_PROVIDERS) resolvedModel[p] = ls.getItem(`resolvedModel:${p}`) ?? "";
+
+  let sttProvider = (ls.getItem("sttProvider") as SttProvider) || "local";
+  const offlineMode = ls.getItem("offlineMode") === "true";
+  // オフライン固定モード(#465): ON なら起動時からローカルに固定（クラウド設定が残っていても無視）。
+  if (offlineMode) {
+    if (!LOCAL_PROVIDERS.includes(provider)) provider = "ollama";
+    sttProvider = "local";
+  }
+
+  let customStyles: CustomStyle[] = [];
+  try {
+    customStyles = JSON.parse(ls.getItem("customStyles") || "[]");
+  } catch {
+    // 破損した JSON は空扱い（初期値 [] を維持）。
+  }
+
+  let refineStyle = ls.getItem("refineStyle") || "structured";
+  if (!isValidRefineStyle(refineStyle, customStyles)) refineStyle = "structured";
+
+  const s: AppSettings = {
+    // enum 的な値はクランプ（破損耐性 / validateSettings 相当）。
+    provider: clampProvider(provider),
+    resolvedModel,
+    recordShortcut: ls.getItem("recordShortcut") || DEFAULT_SHORTCUT,
+    recordMode: clampOneOf(
+      ls.getItem("recordMode") === "momentary" ? "momentary" : "toggle",
+      ["toggle", "momentary"] as const,
+      "toggle",
+    ),
+    includeTimestamps: ls.getItem("includeTimestamps") !== "false",
+    autoPipeline: ls.getItem("autoPipeline") === "true",
+    keepText: ls.getItem("keepText") !== "false",
+    saveAudio: ls.getItem("saveAudio") === "true",
+    audioFormat: clampOneOf(ls.getItem("audioFormat") || "opus", ["opus", "wav"] as const, "opus"),
+    saveDir: ls.getItem("saveDir") || "",
+    outputFormat: clampOneOf(ls.getItem("outputFormat") || "txt", ["txt", "md"] as const, "txt"),
+    refineStyle,
+    translateOutput: ls.getItem("translateOutput") === "true",
+    outputLang: ls.getItem("outputLang") || localeDefault,
+    sttProvider: clampSttProvider(sttProvider),
+    offlineMode,
+    sttModel: ls.getItem("sttModel") || "",
+    sttAzureResource: ls.getItem("sttAzureResource") || "",
+    // ローカルwhisperの既定は汎用 base(#511)。保存済みは優先。
+    whisperModel: ls.getItem("whisperModel") || "base",
+    customStyles,
+    awsRegion: ls.getItem("awsRegion") || "us-east-1",
+    awsWorkspaceId: ls.getItem("awsWorkspaceId") || "",
+    awsAuthMode: clampOneOf(
+      (ls.getItem("awsAuthMode") as "sigv4" | "apikey") || "sigv4",
+      ["sigv4", "apikey"] as const,
+      "sigv4",
+    ),
+    bedrockModel: ls.getItem("bedrockModel") || "",
+    taskbarWidget: ls.getItem("taskbarWidget") !== "false",
+    inputDevice: ls.getItem("inputDevice") || "",
+    inputDeviceKind: ls.getItem("inputDeviceKind") || "input",
+  };
+  // スキーマ版を記録（検証を通過した証跡 / ADR-0017）。
+  ls.setItem("settingsVersion", String(SETTINGS_VERSION));
+  return s;
+}
+
+/**
+ * 設定フォームの値を localStorage へ書き戻す（秘密情報・resolvedModel・customStyles を除く。
+ * それらは別経路 keyring / resolveCurrentModel / persistCustomStyles で永続化される）。
+ */
+export function writeSettings(s: AppSettings): void {
+  const ls = localStorage;
+  ls.setItem("provider", s.provider);
+  ls.setItem("includeTimestamps", String(s.includeTimestamps));
+  ls.setItem("autoPipeline", String(s.autoPipeline));
+  ls.setItem("keepText", String(s.keepText));
+  ls.setItem("saveAudio", String(s.saveAudio));
+  ls.setItem("audioFormat", s.audioFormat);
+  ls.setItem("saveDir", s.saveDir);
+  ls.setItem("outputFormat", s.outputFormat);
+  ls.setItem("refineStyle", s.refineStyle);
+  ls.setItem("translateOutput", String(s.translateOutput));
+  ls.setItem("outputLang", s.outputLang);
+  ls.setItem("sttProvider", s.sttProvider);
+  ls.setItem("sttModel", s.sttModel);
+  ls.setItem("sttAzureResource", s.sttAzureResource);
+  ls.setItem("whisperModel", s.whisperModel);
+  ls.setItem("awsRegion", s.awsRegion);
+  ls.setItem("awsWorkspaceId", s.awsWorkspaceId);
+  ls.setItem("awsAuthMode", s.awsAuthMode);
+  ls.setItem("bedrockModel", s.bedrockModel);
+  ls.setItem("taskbarWidget", String(s.taskbarWidget));
+  ls.setItem("recordMode", s.recordMode);
+  ls.setItem("inputDevice", s.inputDevice);
+  ls.setItem("inputDeviceKind", s.inputDeviceKind);
+}
