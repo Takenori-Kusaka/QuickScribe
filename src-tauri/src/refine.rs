@@ -152,16 +152,66 @@ pub trait FormattingEngine {
     fn refine(&self, req: &RefineRequest) -> Result<String, String>;
 }
 
+/// 整形プロバイダ(#392: lib/refine に散在した provider 文字列マッチを単一ソース化 / OCP)。
+/// 別名の解釈・AWS判定・既定モデル・エンジン生成をここに集約する。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefineProvider {
+    Gemini,
+    Anthropic,
+    OpenAi,
+    Ollama,
+    Bedrock,
+    ClaudePlatformAws,
+}
+
+impl RefineProvider {
+    /// フロントから渡る provider 文字列(別名込み)を解釈する。空/未知/"gemini" は Gemini(既定)。
+    pub fn parse(provider: &str) -> Self {
+        match provider.trim().to_ascii_lowercase().as_str() {
+            "anthropic" | "claude" => Self::Anthropic,
+            "openai" | "gpt" => Self::OpenAi,
+            "ollama" | "local" => Self::Ollama,
+            "bedrock" | "aws-bedrock" => Self::Bedrock,
+            "claude-aws" | "claude-platform-aws" | "anthropic-aws" => Self::ClaudePlatformAws,
+            _ => Self::Gemini,
+        }
+    }
+
+    /// AWS系(Bedrock / Claude Platform on AWS)か。AwsConfig 組み立ての要否判定 / ADR-0011。
+    pub fn is_aws(self) -> bool {
+        matches!(self, Self::Bedrock | Self::ClaudePlatformAws)
+    }
+
+    /// 既定モデルID(実行時解決に失敗した際のフォールバック)。
+    pub fn default_model(self) -> &'static str {
+        match self {
+            Self::Anthropic => "claude-sonnet-4-6",
+            Self::OpenAi => "gpt-4o",
+            Self::Ollama => "llama3.1",
+            // AWS Bedrock のモデルIDは anthropic. プレフィックス(リージョン/アカウント依存。UIで上書き可)。
+            Self::Bedrock => "anthropic.claude-sonnet-4-6",
+            // Claude Platform on AWS は第一者と同じ bare ID。
+            Self::ClaudePlatformAws => "claude-sonnet-4-6",
+            Self::Gemini => "gemini-flash-latest",
+        }
+    }
+
+    /// 対応する整形エンジンを生成する(S3.1: 戦略の差し替え=DIP 境界)。
+    pub fn make_engine(self) -> Box<dyn FormattingEngine> {
+        match self {
+            Self::Anthropic => Box::new(AnthropicEngine),
+            Self::OpenAi => Box::new(OpenAiEngine),
+            Self::Ollama => Box::new(OllamaEngine),
+            Self::Bedrock => Box::new(BedrockEngine),
+            Self::ClaudePlatformAws => Box::new(ClaudePlatformAwsEngine),
+            Self::Gemini => Box::new(GeminiEngine),
+        }
+    }
+}
+
 /// プロバイダ名から整形エンジンを解決する。空/未知は Gemini にフォールバック。
 pub fn engine_for(provider: &str) -> Box<dyn FormattingEngine> {
-    match provider.trim().to_ascii_lowercase().as_str() {
-        "anthropic" | "claude" => Box::new(AnthropicEngine),
-        "openai" | "gpt" => Box::new(OpenAiEngine),
-        "ollama" | "local" => Box::new(OllamaEngine),
-        "bedrock" | "aws-bedrock" => Box::new(BedrockEngine),
-        "claude-aws" | "claude-platform-aws" | "anthropic-aws" => Box::new(ClaudePlatformAwsEngine),
-        _ => Box::new(GeminiEngine),
-    }
+    RefineProvider::parse(provider).make_engine()
 }
 
 /// Ollama の既定エンドポイント(ローカル)。環境変数 OLLAMA_HOST があれば優先。
@@ -610,11 +660,14 @@ impl FormattingEngine for ClaudePlatformAwsEngine {
 
 /// プロバイダ名で「最新ミドルレンジモデル」を実行時に解決する。
 pub fn resolve_latest_model(provider: &str, api_key: &str) -> Result<String, String> {
-    match provider.trim().to_ascii_lowercase().as_str() {
-        "anthropic" | "claude" => latest_anthropic(api_key),
-        "openai" | "gpt" => latest_openai(api_key),
-        "ollama" | "local" => latest_ollama(),
-        _ => latest_gemini(api_key),
+    match RefineProvider::parse(provider) {
+        RefineProvider::Anthropic => latest_anthropic(api_key),
+        RefineProvider::OpenAi => latest_openai(api_key),
+        RefineProvider::Ollama => latest_ollama(),
+        // Gemini・AWS系(Bedrock/ClaudePlatform)・未知は Gemini の最新解決へフォールバック(従来同値)。
+        RefineProvider::Gemini | RefineProvider::Bedrock | RefineProvider::ClaudePlatformAws => {
+            latest_gemini(api_key)
+        }
     }
 }
 
@@ -771,6 +824,30 @@ fn latest_gemini(api_key: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn refine_provider_parse_aliases_and_defaults() {
+        // 別名解釈の単一ソース(#392)。既存の engine_for/default_model/is_aws の分岐を保存。
+        assert_eq!(RefineProvider::parse("claude"), RefineProvider::Anthropic);
+        assert_eq!(RefineProvider::parse("gpt"), RefineProvider::OpenAi);
+        assert_eq!(RefineProvider::parse("local"), RefineProvider::Ollama);
+        assert_eq!(RefineProvider::parse("aws-bedrock"), RefineProvider::Bedrock);
+        assert_eq!(
+            RefineProvider::parse("anthropic-aws"),
+            RefineProvider::ClaudePlatformAws
+        );
+        // 空/未知は既定 Gemini。
+        assert_eq!(RefineProvider::parse(""), RefineProvider::Gemini);
+        assert_eq!(RefineProvider::parse("unknown"), RefineProvider::Gemini);
+        // is_aws は AWS系のみ true。
+        assert!(RefineProvider::parse("bedrock").is_aws());
+        assert!(RefineProvider::parse("claude-platform-aws").is_aws());
+        assert!(!RefineProvider::parse("anthropic").is_aws());
+        assert!(!RefineProvider::parse("gemini").is_aws());
+        // 既定モデル。
+        assert_eq!(RefineProvider::Bedrock.default_model(), "anthropic.claude-sonnet-4-6");
+        assert_eq!(RefineProvider::Gemini.default_model(), "gemini-flash-latest");
+    }
 
     #[test]
     fn style_parse_maps_known_and_defaults_unknown() {

@@ -517,24 +517,12 @@ async fn stop_recording(
 /// - openai: `gpt-4o`（最新4oスナップショットを指すローリングエイリアス）
 /// - anthropic: ローリングlatestが無いため取得時点の最新stable sonnetを既定にする。
 fn default_model_for(provider: &str) -> &'static str {
-    match provider.trim().to_ascii_lowercase().as_str() {
-        "anthropic" | "claude" => "claude-sonnet-4-6",
-        "openai" | "gpt" => "gpt-4o",
-        "ollama" | "local" => "llama3.1",
-        // AWS Bedrock のモデルIDは anthropic. プレフィックス(リージョン/アカウント依存。UIで上書き可)。
-        "bedrock" | "aws-bedrock" => "anthropic.claude-sonnet-4-6",
-        // Claude Platform on AWS は第一者と同じ bare ID。
-        "claude-aws" | "claude-platform-aws" | "anthropic-aws" => "claude-sonnet-4-6",
-        _ => "gemini-flash-latest",
-    }
+    refine::RefineProvider::parse(provider).default_model()
 }
 
 /// AWS系プロバイダ(Bedrock / Claude Platform on AWS)か。AwsConfig 組み立ての要否判定 / ADR-0011。
 fn is_aws_provider(provider: &str) -> bool {
-    matches!(
-        provider.trim().to_ascii_lowercase().as_str(),
-        "bedrock" | "aws-bedrock" | "claude-aws" | "claude-platform-aws" | "anthropic-aws"
-    )
+    refine::RefineProvider::parse(provider).is_aws()
 }
 
 /// 実行時に各プロバイダのモデル一覧APIから「最新ミドルレンジ」モデルIDを解決する。
