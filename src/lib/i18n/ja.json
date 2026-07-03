@@ -145,7 +145,10 @@
     "about_oss": "本アプリは whisper.cpp（MIT）・libopus（BSD-3-Clause）・Tauri（MIT/Apache-2.0）・Svelte（MIT）等のオープンソースを利用しています。第三者ライセンスの帰属は配布物の THIRD-PARTY-NOTICES とリポジトリに含まれます。",
     "about_repo": "リポジトリ / ライセンス全文",
     "show_onboarding": "使い方をもう一度見る",
-    "tip_show_onboarding": "初回ガイド（3ステップ）をもう一度表示します。"
+    "tip_show_onboarding": "初回ガイド（3ステップ）をもう一度表示します。",
+    "tip_refine_warn_1": "⚠ クラウド整形は",
+    "tip_refine_warn_strong": "文字起こしテキストを端末外（{provider}）へ送信",
+    "tip_refine_warn_2": "します。各社は既定でAPI入力を学習利用しないと明言していますが、プライバシー重視なら「ローカル（Ollama）」をお使いください。鍵はこの端末の安全な保管領域に保存されます。"
   },
   "vault": {
     "back_to_list": "← 一覧へ戻る",

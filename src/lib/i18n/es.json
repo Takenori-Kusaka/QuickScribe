@@ -145,7 +145,10 @@
     "about_oss": "Esta app usa software de código abierto como whisper.cpp (MIT), libopus (BSD-3-Clause), Tauri (MIT/Apache-2.0) y Svelte (MIT). Las atribuciones de terceros se incluyen en THIRD-PARTY-NOTICES con la distribución y en el repositorio.",
     "about_repo": "Repositorio / licencia completa",
     "show_onboarding": "Ver la introducción de nuevo",
-    "tip_show_onboarding": "Muestra de nuevo la guía inicial (3 pasos)."
+    "tip_show_onboarding": "Muestra de nuevo la guía inicial (3 pasos).",
+    "tip_refine_warn_1": "⚠ El refinado en la nube ",
+    "tip_refine_warn_strong": "envía tu transcripción fuera de tu dispositivo (a {provider})",
+    "tip_refine_warn_2": ". Cada proveedor declara que no usa la entrada de la API para entrenar de forma predeterminada, pero si la privacidad te importa usa «Local (Ollama)». Las claves se guardan en el almacenamiento seguro de este dispositivo."
   },
   "vault": {
     "back_to_list": "← Volver a la lista",
