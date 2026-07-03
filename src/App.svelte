@@ -15,11 +15,11 @@
   import { errorText } from "./lib/errors";
   import { modal } from "./lib/a11y";
   import { displayShortcut, accelFromEvent } from "./lib/shortcut";
-  import { kindLabel, filterEntries } from "./lib/entry";
+  import { kindLabel } from "./lib/entry";
+  import { createVaultView } from "./lib/vault-view.svelte";
   import { parseRecordSource } from "./lib/record-source";
   import { validateRefineConfig, type RefineConfigError } from "./lib/provider-config";
   import { clampProvider, clampSttProvider, clampOneOf, isValidRefineStyle } from "./lib/settings";
-  import { computeStreak } from "./lib/streak";
   import { buildRefineArgs } from "./lib/refine-args";
   import { isModelCacheFresh } from "./lib/model-cache";
   import { selectDiscoveryTargets, buildDiscoveryText } from "./lib/discovery";
@@ -95,66 +95,10 @@
     dismissOnboarding();
   }
 
-  // 保管庫エントリの横断（S4.3 Phase1）。一覧＋タグ/全文絞り込み＋閲覧。
-  type EntrySummary = {
-    path: string;
-    name: string;
-    created: string;
-    kind: string;
-    tags: string[];
-    preview: string;
-  };
-  let showEntries = $state(false);
-  let entries = $state<EntrySummary[]>([]);
-  // 習慣ナッジ: 記録日の寛容ストリーク(1日サボりまで許容)。ジャーナルに表示(#58)。
-  const journalStreak = $derived(
-    computeStreak(
-      entries.map((e) => e.created),
-      new Date().toISOString().slice(0, 10),
-    ),
-  );
-  let entriesLoading = $state(false);
-  let entrySearch = $state<string>("");
-  let selectedTags = $state<string[]>([]);
-  let viewingEntry = $state<{ name: string; content: string } | null>(null);
-  async function loadEntries() {
-    entriesLoading = true;
-    try {
-      entries = await invoke<EntrySummary[]>("list_entries");
-    } catch (e) {
-      error = $_("errors.journal_load", { values: { detail: errorText(e, $_) } });
-      entries = [];
-    } finally {
-      entriesLoading = false;
-    }
-  }
-  function openEntriesPanel() {
-    showEntries = true;
-    viewingEntry = null;
-    void loadEntries();
-  }
-  function toggleTagFilter(tag: string) {
-    selectedTags = selectedTags.includes(tag)
-      ? selectedTags.filter((t) => t !== tag)
-      : [...selectedTags, tag];
-  }
-  // 全エントリのタグ集合（絞り込みチップ用・出現頻度降順）。
-  const allTags = $derived.by(() => {
-    const count = new Map<string, number>();
-    for (const e of entries) for (const t of e.tags) count.set(t, (count.get(t) ?? 0) + 1);
-    return [...count.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
-  });
-  // 検索語(name/preview/tags)＋選択タグ(AND)で絞り込んだ一覧。
-  const filteredEntries = $derived.by(() => filterEntries(entries, entrySearch, selectedTags));
-  // エントリ種別の日本語ラベル（生の文字起こし/整形済み/メモ）。
-  async function openEntry(e: EntrySummary) {
-    try {
-      const content = await invoke<string>("read_text_file", { path: e.path });
-      viewingEntry = { name: e.name, content };
-    } catch (err) {
-      error = $_("errors.entry_open", { values: { detail: errorText(err, $_) } });
-    }
-  }
+  // 保管庫エントリの横断（S4.3）。一覧＋タグ/全文絞り込み＋閲覧の状態・ロジックは
+  // lib/vault-view.svelte.ts へ集約(#392)。App は error への書き戻しのみ受け持つ。
+  // 横断発見(discovery)は整形設定に依存するため下記で App 側に残す。
+  const vault = createVaultView({ t: $_, onError: (m) => (error = m) });
 
   // 横断発見（S4.3 Phase2）。絞り込んだ過去エントリ群をAIで読み解く。
   const DISCOVERY_INSTRUCTION = [
@@ -169,11 +113,11 @@
   async function discoverAcross() {
     const cfgErr = refineConfigError();
     if (cfgErr) {
-      showEntries = false;
+      vault.showEntries = false;
       openSettingsForConfig(cfgErr);
       return;
     }
-    const { targets, truncated } = selectDiscoveryTargets(filteredEntries, DISCOVERY_MAX);
+    const { targets, truncated } = selectDiscoveryTargets(vault.filteredEntries, DISCOVERY_MAX);
     discoveryTruncated = truncated;
     if (targets.length < 2) {
       error = $_("errors.discover_need_two");
@@ -1094,7 +1038,7 @@
   });
 </script>
 
-<main inert={showSettings || showEntries}>
+<main inert={showSettings || vault.showEntries}>
   <div class="content">
     <header>
       <div class="title-row">
@@ -1104,7 +1048,7 @@
             class="gear"
             title={$_("header.journal_title")}
             aria-label={$_("header.journal")}
-            onclick={openEntriesPanel}
+            onclick={vault.openPanel}
           >
             <svg
               class="ic"
@@ -1443,12 +1387,12 @@
   </div>
 </main>
 
-{#if showEntries}
+{#if vault.showEntries}
   <div
     class="settings-overlay"
     role="presentation"
     onclick={(e) => {
-      if (e.target === e.currentTarget) showEntries = false;
+      if (e.target === e.currentTarget) vault.showEntries = false;
     }}
   >
     <div
@@ -1457,21 +1401,23 @@
       aria-modal="true"
       aria-labelledby="vault-title"
       tabindex="-1"
-      use:modal={{ onClose: () => (showEntries = false) }}
+      use:modal={{ onClose: () => (vault.showEntries = false) }}
     >
       <div class="settings-head">
         <h2 id="vault-title">
-          {viewingEntry
-            ? $_("vault.title_viewing", { values: { name: viewingEntry.name } })
+          {vault.viewingEntry
+            ? $_("vault.title_viewing", { values: { name: vault.viewingEntry.name } })
             : $_("header.journal")}
         </h2>
-        {#if !viewingEntry && journalStreak > 0}
+        {#if !vault.viewingEntry && vault.journalStreak > 0}
           <span class="streak-badge" title={$_("vault.streak_title")}
-            >{$_("vault.streak", { values: { n: journalStreak } })}</span
+            >{$_("vault.streak", { values: { n: vault.journalStreak } })}</span
           >
         {/if}
-        <button class="close" aria-label={$_("header.close")} onclick={() => (showEntries = false)}
-          >×</button
+        <button
+          class="close"
+          aria-label={$_("header.close")}
+          onclick={() => (vault.showEntries = false)}>×</button
         >
       </div>
 
@@ -1482,61 +1428,63 @@
         <p class="tip">
           {$_("vault.discovery_result_tip", {
             values: {
-              n: Math.min(filteredEntries.length, 30),
+              n: Math.min(vault.filteredEntries.length, 30),
               detail: discoveryTruncated
-                ? $_("vault.discovery_truncated", { values: { total: filteredEntries.length } })
+                ? $_("vault.discovery_truncated", {
+                    values: { total: vault.filteredEntries.length },
+                  })
                 : "",
             },
           })}
         </p>
         <pre class="entry-view">{discoveryResult}</pre>
-      {:else if viewingEntry}
-        <button class="btn small ghost" onclick={() => (viewingEntry = null)}
+      {:else if vault.viewingEntry}
+        <button class="btn small ghost" onclick={() => (vault.viewingEntry = null)}
           >{$_("vault.back_to_list")}</button
         >
-        <pre class="entry-view">{viewingEntry.content}</pre>
+        <pre class="entry-view">{vault.viewingEntry.content}</pre>
       {:else}
         <input
           class="tags-input"
           type="text"
-          bind:value={entrySearch}
+          bind:value={vault.entrySearch}
           aria-label={$_("vault.search_placeholder")}
           placeholder={$_("vault.search_placeholder")}
         />
-        {#if allTags.length > 0}
+        {#if vault.allTags.length > 0}
           <div class="tag-filter">
-            {#each allTags as t}
+            {#each vault.allTags as t}
               <button
                 type="button"
                 class="chip"
-                class:active={selectedTags.includes(t)}
-                onclick={() => toggleTagFilter(t)}>#{t}</button
+                class:active={vault.selectedTags.includes(t)}
+                onclick={() => vault.toggleTag(t)}>#{t}</button
               >
             {/each}
           </div>
         {/if}
-        {#if filteredEntries.length >= 2}
+        {#if vault.filteredEntries.length >= 2}
           <button type="button" class="btn small" disabled={discovering} onclick={discoverAcross}>
             {discovering
               ? $_("vault.discovering")
-              : $_("vault.discover", { values: { n: filteredEntries.length } })}
+              : $_("vault.discover", { values: { n: vault.filteredEntries.length } })}
           </button>
           <p class="tip">{$_("vault.discover_tip")}</p>
         {/if}
-        {#if entriesLoading}
+        {#if vault.entriesLoading}
           <p class="muted center">
             <span class="spinner" aria-hidden="true"></span>
             {$_("vault.loading")}
           </p>
-        {:else if filteredEntries.length === 0}
+        {:else if vault.filteredEntries.length === 0}
           <p class="tip">
-            {entries.length === 0 ? $_("vault.empty") : $_("vault.no_match")}
+            {vault.entries.length === 0 ? $_("vault.empty") : $_("vault.no_match")}
           </p>
         {:else}
           <ul class="entry-list">
-            {#each filteredEntries as e}
+            {#each vault.filteredEntries as e}
               <li>
-                <button type="button" class="entry-item" onclick={() => openEntry(e)}>
+                <button type="button" class="entry-item" onclick={() => vault.openEntry(e)}>
                   <div class="entry-meta">
                     <span class="entry-date">{e.created.replace("T", " ")}</span>
                     {#if e.kind}<span class="entry-kind">{$_(kindLabel(e.kind))}</span>{/if}
