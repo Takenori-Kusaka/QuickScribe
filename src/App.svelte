@@ -3,19 +3,17 @@
   import { listen } from "@tauri-apps/api/event";
   import { open } from "@tauri-apps/plugin-dialog";
   import { createUpdater } from "./lib/update.svelte";
-  import {
-    enable as enableAutostart,
-    disable as disableAutostart,
-    isEnabled as isAutostartEnabled,
-  } from "@tauri-apps/plugin-autostart";
+  import { createDeviceStatus } from "./lib/device-status.svelte";
+  import { createCustomStyles } from "./lib/custom-styles.svelte";
+  import { createPrivacy } from "./lib/privacy.svelte";
   import { onMount } from "svelte";
   import { estimateRemaining, formatRemaining } from "./lib/note";
   import { parseCorrections, applyCorrections, type Correction } from "./lib/corrections";
   import { errorText } from "./lib/errors";
   import { modal } from "./lib/a11y";
-  import { displayShortcut, accelFromEvent } from "./lib/shortcut";
   import { kindLabel } from "./lib/entry";
   import { createVaultView } from "./lib/vault-view.svelte";
+  import { createShortcut } from "./lib/shortcut-store.svelte";
   import { getSecret, setSecret, loadSecretMigrating } from "./lib/secrets";
   import { parseRecordSource } from "./lib/record-source";
   import { validateRefineConfig, type RefineConfigError } from "./lib/provider-config";
@@ -28,7 +26,6 @@
   import {
     type Provider,
     type SttProvider,
-    type CustomStyle,
     ALL_PROVIDERS,
     PROVIDER_LABELS,
     LOCAL_PROVIDERS,
@@ -39,10 +36,8 @@
     STT_CLOUD,
     STT_KEY_PLACEHOLDERS,
     STT_MODEL_PLACEHOLDERS,
-    REFINE_STYLES,
     MODEL_TTL_MS,
     DISCOVERY_MAX,
-    DEFAULT_SHORTCUT,
     MAX_INPUT_MB,
     SUPPORTED_AUDIO_EXTS,
     LANGUAGES,
@@ -178,19 +173,11 @@
   // AWS Bedrock のモデルID(リージョン/アカウント依存のため手入力可)。
   let bedrockModel = $state<string>("");
 
-  // 録音トグルのグローバルホットキー。内部・保存・登録は Tauri アクセラレータ表記
-  // ("CommandOrControl+Shift+R")だが、表示は実行環境に合わせて Ctrl/Cmd に変換する。
-  let recordShortcut = $state<string>(DEFAULT_SHORTCUT);
-  let shortcutMsg = $state<string>("");
+  // 録音トグルのグローバルホットキー（状態＋キャプチャ／登録は lib/shortcut-store へ集約 / #392）。
+  const shortcut = createShortcut($_);
   // 録音モード（S1.5 / ADR-0014）: toggle=1押しで開始/停止 / momentary=押している間だけ録音。
   let recordMode = $state<"toggle" | "momentary">("toggle");
-  // ホットキーのキャプチャモード（変更ボタン押下中＝キー入力待ち）。
-  let capturing = $state<boolean>(false);
 
-  // 実行環境(OS)を判定し、修飾キーを親しみやすい表記にする。
-  const IS_MAC =
-    typeof navigator !== "undefined" &&
-    /mac/i.test(`${navigator.userAgent} ${navigator.platform ?? ""}`);
   // タスクバーウィジェットは Windows 専用機能。設定UIの出し分けに使う。
   const IS_WINDOWS =
     typeof navigator !== "undefined" &&
@@ -198,43 +185,13 @@
   // タスクバー上のウィジェット表示（Windows）。既定ON。設定でON/OFF可能。
   let taskbarWidget = $state<boolean>(true);
 
-  // OSログイン時の自動起動（S6.3）。実体はOSに登録されるため、状態はOSから取得する。
-  let autoStart = $state<boolean>(false);
-  async function loadAutoStart() {
-    try {
-      autoStart = await isAutostartEnabled();
-    } catch (e) {
-      console.error("isAutostartEnabled failed", e);
-    }
-  }
-  async function onAutoStartChange() {
-    try {
-      if (autoStart) await enableAutostart();
-      else await disableAutostart();
-      // OSの実際の登録状態に同期（失敗時のずれを防ぐ）。
-      autoStart = await isAutostartEnabled();
-    } catch (e) {
-      error = $_("errors.autostart_failed", { values: { detail: errorText(e, $_) } });
-      autoStart = await isAutostartEnabled().catch(() => autoStart);
-    }
-  }
+  // OS/デバイス連携（自動起動・録音ソース列挙・whisperモデル一覧）は lib/device-status へ集約(#392)。
+  const device = createDeviceStatus({ t: $_, onError: (m) => (error = m) });
 
   // 録音ソース選択（S1.2/S1.3 / #18 #19）。マイク入力＋出力デバイスのループバックを統一。
-  // inputDevice: 入力=デバイス名 / ループバック=レンダーデバイスID（空=OS既定）。
-  type AudioSource = { id: string; label: string; kind: string };
+  // inputDevice: 入力=デバイス名 / ループバック=レンダーデバイスID（空=OS既定）。永続化する。
   let inputDevice = $state<string>("");
   let inputDeviceKind = $state<string>("input");
-  let audioSources = $state<AudioSource[]>([]);
-
-  // 利用可能な録音ソースを列挙する（設定UIのプルダウン用）。失敗時は空のまま既定運用。
-  async function loadAudioSources() {
-    try {
-      audioSources = await invoke<AudioSource[]>("list_audio_sources");
-    } catch (e) {
-      console.error("list_audio_sources failed", e);
-      audioSources = [];
-    }
-  }
 
   // プルダウンは "kind|id" を値に使う（id がレンダーデバイスIDでも安全に分解できる）。
   function onSourceChange(e: Event) {
@@ -244,13 +201,6 @@
   }
 
   // タスクバーウィジェットの表示有効/無効をバックエンドへ反映する（Windowsのみ実体動作）。
-  async function applyTaskbarWidget() {
-    try {
-      await invoke("set_taskbar_widget", { enabled: taskbarWidget });
-    } catch (e) {
-      console.error("set_taskbar_widget failed", e);
-    }
-  }
   // 文字起こしメタデータ設定。タイムスタンプは既定ON（整形AIが時間関係を解釈できる）。
   let includeTimestamps = $state<boolean>(true);
   // 停止後に文字起こし→整形まで自動実行する（一気通貫）。
@@ -271,16 +221,9 @@
   let sttProvider = $state<SttProvider>("local");
   let sttModel = $state<string>(""); // クラウドのモデルID（空=プロバイダ既定）
   let sttAzureResource = $state<string>(""); // Azureのリソース名（azure時のみ）
-  // ローカル whisper のモデル選択（S2.2）。クラウドの sttModel とは分離。
+  // ローカル whisper のモデル選択（S2.2）。クラウドの sttModel とは分離。永続化する。
+  // 選択可能なモデル一覧(whisperModels)は device.loadWhisperModels() で列挙する。
   let whisperModel = $state<string>(""); // 空=既定 base
-  let whisperModels = $state<{ id: string; label: string }[]>([]);
-  async function loadWhisperModels() {
-    try {
-      whisperModels = await invoke<{ id: string; label: string }[]>("list_whisper_models");
-    } catch (e) {
-      console.error("list_whisper_models failed", e);
-    }
-  }
   // クラウドSTTのAPIキー（プロバイダごと）。keyringに "sttKey:<provider>" で保管。
   let sttKeys = $state<Record<string, string>>({
     groq: "",
@@ -311,78 +254,35 @@
   // 既定言語は起動時のUI言語。UI言語に限らず任意言語(Vietnamese等)を選べる(constants LANGUAGES)。
   let translateOutput = $state<boolean>(false);
   let outputLang = $state<string>("ja");
-  // 整形スタイル(REFINE_STYLES)・カスタム型は src/lib/constants.ts に集約(SSOT / #401 Phase0)。
-  let customStyles = $state<CustomStyle[]>([]);
-  // 組み込み＋カスタムを1つの選択肢リストに統合（チップ・設定ドロップダウン・解説で共用）。
-  const allStyles = $derived([
-    ...REFINE_STYLES,
-    ...customStyles.map((c) => ({
-      value: `custom:${c.id}`,
-      label: c.label || "カスタム",
-      desc: c.instruction.trim() || "ユーザー定義の整形指示。",
-    })),
-  ]);
+  // カスタム整形スタイル(#392): 状態・統合リスト(allStyles)・追加/削除は lib/custom-styles へ集約。
+  // 選択値 refineStyle は設定 state に残すため、削除時のフォールバックはコールバックで委譲する。
+  const customStyleStore = createCustomStyles({
+    t: $_,
+    onError: (m) => (error = m),
+    isActive: (v) => refineStyle === v,
+    onRemovedActive: () => (refineStyle = "structured"),
+  });
   // 現在選択中のスタイル(処理画面の表示・解説に使う)。未知値は既定にフォールバック。
-  const currentStyle = $derived(allStyles.find((s) => s.value === refineStyle) ?? allStyles[0]);
+  const currentStyle = $derived(
+    customStyleStore.allStyles.find((s) => s.value === refineStyle) ??
+      customStyleStore.allStyles[0],
+  );
 
-  // プライバシー状態(#465): 整形=ローカル(Ollama) かつ 文字起こし=ローカルwhisper のときだけ
-  // 「オンデバイス完結」。それ以外は音声/文字がクラウドAPIへ送信されうる。誇張なく現状を可視化。
-  const isFullyLocal = $derived(LOCAL_PROVIDERS.includes(provider) && sttProvider === "local");
-  // オフライン固定モード(#465): ONの間はクラウドプロバイダ選択を無効化し、常にローカルに固定する
-  // (プライバシーを運用として強制する)。永続化し起動時にも適用する。
-  let offlineMode = $state<boolean>(false);
-  // ワンクリックでローカルAI(整形=Ollama / STT=ローカルwhisper)へ切り替える(#465)。
-  function makeOffline() {
-    provider = "ollama";
-    sttProvider = "local";
-    void syncSttSettings();
-  }
-  // オフラインモードの切替。ONにするとローカルへ固定＋クラウド選択不可、永続化する。
-  function setOfflineMode(on: boolean) {
-    offlineMode = on;
-    try {
-      localStorage.setItem("offlineMode", String(on));
-    } catch {
-      /* localStorage 不可環境では状態のみ */
-    }
-    if (on) makeOffline();
-  }
-
-  // カスタムパターンの編集フォーム状態（新規追加）。
-  let newCustomLabel = $state<string>("");
-  let newCustomInstruction = $state<string>("");
-  function addCustomStyle() {
-    const label = newCustomLabel.trim();
-    const instruction = newCustomInstruction.trim();
-    if (!label || !instruction) {
-      error = $_("errors.custom_need_both");
-      return;
-    }
-    const id =
-      typeof crypto !== "undefined" && crypto.randomUUID
-        ? crypto.randomUUID().slice(0, 8)
-        : String(Date.now());
-    customStyles = [...customStyles, { id, label, instruction }];
-    newCustomLabel = "";
-    newCustomInstruction = "";
-    persistCustomStyles();
-  }
-  function removeCustomStyle(id: string) {
-    customStyles = customStyles.filter((c) => c.id !== id);
-    // 削除したパターンを選択中なら既定へ戻す。
-    if (refineStyle === `custom:${id}`) refineStyle = "structured";
-    persistCustomStyles();
-  }
-  function persistCustomStyles() {
-    localStorage.setItem("customStyles", JSON.stringify(customStyles));
-  }
+  // ローカル完結（オフライン/プライバシー）モード(#465)は lib/privacy へ集約。provider/sttProvider は設定 state に残すため注入する(#392)。
+  const privacy = createPrivacy({
+    getProvider: () => provider,
+    setProvider: (v) => (provider = v as Provider),
+    getSttProvider: () => sttProvider,
+    setSttProvider: (v) => (sttProvider = v as SttProvider),
+    syncStt: () => void syncSttSettings(),
+  });
 
   // 設定の読み込み。localStorage 読み書き＋検証は lib/settings-persist.ts に集約(#392)。
   function loadSettings() {
     const s = readSettings(($locale ?? "ja").split("-")[0] || "ja");
     provider = s.provider;
     resolvedModel = s.resolvedModel;
-    recordShortcut = s.recordShortcut;
+    shortcut.recordShortcut = s.recordShortcut;
     recordMode = s.recordMode;
     includeTimestamps = s.includeTimestamps;
     autoPipeline = s.autoPipeline;
@@ -395,11 +295,11 @@
     translateOutput = s.translateOutput;
     outputLang = s.outputLang;
     sttProvider = s.sttProvider;
-    offlineMode = s.offlineMode;
+    privacy.offlineMode = s.offlineMode;
     sttModel = s.sttModel;
     sttAzureResource = s.sttAzureResource;
     whisperModel = s.whisperModel;
-    customStyles = s.customStyles;
+    customStyleStore.customStyles = s.customStyles;
     awsRegion = s.awsRegion;
     awsWorkspaceId = s.awsWorkspaceId;
     awsAuthMode = s.awsAuthMode;
@@ -416,7 +316,7 @@
     return {
       provider,
       resolvedModel,
-      recordShortcut,
+      recordShortcut: shortcut.recordShortcut,
       recordMode,
       includeTimestamps,
       autoPipeline,
@@ -429,11 +329,11 @@
       translateOutput,
       outputLang,
       sttProvider,
-      offlineMode,
+      offlineMode: privacy.offlineMode,
       sttModel,
       sttAzureResource,
       whisperModel,
-      customStyles,
+      customStyles: customStyleStore.customStyles,
       awsRegion,
       awsWorkspaceId,
       awsAuthMode,
@@ -514,10 +414,10 @@
     settingsError = "";
     // 鍵(API鍵/AWS鍵)は keyring に保存する(localStorageには置かない / S3.2)。
     void saveSecrets();
-    void applyShortcut();
+    void shortcut.applyShortcut();
     // 設定フォームの値は lib/settings-persist の writeSettings で localStorage へ書き戻す。
     writeSettings(settingsSnapshot());
-    void applyTaskbarWidget();
+    void device.applyTaskbarWidget(taskbarWidget);
     void syncSaveSettings();
     void syncSttSettings();
     showSettings = false;
@@ -526,55 +426,6 @@
   }
 
   // キー入力イベントから Tauri アクセラレータ表記を組み立てる（修飾キー＋1キー）。
-  // ホットキー設定UX: 「変更」ボタンでキャプチャモードに入り、押したキーで登録する
-  // （VSCode/OBS/ゲーム等の定石。待機表示・Escキャンセル・修飾キー単体は待機継続）。
-  function startCapture() {
-    capturing = true;
-    shortcutMsg = "";
-  }
-  function cancelCapture() {
-    capturing = false;
-  }
-  function onCaptureKeydown(e: KeyboardEvent) {
-    if (!capturing) return;
-    e.preventDefault();
-    if (e.key === "Escape") {
-      // ホットキー取得のキャンセルに留め、設定ダイアログ全体を閉じさせない(#395)。
-      e.stopPropagation();
-      cancelCapture();
-      return;
-    }
-    // 修飾キー単体は待機を継続（組合せの確定を待つ）。
-    if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) return;
-    const accel = accelFromEvent(e);
-    if (!accel) {
-      // 修飾キー無しは誤爆防止のため不可。ヒントを出して待機継続。
-      shortcutMsg = $_("settings.shortcut_modifier_required");
-      return;
-    }
-    recordShortcut = accel;
-    capturing = false;
-    void applyShortcut();
-  }
-  function resetShortcut() {
-    recordShortcut = DEFAULT_SHORTCUT;
-    void applyShortcut();
-  }
-
-  // 現在の表記でグローバルホットキーを再登録する。
-  async function applyShortcut() {
-    try {
-      await invoke("set_record_shortcut", { accelerator: recordShortcut });
-      localStorage.setItem("recordShortcut", recordShortcut);
-      void invoke("set_taskbar_shortcut", { display: displayShortcut(recordShortcut, IS_MAC) });
-      shortcutMsg = $_("errors.hotkey_set", {
-        values: { key: displayShortcut(recordShortcut, IS_MAC) },
-      });
-    } catch (e) {
-      shortcutMsg = $_("errors.hotkey_failed", { values: { detail: errorText(e, $_) } });
-    }
-  }
-
   // 現在のプロバイダの最新ミドルレンジモデルを実行時に解決し、キャッシュする。
   // force=false かつキャッシュが新しければ何もしない。鍵未入力なら何もしない。
   async function resolveCurrentModel(force = false) {
@@ -687,7 +538,7 @@
       bedrockModel,
       resolvedModel: resolvedModel[provider],
       style: styleOverride ?? refineStyle,
-      customStyles,
+      customStyles: customStyleStore.customStyles,
       entryTags,
       awsRegion,
       awsWorkspaceId,
@@ -878,11 +729,11 @@
     } catch {
       /* localStorage 不可環境では出さない */
     }
-    void applyShortcut();
-    void applyTaskbarWidget();
-    void loadAutoStart();
-    void loadAudioSources();
-    void loadWhisperModels();
+    void shortcut.applyShortcut();
+    void device.applyTaskbarWidget(taskbarWidget);
+    void device.loadAutoStart();
+    void device.loadAudioSources();
+    void device.loadWhisperModels();
     void syncSaveSettings();
     void resolveCurrentModel();
     void updater.checkForUpdate();
@@ -1114,7 +965,7 @@
       })}
     </p>
     <p class="hint">
-      {$_("main.hotkey_hint", { values: { key: displayShortcut(recordShortcut, IS_MAC) } })}
+      {$_("main.hotkey_hint", { values: { key: shortcut.display() } })}
     </p>
 
     <!-- 初回オンボーディング（#397）: 初回はコア体験3ステップ＋ローカル完結を非ブロッキングの
@@ -1122,7 +973,7 @@
          以降の空状態では軽量な「まず録音」導線のみ。 -->
     {#if !showOnboarding && !recording && !busy && !transcribing && !status && !transcript && !refined}
       <p class="empty-cta">
-        {$_("main.empty_cta", { values: { key: displayShortcut(recordShortcut, IS_MAC) } })}
+        {$_("main.empty_cta", { values: { key: shortcut.display() } })}
       </p>
     {/if}
 
@@ -1253,7 +1104,7 @@
         <!-- 段階的深掘り(S3.5): 結果から別スタイルで整形し直す(再文字起こし不要＝逐語⇄要約⇄ブレストを行き来)。 -->
         <div class="restyle-row">
           <span class="restyle-label">{$_("results.restyle_label")}</span>
-          {#each allStyles as s}
+          {#each customStyleStore.allStyles as s}
             <button
               type="button"
               class="chip"
@@ -1461,14 +1312,18 @@
       {#if settingsTab === "general"}
         <!-- プライバシー状態インジケータ(#465): 現在の構成が完全オンデバイスか、クラウド送信を
            伴うかを常時可視化。クラウド時はワンクリックでローカルAIへ切り替えられる。 -->
-        <div class="privacy-status" class:local={isFullyLocal} class:cloud={!isFullyLocal}>
+        <div
+          class="privacy-status"
+          class:local={privacy.isFullyLocal}
+          class:cloud={!privacy.isFullyLocal}
+        >
           <span class="privacy-dot" aria-hidden="true"></span>
           <div class="privacy-text">
-            <strong>{isFullyLocal ? $_("privacy.on_device") : $_("privacy.cloud")}</strong>
-            <p>{isFullyLocal ? $_("privacy.on_device_desc") : $_("privacy.cloud_desc")}</p>
+            <strong>{privacy.isFullyLocal ? $_("privacy.on_device") : $_("privacy.cloud")}</strong>
+            <p>{privacy.isFullyLocal ? $_("privacy.on_device_desc") : $_("privacy.cloud_desc")}</p>
           </div>
-          {#if !isFullyLocal && !offlineMode}
-            <button type="button" class="btn small ghost" onclick={makeOffline}
+          {#if !privacy.isFullyLocal && !privacy.offlineMode}
+            <button type="button" class="btn small ghost" onclick={privacy.makeOffline}
               >{$_("privacy.make_offline")}</button
             >
           {/if}
@@ -1476,8 +1331,8 @@
         <label class="check">
           <input
             type="checkbox"
-            checked={offlineMode}
-            onchange={(e) => setOfflineMode(e.currentTarget.checked)}
+            checked={privacy.offlineMode}
+            onchange={(e) => privacy.setOfflineMode(e.currentTarget.checked)}
           />
           {$_("privacy.offline_mode")}
         </label>
@@ -1490,25 +1345,27 @@
           <button
             type="button"
             class="hotkey-capture"
-            class:capturing
-            onclick={startCapture}
-            onkeydown={onCaptureKeydown}
-            onblur={cancelCapture}
+            class:capturing={shortcut.capturing}
+            onclick={shortcut.startCapture}
+            onkeydown={shortcut.onCaptureKeydown}
+            onblur={shortcut.cancelCapture}
           >
-            {#if capturing}
+            {#if shortcut.capturing}
               {$_("settings.press_key")}
             {:else}
-              {displayShortcut(recordShortcut, IS_MAC)}
+              {shortcut.display()}
             {/if}
           </button>
-          <button type="button" class="btn small ghost" onclick={resetShortcut}
+          <button type="button" class="btn small ghost" onclick={shortcut.resetShortcut}
             >{$_("settings.reset_default")}</button
           >
         </div>
         <p class="tip">
-          {$_("settings.tip_hotkey", { values: { key: displayShortcut(recordShortcut, IS_MAC) } })}
+          {$_("settings.tip_hotkey", { values: { key: shortcut.display() } })}
         </p>
-        {#if shortcutMsg}<p class="muted" role="status" aria-live="polite">{shortcutMsg}</p>{/if}
+        {#if shortcut.shortcutMsg}<p class="muted" role="status" aria-live="polite">
+            {shortcut.shortcutMsg}
+          </p>{/if}
 
         <details class="meta-group" open>
           <summary class="meta-title">{$_("settings.group_record_mode")}</summary>
@@ -1536,11 +1393,15 @@
               {#if IS_WINDOWS}
                 <option value="mix|">{$_("settings.source_mix")}</option>
               {/if}
-              {#each audioSources as s}
+              {#each device.audioSources as s}
                 <option value={`${s.kind}|${s.id}`}>{s.label}</option>
               {/each}
             </select>
-            <button type="button" class="btn small ghost" onclick={() => void loadAudioSources()}>
+            <button
+              type="button"
+              class="btn small ghost"
+              onclick={() => void device.loadAudioSources()}
+            >
               {$_("settings.reload")}
             </button>
           </div>
@@ -1555,7 +1416,7 @@
             <select
               bind:value={sttProvider}
               aria-label={$_("settings.group_stt")}
-              disabled={offlineMode}
+              disabled={privacy.offlineMode}
             >
               {#each Object.keys(STT_LABELS) as p}
                 <option value={p}>{STT_LABELS[p as SttProvider]}</option>
@@ -1602,7 +1463,7 @@
             <label>
               {$_("settings.stt_model")}
               <select bind:value={whisperModel}>
-                {#each whisperModels as m}
+                {#each device.whisperModels as m}
                   <option value={m.id}>{m.label}</option>
                 {/each}
               </select>
@@ -1639,7 +1500,7 @@
             <select
               bind:value={provider}
               onchange={() => resolveCurrentModel()}
-              disabled={offlineMode}
+              disabled={privacy.offlineMode}
             >
               <option value="gemini">Gemini</option>
               <option value="anthropic">Anthropic (Claude)</option>
@@ -1772,7 +1633,7 @@
           <label>
             {$_("settings.label_refine_style")}
             <select bind:value={refineStyle}>
-              {#each allStyles as s}
+              {#each customStyleStore.allStyles as s}
                 <option value={s.value} title={s.desc}>{s.label}</option>
               {/each}
             </select>
@@ -1802,15 +1663,16 @@
         <!-- カスタム整形パターン(S3.3): ユーザー定義の指示を追加・管理する。 -->
         <details class="meta-group">
           <summary class="meta-title">{$_("settings.group_custom_style")}</summary>
-          {#if customStyles.length > 0}
+          {#if customStyleStore.customStyles.length > 0}
             <ul class="custom-list">
-              {#each customStyles as c}
+              {#each customStyleStore.customStyles as c}
                 <li class="custom-item">
                   <span class="custom-name">{c.label}</span>
                   <button
                     type="button"
                     class="btn small ghost"
-                    onclick={() => removeCustomStyle(c.id)}>{$_("settings.delete")}</button
+                    onclick={() => customStyleStore.removeCustomStyle(c.id)}
+                    >{$_("settings.delete")}</button
                   >
                 </li>
               {/each}
@@ -1819,15 +1681,15 @@
           <input
             class="custom-name-input"
             type="text"
-            bind:value={newCustomLabel}
+            bind:value={customStyleStore.newCustomLabel}
             placeholder={$_("settings.custom_name_ph")}
           />
           <textarea
             class="custom-instruction-input"
-            bind:value={newCustomInstruction}
+            bind:value={customStyleStore.newCustomInstruction}
             rows="4"
             placeholder={$_("settings.custom_instruction_ph")}></textarea>
-          <button type="button" class="btn small" onclick={addCustomStyle}>
+          <button type="button" class="btn small" onclick={customStyleStore.addCustomStyle}>
             {$_("settings.add_custom")}
           </button>
           <p class="tip">{$_("settings.tip_custom")}</p>
@@ -1909,8 +1771,8 @@
           <label class="check">
             <input
               type="checkbox"
-              bind:checked={autoStart}
-              onchange={() => void onAutoStartChange()}
+              bind:checked={device.autoStart}
+              onchange={() => void device.onAutoStartChange()}
             />
             {$_("settings.autostart")}
           </label>
