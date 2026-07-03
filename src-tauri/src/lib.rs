@@ -541,35 +541,57 @@ async fn resolve_model(provider: String, api_key: String) -> Result<String, Stri
     .map_err(|e| e.to_string())?
 }
 
+/// `refine_text` コマンドの引数（#392: 16引数を params 構造体へ集約 / OCP）。
+/// フロントは camelCase で送る（`buildRefineArgs` と対応）。鍵はコードに埋め込まない(ADR-0005)。
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefineTextParams {
+    pub text: String,
+    pub provider: String,
+    pub api_key: String,
+    pub model: String,
+    pub style: String,
+    /// ユーザー定義のカスタム整形指示(S3.3)。指定時は style の既定指示の代わりに使う。
+    pub custom_instruction: Option<String>,
+    /// 内省タグ(S4.3)。保存時にメタデータとして付与する。
+    pub tags: Option<Vec<String>>,
+    /// 保存するか(S4.3 Phase2 横断発見など一時的な結果は false で保管庫を汚さない)。既定 true。
+    pub save: Option<bool>,
+    /// AWSプロバイダ(Bedrock / Claude Platform on AWS)用 / ADR-0011。非AWS時は None。
+    pub region: Option<String>,
+    pub workspace_id: Option<String>,
+    /// "sigv4" | "apikey"(既定)。
+    pub auth_mode: Option<String>,
+    pub aws_access_key: Option<String>,
+    pub aws_secret_key: Option<String>,
+    pub aws_session_token: Option<String>,
+    /// 整形出力言語(翻訳 / #453)。Some(英語名)時、指定言語で整形出力する。非指定は原語のまま。
+    pub output_lang: Option<String>,
+}
+
 /// 文字起こしテキストを整形(思考整理・要約)して保存し返す（E3 コアドメイン）。
 /// 非同期＋別スレッドでUIをブロックしない。プロバイダ(Gemini/Anthropic/OpenAI)と
 /// APIキー・モデルはフロントの設定から渡す（コードに鍵を埋め込まない / ADR-0005）。
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
-async fn refine_text(
-    app: tauri::AppHandle,
-    text: String,
-    provider: String,
-    api_key: String,
-    model: String,
-    style: String,
-    // ユーザー定義のカスタム整形指示(S3.3)。指定時は style の既定指示の代わりに使う。
-    custom_instruction: Option<String>,
-    // 内省タグ(S4.3)。保存時にメタデータとして付与する。
-    tags: Option<Vec<String>>,
-    // 保存するか(S4.3 Phase2 横断発見など一時的な結果は false で保管庫を汚さない)。既定 true。
-    save: Option<bool>,
-    // AWSプロバイダ(Bedrock / Claude Platform on AWS)用 / ADR-0011。非AWS時は未指定(None)。
-    region: Option<String>,
-    workspace_id: Option<String>,
-    auth_mode: Option<String>, // "sigv4" | "apikey"(既定)
-    aws_access_key: Option<String>,
-    aws_secret_key: Option<String>,
-    aws_session_token: Option<String>,
-    // 整形出力言語(翻訳 / #453)。Some(英語名)時、指定言語で整形出力する。非指定は原語のまま。
-    output_lang: Option<String>,
-) -> Result<String, String> {
+async fn refine_text(app: tauri::AppHandle, params: RefineTextParams) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        let RefineTextParams {
+            text,
+            provider,
+            api_key,
+            model,
+            style,
+            custom_instruction,
+            tags,
+            save,
+            region,
+            workspace_id,
+            auth_mode,
+            aws_access_key,
+            aws_secret_key,
+            aws_session_token,
+            output_lang,
+        } = params;
         let m = if model.trim().is_empty() {
             default_model_for(&provider).to_string()
         } else {
