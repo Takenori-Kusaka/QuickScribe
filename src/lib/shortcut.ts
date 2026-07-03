@@ -1,7 +1,12 @@
 // グローバルショートカット（録音トグル）の表示・キャプチャ用の純粋関数（#402 / ADR-0014）。
 // App.svelte から抽出してユニットテスト可能化。プラットフォーム差は isMac を引数で受ける。
 
-/** Tauri accelerator 文字列を、人が読むキー表記へ変換する。 */
+/**
+ * Tauri accelerator 文字列を、人が読むキー表記へ変換する。
+ * @param accel accelerator 表記（例 "CommandOrControl+Shift+R"）。
+ * @param isMac macOS か（修飾キーを Cmd/Option 等に出し分ける）。
+ * @returns 表示用のキー表記（例 "Ctrl+Shift+R"）。
+ */
 export function displayShortcut(accel: string, isMac: boolean): string {
   return accel
     .split("+")
@@ -28,6 +33,8 @@ export function displayShortcut(accel: string, isMac: boolean): string {
 /**
  * キーボードイベントから Tauri accelerator を組み立てる。
  * 修飾キー単体や、修飾キー無しの単打は誤爆防止のため null を返す。
+ * @param e キャプチャ中の keydown イベント。
+ * @returns accelerator 表記（例 "CommandOrControl+Shift+R"）。無効な組合せは null。
  */
 export function accelFromEvent(e: KeyboardEvent): string | null {
   const k = e.key;

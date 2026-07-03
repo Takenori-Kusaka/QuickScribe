@@ -26,7 +26,11 @@ export interface RefineArgsInput {
   outputLang: string;
 }
 
-/** refine_text コマンドの引数を組み立てる。カスタム整形・内省タグ・AWS認証を反映する。 */
+/**
+ * refine_text コマンドの引数を組み立てる。カスタム整形・内省タグ・AWS認証を反映する。
+ * @param i 整形に必要な入力（本文・プロバイダ・鍵・スタイル・出力言語・AWS資格情報など）。
+ * @returns Tauri `invoke("refine_text", …)` に渡す引数オブジェクト（該当時のみ AWS/タグ/翻訳キーを含む）。
+ */
 export function buildRefineArgs(i: RefineArgsInput): Record<string, unknown> {
   const base: Record<string, unknown> = {
     text: i.transcript,

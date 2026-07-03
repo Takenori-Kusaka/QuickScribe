@@ -25,11 +25,13 @@ export interface RefineConfigError {
 }
 
 /**
- * 整形を実行できる設定かを検証する。問題があれば i18n コードを返し、無ければ null。
+ * 整形を実行できる設定かを検証する。
  * - ローカル(Ollama): 鍵不要。
  * - AWS(Bedrock/Claude Platform): region 必須。claude-aws は workspace_id 必須。
  *   SigV4 は アクセスキー/シークレット、それ以外は APIキー。
  * - その他クラウド(Gemini/Anthropic/OpenAI): APIキー必須。
+ * @param c 検証する整形設定（プロバイダ・鍵・AWS 資格情報）。
+ * @returns 不足があれば i18n コード付きの {@link RefineConfigError}、問題なければ null。
  */
 export function validateRefineConfig(c: RefineConfig): RefineConfigError | null {
   if (LOCAL_PROVIDERS.includes(c.provider)) return null;
