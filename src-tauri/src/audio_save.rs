@@ -26,7 +26,7 @@ pub fn save_wav(
         sample_format: hound::SampleFormat::Int,
     };
     let mut writer =
-        hound::WavWriter::create(&path, spec).map_err(|e| format!("WAV作成に失敗: {e}"))?;
+        hound::WavWriter::create(&path, spec).map_err(|e| crate::errcode::ec(crate::errcode::E_WAV_CREATE, e))?;
     for &s in interleaved {
         writer
             .write_sample(f32_to_i16(s))
@@ -34,7 +34,7 @@ pub fn save_wav(
     }
     writer
         .finalize()
-        .map_err(|e| format!("WAV書き出しに失敗: {e}"))?;
+        .map_err(|e| crate::errcode::ec(crate::errcode::E_WAV_EXPORT, e))?;
     Ok(path)
 }
 
@@ -69,11 +69,11 @@ pub fn save_opus(
 
     let pcm = to_mono_48k(interleaved, sample_rate, channels);
     if pcm.is_empty() {
-        return Err("音声データが空です".into());
+        return Err(crate::errcode::E_EMPTY_AUDIO.into());
     }
 
     let mut enc = opus::Encoder::new(48_000, opus::Channels::Mono, opus::Application::Voip)
-        .map_err(|e| format!("Opusエンコーダ生成に失敗: {e}"))?;
+        .map_err(|e| crate::errcode::ec(crate::errcode::E_OPUS_ENCODER, e))?;
     enc.set_bitrate(opus::Bitrate::Bits(24_000))
         .map_err(|e| e.to_string())?;
 
@@ -93,7 +93,7 @@ pub fn save_opus(
     head.push(0); // mapping family 0
     writer
         .write_packet(head, SERIAL, ogg::PacketWriteEndInfo::EndPage, 0)
-        .map_err(|e| format!("OpusHead書き込みに失敗: {e}"))?;
+        .map_err(|e| crate::errcode::ec(crate::errcode::E_OPUS_HEAD, e))?;
 
     // OpusTags。
     let vendor = b"QuickScribe";
@@ -104,7 +104,7 @@ pub fn save_opus(
     tags.extend_from_slice(&0u32.to_le_bytes()); // user comment count
     writer
         .write_packet(tags, SERIAL, ogg::PacketWriteEndInfo::EndPage, 0)
-        .map_err(|e| format!("OpusTags書き込みに失敗: {e}"))?;
+        .map_err(|e| crate::errcode::ec(crate::errcode::E_OPUS_TAGS, e))?;
 
     // 音声パケット（20msフレーム）。最後のフレームはゼロ詰め。
     let total_frames = pcm.len().div_ceil(FRAME);
@@ -116,7 +116,7 @@ pub fn save_opus(
         frame[..end - start].copy_from_slice(&pcm[start..end]);
         let n = enc
             .encode_float(&frame, &mut out)
-            .map_err(|e| format!("Opusエンコードに失敗: {e}"))?;
+            .map_err(|e| crate::errcode::ec(crate::errcode::E_OPUS_ENCODE, e))?;
         let granule = (i as u64 + 1) * FRAME as u64 + PRE_SKIP as u64;
         let info = if i + 1 == total_frames {
             ogg::PacketWriteEndInfo::EndStream
@@ -125,13 +125,13 @@ pub fn save_opus(
         };
         writer
             .write_packet(out[..n].to_vec(), SERIAL, info, granule)
-            .map_err(|e| format!("Opusパケット書き込みに失敗: {e}"))?;
+            .map_err(|e| crate::errcode::ec(crate::errcode::E_OPUS_PACKET, e))?;
     }
 
     writer
         .into_inner()
         .flush()
-        .map_err(|e| format!("Opus書き出しに失敗: {e}"))?;
+        .map_err(|e| crate::errcode::ec(crate::errcode::E_OPUS_EXPORT, e))?;
     Ok(path)
 }
 

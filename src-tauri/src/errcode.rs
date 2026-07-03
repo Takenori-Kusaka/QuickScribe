@@ -1,0 +1,184 @@
+// 安定エラーコード（#462 i18n Phase2）。
+//
+// バックエンドはユーザー向けエラーを日本語ハードコードで返さず、言語非依存の
+// 安定コード `E_XXX` を返す。技術詳細が必要な場合は区切り文字 U+001F に続けて付す。
+// フロント（src/lib/errors.ts の errorText）が `errors.rust.<CODE>` カタログ
+// （ja/en/zh/es）へ写像してローカライズする。これにより非日本語UIでバックエンドの
+// 日本語が露出しない。
+//
+// 命名規約: `E_` + 大文字/数字/アンダースコア。コード自体は SSOT（下の ALL に集約）。
+
+/// コードと技術詳細を区切る制御文字（U+001F Unit Separator）。errors.ts の ERR_CODE_SEP と一致。
+pub const SEP: char = '\u{1f}';
+
+/// コード＋技術詳細を `"CODE\u{1f}detail"` 形式で整形する。
+/// detail はライブラリ由来の技術文字列（多くは英語）で、翻訳対象外。
+pub fn ec(code: &str, detail: impl std::fmt::Display) -> String {
+    format!("{code}{SEP}{detail}")
+}
+
+// ---- lib.rs ----
+pub const E_LOCK_STT: &str = "E_LOCK_STT";
+pub const E_JOURNAL_DIR: &str = "E_JOURNAL_DIR";
+pub const E_FILE_MANAGER: &str = "E_FILE_MANAGER";
+pub const E_LOCK_SETTINGS: &str = "E_LOCK_SETTINGS";
+pub const E_LOCK_RECORD_STATE: &str = "E_LOCK_RECORD_STATE";
+pub const E_ALREADY_RECORDING: &str = "E_ALREADY_RECORDING";
+pub const E_TEXT_READ: &str = "E_TEXT_READ";
+pub const E_SHORTCUT_PARSE: &str = "E_SHORTCUT_PARSE";
+pub const E_SHORTCUT_REGISTER: &str = "E_SHORTCUT_REGISTER";
+pub const E_KEYRING_INIT: &str = "E_KEYRING_INIT";
+pub const E_SECRET_SAVE: &str = "E_SECRET_SAVE";
+pub const E_SECRET_DELETE: &str = "E_SECRET_DELETE";
+
+// ---- record.rs ----
+pub const E_REC_BUFFER: &str = "E_REC_BUFFER";
+pub const E_LOOPBACK_UNSUPPORTED: &str = "E_LOOPBACK_UNSUPPORTED";
+pub const E_MIXED_UNSUPPORTED: &str = "E_MIXED_UNSUPPORTED";
+pub const E_NO_INPUT_DEVICE: &str = "E_NO_INPUT_DEVICE";
+pub const E_INPUT_CONFIG: &str = "E_INPUT_CONFIG";
+pub const E_UNSUPPORTED_FORMAT: &str = "E_UNSUPPORTED_FORMAT";
+pub const E_STREAM_BUILD: &str = "E_STREAM_BUILD";
+pub const E_REC_START: &str = "E_REC_START";
+pub const E_REC_THREAD_INIT: &str = "E_REC_THREAD_INIT";
+pub const E_COM_INIT: &str = "E_COM_INIT";
+pub const E_AUDIO_ENUM: &str = "E_AUDIO_ENUM";
+pub const E_OUTPUT_DEVICE: &str = "E_OUTPUT_DEVICE";
+pub const E_AUDIO_CLIENT: &str = "E_AUDIO_CLIENT";
+pub const E_MIX_FORMAT: &str = "E_MIX_FORMAT";
+pub const E_DEVICE_PERIOD: &str = "E_DEVICE_PERIOD";
+pub const E_LOOPBACK_INIT: &str = "E_LOOPBACK_INIT";
+pub const E_EVENT_HANDLE: &str = "E_EVENT_HANDLE";
+pub const E_CAPTURE_CLIENT: &str = "E_CAPTURE_CLIENT";
+pub const E_LOOPBACK_START: &str = "E_LOOPBACK_START";
+pub const E_LOOPBACK_THREAD_INIT: &str = "E_LOOPBACK_THREAD_INIT";
+
+// ---- stt.rs ----
+pub const E_AUDIO_PROBE: &str = "E_AUDIO_PROBE";
+pub const E_NO_CODEC_PARAMS: &str = "E_NO_CODEC_PARAMS";
+pub const E_DECODER_BUILD: &str = "E_DECODER_BUILD";
+pub const E_PACKET_READ: &str = "E_PACKET_READ";
+pub const E_DECODE: &str = "E_DECODE";
+pub const E_STT_MODEL_LOAD: &str = "E_STT_MODEL_LOAD";
+pub const E_WAV_BUILD: &str = "E_WAV_BUILD";
+pub const E_WAV_WRITE: &str = "E_WAV_WRITE";
+pub const E_WAV_FINALIZE: &str = "E_WAV_FINALIZE";
+pub const E_CLOUD_STT_NO_KEY: &str = "E_CLOUD_STT_NO_KEY";
+pub const E_CLOUD_STT_HTTP: &str = "E_CLOUD_STT_HTTP";
+pub const E_CLOUD_STT_STATUS: &str = "E_CLOUD_STT_STATUS";
+pub const E_CLOUD_STT_PARSE: &str = "E_CLOUD_STT_PARSE";
+pub const E_AZURE_NO_RESOURCE: &str = "E_AZURE_NO_RESOURCE";
+
+// ---- model.rs ----
+pub const E_MODEL_DOWNLOAD: &str = "E_MODEL_DOWNLOAD";
+
+// ---- aws_sign.rs ----
+pub const E_SIGV4_PARAMS: &str = "E_SIGV4_PARAMS";
+pub const E_SIGV4_SIGNABLE: &str = "E_SIGV4_SIGNABLE";
+pub const E_SIGV4_SIGN: &str = "E_SIGV4_SIGN";
+pub const E_HTTP_BUILD: &str = "E_HTTP_BUILD";
+
+// ---- audio_save.rs ----
+pub const E_WAV_CREATE: &str = "E_WAV_CREATE";
+pub const E_WAV_EXPORT: &str = "E_WAV_EXPORT";
+pub const E_EMPTY_AUDIO: &str = "E_EMPTY_AUDIO";
+pub const E_OPUS_ENCODER: &str = "E_OPUS_ENCODER";
+pub const E_OPUS_HEAD: &str = "E_OPUS_HEAD";
+pub const E_OPUS_TAGS: &str = "E_OPUS_TAGS";
+pub const E_OPUS_ENCODE: &str = "E_OPUS_ENCODE";
+pub const E_OPUS_PACKET: &str = "E_OPUS_PACKET";
+pub const E_OPUS_EXPORT: &str = "E_OPUS_EXPORT";
+
+/// 全コードの SSOT（一意性テストとフロント側パリティ検証の基準）。
+pub const ALL: &[&str] = &[
+    E_LOCK_STT,
+    E_JOURNAL_DIR,
+    E_FILE_MANAGER,
+    E_LOCK_SETTINGS,
+    E_LOCK_RECORD_STATE,
+    E_ALREADY_RECORDING,
+    E_TEXT_READ,
+    E_SHORTCUT_PARSE,
+    E_SHORTCUT_REGISTER,
+    E_KEYRING_INIT,
+    E_SECRET_SAVE,
+    E_SECRET_DELETE,
+    E_REC_BUFFER,
+    E_LOOPBACK_UNSUPPORTED,
+    E_MIXED_UNSUPPORTED,
+    E_NO_INPUT_DEVICE,
+    E_INPUT_CONFIG,
+    E_UNSUPPORTED_FORMAT,
+    E_STREAM_BUILD,
+    E_REC_START,
+    E_REC_THREAD_INIT,
+    E_COM_INIT,
+    E_AUDIO_ENUM,
+    E_OUTPUT_DEVICE,
+    E_AUDIO_CLIENT,
+    E_MIX_FORMAT,
+    E_DEVICE_PERIOD,
+    E_LOOPBACK_INIT,
+    E_EVENT_HANDLE,
+    E_CAPTURE_CLIENT,
+    E_LOOPBACK_START,
+    E_LOOPBACK_THREAD_INIT,
+    E_AUDIO_PROBE,
+    E_NO_CODEC_PARAMS,
+    E_DECODER_BUILD,
+    E_PACKET_READ,
+    E_DECODE,
+    E_STT_MODEL_LOAD,
+    E_WAV_BUILD,
+    E_WAV_WRITE,
+    E_WAV_FINALIZE,
+    E_CLOUD_STT_NO_KEY,
+    E_CLOUD_STT_HTTP,
+    E_CLOUD_STT_STATUS,
+    E_CLOUD_STT_PARSE,
+    E_AZURE_NO_RESOURCE,
+    E_MODEL_DOWNLOAD,
+    E_SIGV4_PARAMS,
+    E_SIGV4_SIGNABLE,
+    E_SIGV4_SIGN,
+    E_HTTP_BUILD,
+    E_WAV_CREATE,
+    E_WAV_EXPORT,
+    E_EMPTY_AUDIO,
+    E_OPUS_ENCODER,
+    E_OPUS_HEAD,
+    E_OPUS_TAGS,
+    E_OPUS_ENCODE,
+    E_OPUS_PACKET,
+    E_OPUS_EXPORT,
+];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn codes_are_unique() {
+        let set: HashSet<&&str> = ALL.iter().collect();
+        assert_eq!(set.len(), ALL.len(), "エラーコードに重複がある");
+    }
+
+    #[test]
+    fn codes_follow_naming_convention() {
+        for c in ALL {
+            assert!(c.starts_with("E_"), "{c} は E_ で始まっていない");
+            assert!(
+                c.chars().all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_'),
+                "{c} は大文字/数字/_ 以外を含む"
+            );
+            assert!(!c.contains(SEP), "{c} が区切り文字を含む");
+        }
+    }
+
+    #[test]
+    fn ec_formats_code_and_detail() {
+        let s = ec(E_STT_MODEL_LOAD, "no such file");
+        assert_eq!(s, format!("E_STT_MODEL_LOAD{SEP}no such file"));
+    }
+}

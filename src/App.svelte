@@ -122,7 +122,7 @@
     try {
       entries = await invoke<EntrySummary[]>("list_entries");
     } catch (e) {
-      error = $_("errors.journal_load", { values: { detail: errorText(e) } });
+      error = $_("errors.journal_load", { values: { detail: errorText(e, $_) } });
       entries = [];
     } finally {
       entriesLoading = false;
@@ -152,7 +152,7 @@
       const content = await invoke<string>("read_text_file", { path: e.path });
       viewingEntry = { name: e.name, content };
     } catch (err) {
-      error = $_("errors.entry_open", { values: { detail: errorText(err) } });
+      error = $_("errors.entry_open", { values: { detail: errorText(err, $_) } });
     }
   }
 
@@ -196,7 +196,7 @@
       delete args.tags;
       discoveryResult = await invoke<string>("refine_text", args);
     } catch (e) {
-      error = $_("errors.discover_failed", { values: { detail: errorText(e) } });
+      error = $_("errors.discover_failed", { values: { detail: errorText(e, $_) } });
     } finally {
       discovering = false;
     }
@@ -271,7 +271,7 @@
       // OSの実際の登録状態に同期（失敗時のずれを防ぐ）。
       autoStart = await isAutostartEnabled();
     } catch (e) {
-      error = $_("errors.autostart_failed", { values: { detail: errorText(e) } });
+      error = $_("errors.autostart_failed", { values: { detail: errorText(e, $_) } });
       autoStart = await isAutostartEnabled().catch(() => autoStart);
     }
   }
@@ -590,7 +590,7 @@
     try {
       await invoke("open_vault");
     } catch (e) {
-      error = $_("errors.open_output_failed", { values: { detail: errorText(e) } });
+      error = $_("errors.open_output_failed", { values: { detail: errorText(e, $_) } });
     }
   }
   function saveSettings() {
@@ -683,7 +683,7 @@
         values: { key: displayShortcut(recordShortcut, IS_MAC) },
       });
     } catch (e) {
-      shortcutMsg = $_("errors.hotkey_failed", { values: { detail: errorText(e) } });
+      shortcutMsg = $_("errors.hotkey_failed", { values: { detail: errorText(e, $_) } });
     }
   }
 
@@ -744,7 +744,7 @@
       updateState = "ready";
     } catch (e) {
       console.error("update check failed", e);
-      updateMsg = manual ? $_("update.check_failed", { values: { detail: errorText(e) } }) : "";
+      updateMsg = manual ? $_("update.check_failed", { values: { detail: errorText(e, $_) } }) : "";
     }
   }
 
@@ -774,7 +774,7 @@
       });
       transcript = text;
     } catch (e) {
-      error = $_("errors.transcribe_failed", { values: { detail: errorText(e) } });
+      error = $_("errors.transcribe_failed", { values: { detail: errorText(e, $_) } });
     } finally {
       busy = false;
       status = "";
@@ -863,7 +863,7 @@
       refined = await invoke<string>("refine_text", refineArgs(styleOverride));
       refinedStyle = styleOverride ?? refineStyle; // どのスタイルで整形したか(再整形チップの強調用)。
     } catch (e) {
-      error = $_("errors.refine_failed", { values: { detail: errorText(e) } });
+      error = $_("errors.refine_failed", { values: { detail: errorText(e, $_) } });
     } finally {
       refining = false;
     }
@@ -899,7 +899,7 @@
       const raw = await invoke<string>("refine_text", args);
       corrections = parseCorrections(raw);
     } catch (e) {
-      error = $_("errors.term_check_failed", { values: { detail: errorText(e) } });
+      error = $_("errors.term_check_failed", { values: { detail: errorText(e, $_) } });
     } finally {
       checkingTerms = false;
     }
@@ -946,7 +946,7 @@
       segments = [];
       await refineNow();
     } catch (e) {
-      error = $_("errors.memo_refine_failed", { values: { detail: errorText(e) } });
+      error = $_("errors.memo_refine_failed", { values: { detail: errorText(e, $_) } });
     }
   }
 
@@ -971,7 +971,7 @@
         eta = "";
         transcribeStartMs = null;
       } catch (e) {
-        error = $_("errors.record_start_failed", { values: { detail: errorText(e) } });
+        error = $_("errors.record_start_failed", { values: { detail: errorText(e, $_) } });
       }
     } else {
       recording = false;
@@ -985,7 +985,7 @@
         await invoke("stop_recording", { timestamps: includeTimestamps });
       } catch (e) {
         transcribing = false;
-        error = $_("errors.record_stop_failed", { values: { detail: errorText(e) } });
+        error = $_("errors.record_stop_failed", { values: { detail: errorText(e, $_) } });
       }
     }
   }
