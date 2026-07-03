@@ -288,7 +288,18 @@
       "E_OPUS_TAGS": "No se pudo escribir OpusTags: {detail}",
       "E_OPUS_ENCODE": "No se pudo codificar Opus: {detail}",
       "E_OPUS_PACKET": "No se pudo escribir el paquete Opus: {detail}",
-      "E_OPUS_EXPORT": "No se pudo exportar Opus: {detail}"
+      "E_OPUS_EXPORT": "No se pudo exportar Opus: {detail}",
+      "E_REFINE_EMPTY_INPUT": "No hay texto para refinar (el contenido está vacío).",
+      "E_REFINE_HTTP": "No se pudo llamar a la API de refinado: {detail}",
+      "E_REFINE_EMPTY_RESULT": "El resultado del refinado estaba vacío: {detail}",
+      "E_REFINE_NO_KEY": "La clave de API no está configurada (introdúcela en Ajustes).",
+      "E_REFINE_GEMINI_NO_KEY": "La clave de API de Gemini no está configurada (introdúcela en Ajustes).",
+      "E_REFINE_ANTHROPIC_NO_KEY": "La clave de API de Anthropic no está configurada (introdúcela en Ajustes).",
+      "E_REFINE_OPENAI_NO_KEY": "La clave de API de OpenAI no está configurada (introdúcela en Ajustes).",
+      "E_REFINE_AWS_NO_KEYS": "La clave de acceso/secreta de AWS no está configurada.",
+      "E_REFINE_AWS_NO_REGION": "La región de AWS no está configurada.",
+      "E_REFINE_MODELS_HTTP": "No se pudo obtener la lista de modelos: {detail}",
+      "E_REFINE_NO_SONNET": "No se encontró ningún modelo de la familia Sonnet."
     },
     "unknown": "Se produjo un error desconocido."
   }

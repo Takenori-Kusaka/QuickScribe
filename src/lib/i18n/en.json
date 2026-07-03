@@ -288,7 +288,18 @@
       "E_OPUS_TAGS": "Failed to write OpusTags: {detail}",
       "E_OPUS_ENCODE": "Failed to encode Opus: {detail}",
       "E_OPUS_PACKET": "Failed to write an Opus packet: {detail}",
-      "E_OPUS_EXPORT": "Failed to export Opus: {detail}"
+      "E_OPUS_EXPORT": "Failed to export Opus: {detail}",
+      "E_REFINE_EMPTY_INPUT": "There is no text to refine (the content is empty).",
+      "E_REFINE_HTTP": "Failed to call the refine API: {detail}",
+      "E_REFINE_EMPTY_RESULT": "The refine result was empty: {detail}",
+      "E_REFINE_NO_KEY": "The API key is not set (please enter it in Settings).",
+      "E_REFINE_GEMINI_NO_KEY": "The Gemini API key is not set (please enter it in Settings).",
+      "E_REFINE_ANTHROPIC_NO_KEY": "The Anthropic API key is not set (please enter it in Settings).",
+      "E_REFINE_OPENAI_NO_KEY": "The OpenAI API key is not set (please enter it in Settings).",
+      "E_REFINE_AWS_NO_KEYS": "The AWS access key/secret is not set.",
+      "E_REFINE_AWS_NO_REGION": "The AWS region is not set.",
+      "E_REFINE_MODELS_HTTP": "Failed to fetch the model list: {detail}",
+      "E_REFINE_NO_SONNET": "No Sonnet-family model was found."
     },
     "unknown": "An unknown error occurred."
   }

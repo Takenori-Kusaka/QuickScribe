@@ -288,7 +288,18 @@
       "E_OPUS_TAGS": "写入 OpusTags 失败：{detail}",
       "E_OPUS_ENCODE": "Opus 编码失败：{detail}",
       "E_OPUS_PACKET": "写入 Opus 数据包失败：{detail}",
-      "E_OPUS_EXPORT": "导出 Opus 失败：{detail}"
+      "E_OPUS_EXPORT": "导出 Opus 失败：{detail}",
+      "E_REFINE_EMPTY_INPUT": "没有要整理的文本（内容为空）。",
+      "E_REFINE_HTTP": "调用整理 API 失败：{detail}",
+      "E_REFINE_EMPTY_RESULT": "整理结果为空：{detail}",
+      "E_REFINE_NO_KEY": "未设置 API 密钥（请在设置中输入）。",
+      "E_REFINE_GEMINI_NO_KEY": "未设置 Gemini API 密钥（请在设置中输入）。",
+      "E_REFINE_ANTHROPIC_NO_KEY": "未设置 Anthropic API 密钥（请在设置中输入）。",
+      "E_REFINE_OPENAI_NO_KEY": "未设置 OpenAI API 密钥（请在设置中输入）。",
+      "E_REFINE_AWS_NO_KEYS": "未设置 AWS 访问密钥/密钥。",
+      "E_REFINE_AWS_NO_REGION": "未设置 AWS 区域。",
+      "E_REFINE_MODELS_HTTP": "获取模型列表失败：{detail}",
+      "E_REFINE_NO_SONNET": "未找到 Sonnet 系列模型。"
     },
     "unknown": "发生了未知错误。"
   }

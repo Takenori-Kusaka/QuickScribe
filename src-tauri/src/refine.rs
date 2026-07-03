@@ -240,7 +240,7 @@ pub fn refine(
 ) -> Result<String, String> {
     // 空・空白のみの入力はAPIを呼ばずに弾く(無駄なコスト・無意味な整形を防ぐ / #18)。
     if transcript.trim().is_empty() {
-        return Err("整形するテキストがありません（内容が空です）。".into());
+        return Err(crate::errcode::E_REFINE_EMPTY_INPUT.into());
     }
     let req = RefineRequest {
         style: RefineStyle::parse(style),
@@ -329,7 +329,7 @@ fn post_json_refine(
     }
     let mut resp = request
         .send_json(body)
-        .map_err(|e| format!("整形APIの呼び出しに失敗({provider}): {e}"))?;
+        .map_err(|e| crate::errcode::ec(crate::errcode::E_REFINE_HTTP, format!("{provider}: {e}")))?;
     resp.body_mut().read_json().map_err(|e| e.to_string())
 }
 
@@ -352,7 +352,7 @@ fn anthropic_text(v: &serde_json::Value) -> String {
 impl FormattingEngine for GeminiEngine {
     fn refine(&self, req: &RefineRequest) -> Result<String, String> {
         if req.api_key.trim().is_empty() {
-            return Err("Gemini APIキーが未設定です（設定から入力してください）".into());
+            return Err(crate::errcode::E_REFINE_GEMINI_NO_KEY.into());
         }
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
@@ -384,7 +384,7 @@ impl FormattingEngine for GeminiEngine {
         }
         let body = extract_tagged_body(&out);
         if body.is_empty() {
-            return Err(format!("整形結果が空でした（Gemini応答: {}）", v));
+            return Err(crate::errcode::ec(crate::errcode::E_REFINE_EMPTY_RESULT, format!("Gemini: {v}")));
         }
         Ok(body)
     }
@@ -395,7 +395,7 @@ impl FormattingEngine for GeminiEngine {
 impl FormattingEngine for AnthropicEngine {
     fn refine(&self, req: &RefineRequest) -> Result<String, String> {
         if req.api_key.trim().is_empty() {
-            return Err("Anthropic APIキーが未設定です（設定から入力してください）".into());
+            return Err(crate::errcode::E_REFINE_ANTHROPIC_NO_KEY.into());
         }
         let body = json!({
             "model": req.model,
@@ -420,7 +420,7 @@ impl FormattingEngine for AnthropicEngine {
         let out = anthropic_text(&v);
         let body = extract_tagged_body(&out);
         if body.is_empty() {
-            return Err(format!("整形結果が空でした（Anthropic応答: {}）", v));
+            return Err(crate::errcode::ec(crate::errcode::E_REFINE_EMPTY_RESULT, format!("Anthropic: {v}")));
         }
         Ok(body)
     }
@@ -431,7 +431,7 @@ impl FormattingEngine for AnthropicEngine {
 impl FormattingEngine for OpenAiEngine {
     fn refine(&self, req: &RefineRequest) -> Result<String, String> {
         if req.api_key.trim().is_empty() {
-            return Err("OpenAI APIキーが未設定です（設定から入力してください）".into());
+            return Err(crate::errcode::E_REFINE_OPENAI_NO_KEY.into());
         }
         let body = json!({
             "model": req.model,
@@ -459,7 +459,7 @@ impl FormattingEngine for OpenAiEngine {
             .to_string();
         let body = extract_tagged_body(&out);
         if body.is_empty() {
-            return Err(format!("整形結果が空でした（OpenAI応答: {}）", v));
+            return Err(crate::errcode::ec(crate::errcode::E_REFINE_EMPTY_RESULT, format!("OpenAI: {v}")));
         }
         Ok(body)
     }
@@ -500,7 +500,7 @@ impl FormattingEngine for OllamaEngine {
             .to_string();
         let body = extract_tagged_body(&out);
         if body.is_empty() {
-            return Err(format!("整形結果が空でした（Ollama応答: {}）", v));
+            return Err(crate::errcode::ec(crate::errcode::E_REFINE_EMPTY_RESULT, format!("Ollama: {v}")));
         }
         Ok(body)
     }
@@ -521,7 +521,7 @@ fn aws_auth_headers(
     match &aws.auth {
         AwsAuth::ApiKey => {
             if api_key.trim().is_empty() {
-                return Err("APIキーが未設定です（設定から入力してください）".into());
+                return Err(crate::errcode::E_REFINE_NO_KEY.into());
             }
             if bearer {
                 headers.push(("Authorization".into(), format!("Bearer {}", api_key.trim())));
@@ -535,7 +535,7 @@ fn aws_auth_headers(
             session_token,
         } => {
             if access_key.trim().is_empty() || secret_key.trim().is_empty() {
-                return Err("AWSアクセスキー/シークレットが未設定です".into());
+                return Err(crate::errcode::E_REFINE_AWS_NO_KEYS.into());
             }
             let creds = AwsCreds {
                 access_key: access_key.clone(),
@@ -558,7 +558,7 @@ impl FormattingEngine for BedrockEngine {
             .aws
             .ok_or("AWS Bedrock の設定(リージョン/認証)が未指定です")?;
         if aws.region.trim().is_empty() {
-            return Err("AWSリージョンが未設定です".into());
+            return Err(crate::errcode::E_REFINE_AWS_NO_REGION.into());
         }
         // Bedrock のモデルIDはリージョン/アカウント依存。未指定時は anthropic. プレフィックス既定。
         let model = if req.model.trim().is_empty() {
@@ -587,13 +587,13 @@ impl FormattingEngine for BedrockEngine {
         }
         let mut resp = request
             .send(&body_bytes[..])
-            .map_err(|e| format!("整形APIの呼び出しに失敗(Bedrock): {e}"))?;
+            .map_err(|e| crate::errcode::ec(crate::errcode::E_REFINE_HTTP, format!("Bedrock: {e}")))?;
         let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
 
         let out = anthropic_text(&v);
         let body = extract_tagged_body(&out);
         if body.is_empty() {
-            return Err(format!("整形結果が空でした（Bedrock応答: {}）", v));
+            return Err(crate::errcode::ec(crate::errcode::E_REFINE_EMPTY_RESULT, format!("Bedrock: {v}")));
         }
         Ok(body)
     }
@@ -608,7 +608,7 @@ impl FormattingEngine for ClaudePlatformAwsEngine {
             .aws
             .ok_or("Claude Platform on AWS の設定(リージョン/認証)が未指定です")?;
         if aws.region.trim().is_empty() {
-            return Err("AWSリージョンが未設定です".into());
+            return Err(crate::errcode::E_REFINE_AWS_NO_REGION.into());
         }
         let url = format!(
             "https://aws-external-anthropic.{}.api.aws/v1/messages",
@@ -637,7 +637,7 @@ impl FormattingEngine for ClaudePlatformAwsEngine {
         }
         let mut resp = request
             .send(&body_bytes[..])
-            .map_err(|e| format!("整形APIの呼び出しに失敗(Claude Platform on AWS): {e}"))?;
+            .map_err(|e| crate::errcode::ec(crate::errcode::E_REFINE_HTTP, format!("Claude Platform on AWS: {e}")))?;
         let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
 
         let out = anthropic_text(&v);
@@ -677,7 +677,7 @@ fn latest_ollama() -> Result<String, String> {
     let url = format!("{}/api/tags", ollama_base());
     let mut resp = ureq::get(&url)
         .call()
-        .map_err(|e| format!("Ollamaモデル一覧の取得に失敗: {e}"))?;
+        .map_err(|e| crate::errcode::ec(crate::errcode::E_REFINE_MODELS_HTTP, format!("Ollama: {e}")))?;
     let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
     v.get("models")
         .and_then(|m| m.as_array())
@@ -691,13 +691,13 @@ fn latest_ollama() -> Result<String, String> {
 /// Anthropic: GET /v1/models（新しい順）から最新の Sonnet(=ミドルレンジ) を選ぶ。
 fn latest_anthropic(api_key: &str) -> Result<String, String> {
     if api_key.trim().is_empty() {
-        return Err("Anthropic APIキーが未設定です".into());
+        return Err(crate::errcode::E_REFINE_ANTHROPIC_NO_KEY.into());
     }
     let mut resp = ureq::get("https://api.anthropic.com/v1/models?limit=1000")
         .header("x-api-key", api_key)
         .header("anthropic-version", "2023-06-01")
         .call()
-        .map_err(|e| format!("モデル一覧の取得に失敗(Anthropic): {e}"))?;
+        .map_err(|e| crate::errcode::ec(crate::errcode::E_REFINE_MODELS_HTTP, format!("Anthropic: {e}")))?;
     let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
     let data = v
         .get("data")
@@ -711,18 +711,18 @@ fn latest_anthropic(api_key: &str) -> Result<String, String> {
             }
         }
     }
-    Err("Sonnet系モデルが見つかりませんでした".into())
+    Err(crate::errcode::E_REFINE_NO_SONNET.into())
 }
 
 /// OpenAI: GET /v1/models からミドルレンジ汎用チャットの最新を発見的に選ぶ。
 fn latest_openai(api_key: &str) -> Result<String, String> {
     if api_key.trim().is_empty() {
-        return Err("OpenAI APIキーが未設定です".into());
+        return Err(crate::errcode::E_REFINE_OPENAI_NO_KEY.into());
     }
     let mut resp = ureq::get("https://api.openai.com/v1/models")
         .header("Authorization", &format!("Bearer {api_key}"))
         .call()
-        .map_err(|e| format!("モデル一覧の取得に失敗(OpenAI): {e}"))?;
+        .map_err(|e| crate::errcode::ec(crate::errcode::E_REFINE_MODELS_HTTP, format!("OpenAI: {e}")))?;
     let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
     let data = v
         .get("data")
@@ -775,14 +775,14 @@ fn pick_openai_mid(ids: &[&str]) -> Option<String> {
 /// `*flash-latest` ローリングエイリアスがあれば最優先、無ければ最大バージョンの `gemini-<ver>-flash`。
 fn latest_gemini(api_key: &str) -> Result<String, String> {
     if api_key.trim().is_empty() {
-        return Err("Gemini APIキーが未設定です".into());
+        return Err(crate::errcode::E_REFINE_GEMINI_NO_KEY.into());
     }
     let url = format!(
         "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key={api_key}"
     );
     let mut resp = ureq::get(&url)
         .call()
-        .map_err(|e| format!("モデル一覧の取得に失敗(Gemini): {e}"))?;
+        .map_err(|e| crate::errcode::ec(crate::errcode::E_REFINE_MODELS_HTTP, format!("Gemini: {e}")))?;
     let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
     let models = v
         .get("models")
@@ -912,7 +912,7 @@ mod tests {
     fn refine_rejects_empty_input_without_calling_provider() {
         // 空・空白のみは HTTP を呼ばず即エラー（無駄コスト防止 / #18）。
         let err = refine("gemini", "k", "m", "structured", "   \n", None, None, None).unwrap_err();
-        assert!(err.contains("テキストがありません"), "ユーザー向け理由: {err}");
+        assert_eq!(err, crate::errcode::E_REFINE_EMPTY_INPUT, "空入力は安定コードを返す: {err}");
     }
 
     #[test]

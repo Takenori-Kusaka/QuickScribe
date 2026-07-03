@@ -288,7 +288,18 @@
       "E_OPUS_TAGS": "OpusTagsの書き込みに失敗しました: {detail}",
       "E_OPUS_ENCODE": "Opusエンコードに失敗しました: {detail}",
       "E_OPUS_PACKET": "Opusパケットの書き込みに失敗しました: {detail}",
-      "E_OPUS_EXPORT": "Opusの書き出しに失敗しました: {detail}"
+      "E_OPUS_EXPORT": "Opusの書き出しに失敗しました: {detail}",
+      "E_REFINE_EMPTY_INPUT": "整形するテキストがありません（内容が空です）。",
+      "E_REFINE_HTTP": "整形APIの呼び出しに失敗しました: {detail}",
+      "E_REFINE_EMPTY_RESULT": "整形結果が空でした: {detail}",
+      "E_REFINE_NO_KEY": "APIキーが未設定です（設定から入力してください）。",
+      "E_REFINE_GEMINI_NO_KEY": "Gemini APIキーが未設定です（設定から入力してください）。",
+      "E_REFINE_ANTHROPIC_NO_KEY": "Anthropic APIキーが未設定です（設定から入力してください）。",
+      "E_REFINE_OPENAI_NO_KEY": "OpenAI APIキーが未設定です（設定から入力してください）。",
+      "E_REFINE_AWS_NO_KEYS": "AWSアクセスキー/シークレットが未設定です。",
+      "E_REFINE_AWS_NO_REGION": "AWSリージョンが未設定です。",
+      "E_REFINE_MODELS_HTTP": "モデル一覧の取得に失敗しました: {detail}",
+      "E_REFINE_NO_SONNET": "Sonnet系モデルが見つかりませんでした。"
     },
     "unknown": "原因不明のエラーが発生しました。"
   }
