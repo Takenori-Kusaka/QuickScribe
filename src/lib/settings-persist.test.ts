@@ -10,9 +10,9 @@ import {
 beforeEach(() => localStorage.clear());
 
 describe("readSettings", () => {
-  it("空の localStorage では既定値を返す", () => {
+  it("空の localStorage では既定値を返す（ローカルファースト / ADR-0021）", () => {
     const s = readSettings("en");
-    expect(s.provider).toBe("gemini");
+    expect(s.provider).toBe("ollama");
     expect(s.recordMode).toBe("toggle");
     expect(s.includeTimestamps).toBe(true);
     expect(s.keepText).toBe(true);
@@ -46,10 +46,16 @@ describe("readSettings", () => {
     localStorage.setItem("outputFormat", "xml");
     localStorage.setItem("awsAuthMode", "weird");
     const s = readSettings("ja");
-    expect(s.provider).toBe("gemini");
+    // 破損 provider はローカルファースト(ollama)へ寄せる（ADR-0021）。
+    expect(s.provider).toBe("ollama");
     expect(s.audioFormat).toBe("opus");
     expect(s.outputFormat).toBe("txt");
     expect(s.awsAuthMode).toBe("sigv4");
+  });
+
+  it("whisperModel の既定は日本語UIで kotoba-q5、他は base（#511/ADR-0021）", () => {
+    expect(readSettings("ja").whisperModel).toBe("kotoba-q5");
+    expect(readSettings("en").whisperModel).toBe("base");
   });
 
   it("offlineMode=true はクラウド設定を無視しローカルへ固定する", () => {

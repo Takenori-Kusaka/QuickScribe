@@ -57,8 +57,10 @@ function emptyModelMap(): Record<Provider, string> {
  */
 export function readSettings(localeDefault: string): AppSettings {
   const ls = localStorage;
-  let provider = (ls.getItem("provider") as Provider) || "gemini";
-  if (!(provider in PROVIDER_LABELS)) provider = "gemini";
+  // 整形プロバイダの既定はローカルファースト = ollama(#465/ADR-0021)。鍵不要でプライバシー既定。
+  // 保存済みは優先。破損値も安全側でローカル(ollama)へ寄せる。
+  let provider = (ls.getItem("provider") as Provider) || "ollama";
+  if (!(provider in PROVIDER_LABELS)) provider = "ollama";
 
   const resolvedModel = emptyModelMap();
   for (const p of ALL_PROVIDERS) resolvedModel[p] = ls.getItem(`resolvedModel:${p}`) ?? "";
@@ -105,8 +107,9 @@ export function readSettings(localeDefault: string): AppSettings {
     offlineMode,
     sttModel: ls.getItem("sttModel") || "",
     sttAzureResource: ls.getItem("sttAzureResource") || "",
-    // ローカルwhisperの既定は汎用 base(#511)。保存済みは優先。
-    whisperModel: ls.getItem("whisperModel") || "base",
+    // ローカルwhisperの既定(#511/ADR-0021): 日本語UIは日本語特化 kotoba-q5、他は汎用 base。
+    // モデルは非同梱・初回自動DL（tip_model_download で明示）。保存済みは優先。
+    whisperModel: ls.getItem("whisperModel") || (localeDefault === "ja" ? "kotoba-q5" : "base"),
     customStyles,
     awsRegion: ls.getItem("awsRegion") || "us-east-1",
     awsWorkspaceId: ls.getItem("awsWorkspaceId") || "",

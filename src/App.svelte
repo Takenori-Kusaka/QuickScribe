@@ -141,7 +141,7 @@
     }
   }
 
-  let provider = $state<Provider>("gemini");
+  let provider = $state<Provider>("ollama"); // 既定=ローカルファースト(#465/ADR-0021)。loadSettingsが上書き
   // プロバイダごとに鍵を保持する（切替時に再入力不要）。
   let apiKeys = $state<Record<Provider, string>>({
     gemini: "",
