@@ -54,7 +54,7 @@ pub fn sign_post(
         .time(SystemTime::now())
         .settings(SigningSettings::default())
         .build()
-        .map_err(|e| format!("SigV4パラメータ構築に失敗: {e}"))?
+        .map_err(|e| crate::errcode::ec(crate::errcode::E_SIGV4_PARAMS, e))?
         .into();
 
     // host は SigV4 の必須署名ヘッダ。ureq が送る Host と一致させる(URL由来で同一)。
@@ -66,9 +66,9 @@ pub fn sign_post(
         signed_headers.iter().map(|(k, v)| (*k, *v)),
         SignableBody::Bytes(body),
     )
-    .map_err(|e| format!("署名対象の構築に失敗: {e}"))?;
+    .map_err(|e| crate::errcode::ec(crate::errcode::E_SIGV4_SIGNABLE, e))?;
 
-    let signing_output = sign(signable, &params).map_err(|e| format!("SigV4署名に失敗: {e}"))?;
+    let signing_output = sign(signable, &params).map_err(|e| crate::errcode::ec(crate::errcode::E_SIGV4_SIGN, e))?;
     let (instructions, _signature) = signing_output.into_parts();
 
     // instructions(Authorization / X-Amz-Date / X-Amz-Security-Token 等)を http::Request に適用し、
@@ -79,7 +79,7 @@ pub fn sign_post(
         .header("host", host)
         .header("content-type", "application/json")
         .body(())
-        .map_err(|e| format!("httpリクエスト構築に失敗: {e}"))?;
+        .map_err(|e| crate::errcode::ec(crate::errcode::E_HTTP_BUILD, e))?;
     instructions.apply_to_request_http1x(&mut req);
 
     let mut out = Vec::new();

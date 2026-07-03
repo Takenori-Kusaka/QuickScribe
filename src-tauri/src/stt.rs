@@ -33,7 +33,7 @@ pub fn decode_to_16k_mono(path: &Path) -> Result<Vec<f32>, String> {
             FormatOptions::default(),
             MetadataOptions::default(),
         )
-        .map_err(|e| format!("音声形式の判別に失敗: {e}"))?;
+        .map_err(|e| crate::errcode::ec(crate::errcode::E_AUDIO_PROBE, e))?;
 
     let track = format
         .default_track(TrackType::Audio)
@@ -42,12 +42,12 @@ pub fn decode_to_16k_mono(path: &Path) -> Result<Vec<f32>, String> {
     // symphonia0.6: codec_params は Option<CodecParameters> の enum。Audio を取り出す。
     let audio_params = match &track.codec_params {
         Some(CodecParameters::Audio(p)) => p,
-        _ => return Err("音声コーデックパラメータがありません".into()),
+        _ => return Err(crate::errcode::E_NO_CODEC_PARAMS.into()),
     };
     let src_rate = audio_params.sample_rate.unwrap_or(WHISPER_SR);
     let mut decoder = symphonia::default::get_codecs()
         .make_audio_decoder(audio_params, &AudioDecoderOptions::default())
-        .map_err(|e| format!("デコーダ生成に失敗: {e}"))?;
+        .map_err(|e| crate::errcode::ec(crate::errcode::E_DECODER_BUILD, e))?;
 
     let mut mono: Vec<f32> = Vec::new();
     let mut interleaved: Vec<f32> = Vec::new();
@@ -56,7 +56,7 @@ pub fn decode_to_16k_mono(path: &Path) -> Result<Vec<f32>, String> {
     // GenericAudioBufferRef::copy_to_vec_interleaved で f32 インターリーブを取得する。
     while let Some(packet) = format
         .next_packet()
-        .map_err(|e| format!("パケット読み取りに失敗: {e}"))?
+        .map_err(|e| crate::errcode::ec(crate::errcode::E_PACKET_READ, e))?
     {
         if packet.track_id != track_id {
             continue;
@@ -72,7 +72,7 @@ pub fn decode_to_16k_mono(path: &Path) -> Result<Vec<f32>, String> {
                 }
             }
             Err(symphonia::core::errors::Error::DecodeError(_)) => continue,
-            Err(e) => return Err(format!("デコードエラー: {e}")),
+            Err(e) => return Err(crate::errcode::ec(crate::errcode::E_DECODE, e)),
         }
     }
 
@@ -126,7 +126,7 @@ where
 {
     let model = model_path.to_str().ok_or("モデルパスが不正です")?;
     let ctx = WhisperContext::new_with_params(model, WhisperContextParameters::default())
-        .map_err(|e| format!("モデル読込に失敗: {e}"))?;
+        .map_err(|e| crate::errcode::ec(crate::errcode::E_STT_MODEL_LOAD, e))?;
     let mut state = ctx.create_state().map_err(|e| e.to_string())?;
 
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
@@ -197,14 +197,14 @@ pub fn encode_wav_16k_mono(samples: &[f32]) -> Result<Vec<u8>, String> {
     let mut cursor = Cursor::new(Vec::<u8>::new());
     {
         let mut writer =
-            hound::WavWriter::new(&mut cursor, spec).map_err(|e| format!("WAV生成に失敗: {e}"))?;
+            hound::WavWriter::new(&mut cursor, spec).map_err(|e| crate::errcode::ec(crate::errcode::E_WAV_BUILD, e))?;
         for &s in samples {
             let v = (s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
             writer
                 .write_sample(v)
-                .map_err(|e| format!("WAV書込に失敗: {e}"))?;
+                .map_err(|e| crate::errcode::ec(crate::errcode::E_WAV_WRITE, e))?;
         }
-        writer.finalize().map_err(|e| format!("WAV確定に失敗: {e}"))?;
+        writer.finalize().map_err(|e| crate::errcode::ec(crate::errcode::E_WAV_FINALIZE, e))?;
     }
     Ok(cursor.into_inner())
 }
@@ -257,7 +257,7 @@ impl TranscriptionEngine for OpenAiCompatibleSttEngine {
         mut on_segment: Box<dyn FnMut(String) + Send>,
     ) -> Result<String, String> {
         if self.api_key.trim().is_empty() {
-            return Err("クラウドSTTのAPIキーが未設定です（設定から入力してください）".into());
+            return Err(crate::errcode::E_CLOUD_STT_NO_KEY.into());
         }
         on_progress(5);
         let wav = encode_wav_16k_mono(audio)?;
@@ -298,7 +298,7 @@ impl TranscriptionEngine for OpenAiCompatibleSttEngine {
 fn read_json_response(
     result: Result<http::Response<ureq::Body>, ureq::Error>,
 ) -> Result<serde_json::Value, String> {
-    let mut r = result.map_err(|e| format!("クラウドSTT通信に失敗: {e}"))?;
+    let mut r = result.map_err(|e| crate::errcode::ec(crate::errcode::E_CLOUD_STT_HTTP, e))?;
     let code = r.status().as_u16();
     if !(200..300).contains(&code) {
         let detail: String = r
@@ -308,11 +308,11 @@ fn read_json_response(
             .chars()
             .take(300)
             .collect();
-        return Err(format!("クラウドSTTエラー({code}): {detail}"));
+        return Err(crate::errcode::ec(crate::errcode::E_CLOUD_STT_STATUS, format!("{code}: {detail}")));
     }
     r.body_mut()
         .read_json()
-        .map_err(|e| format!("クラウドSTT応答の解析に失敗: {e}"))
+        .map_err(|e| crate::errcode::ec(crate::errcode::E_CLOUD_STT_PARSE, e))
 }
 
 /// Deepgram 文字起こし（pre-recorded / ADR-0016 Phase B）。
@@ -334,7 +334,7 @@ impl TranscriptionEngine for DeepgramSttEngine {
         mut on_segment: Box<dyn FnMut(String) + Send>,
     ) -> Result<String, String> {
         if self.api_key.trim().is_empty() {
-            return Err("クラウドSTTのAPIキーが未設定です（設定から入力してください）".into());
+            return Err(crate::errcode::E_CLOUD_STT_NO_KEY.into());
         }
         on_progress(5);
         let wav = encode_wav_16k_mono(audio)?;
@@ -388,10 +388,10 @@ impl TranscriptionEngine for AzureSttEngine {
         mut on_segment: Box<dyn FnMut(String) + Send>,
     ) -> Result<String, String> {
         if self.api_key.trim().is_empty() {
-            return Err("クラウドSTTのAPIキーが未設定です（設定から入力してください）".into());
+            return Err(crate::errcode::E_CLOUD_STT_NO_KEY.into());
         }
         if self.resource.trim().is_empty() {
-            return Err("Azureのリソース名が未設定です（設定から入力してください）".into());
+            return Err(crate::errcode::E_AZURE_NO_RESOURCE.into());
         }
         on_progress(5);
         let wav = encode_wav_16k_mono(audio)?;

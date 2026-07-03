@@ -8,6 +8,8 @@
 pub mod audio_save;
 // AWS SigV4署名(Bedrock / Claude Platform on AWS の整形プロバイダ用 / ADR-0011)。
 pub mod aws_sign;
+// 安定エラーコード（#462 i18n Phase2）。ユーザー向けエラーの SSOT。
+pub mod errcode;
 pub mod model;
 pub mod record;
 pub mod refine;
@@ -120,7 +122,7 @@ fn set_stt_settings(
     let mut s = state
         .inner
         .lock()
-        .map_err(|_| "STT設定のロックに失敗".to_string())?;
+        .map_err(|_| errcode::E_LOCK_STT.to_string())?;
     s.provider = provider;
     s.model = model;
     s.api_key = api_key;
@@ -179,7 +181,7 @@ fn list_entries(app: tauri::AppHandle) -> Result<Vec<vault::EntrySummary>, Strin
 #[tauri::command]
 fn open_vault(app: tauri::AppHandle) -> Result<(), String> {
     let dir = resolve_save_dir(&current_settings(&app))?;
-    std::fs::create_dir_all(&dir).map_err(|e| format!("ジャーナルフォルダの作成に失敗: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| errcode::ec(errcode::E_JOURNAL_DIR, e))?;
     open_in_file_manager(&dir)
 }
 
@@ -206,7 +208,7 @@ fn open_in_file_manager(dir: &std::path::Path) -> Result<(), String> {
     // explorer は対象が開いても非0終了することがあるため spawn のみで成否判定しない。
     cmd.spawn()
         .map(|_| ())
-        .map_err(|e| format!("ファイルマネージャの起動に失敗: {e}"))
+        .map_err(|e| errcode::ec(errcode::E_FILE_MANAGER, e))
 }
 
 /// フロントの保存設定を反映する。
@@ -222,7 +224,7 @@ fn set_save_settings(
     let mut s = state
         .inner
         .lock()
-        .map_err(|_| "設定のロックに失敗".to_string())?;
+        .map_err(|_| errcode::E_LOCK_SETTINGS.to_string())?;
     s.save_dir = save_dir.filter(|d| !d.trim().is_empty());
     s.save_audio = save_audio;
     s.audio_format = audio_format;
@@ -425,9 +427,9 @@ fn start_recording(
     let mut cur = state
         .current
         .lock()
-        .map_err(|_| "録音状態のロックに失敗".to_string())?;
+        .map_err(|_| errcode::E_LOCK_RECORD_STATE.to_string())?;
     if cur.is_some() {
-        return Err("すでに録音中です".into());
+        return Err(errcode::E_ALREADY_RECORDING.into());
     }
     *cur = Some(record::start(device, kind)?);
     Ok(())
@@ -449,7 +451,7 @@ async fn stop_recording(
         let mut cur = state
             .current
             .lock()
-            .map_err(|_| "録音状態のロックに失敗".to_string())?;
+            .map_err(|_| errcode::E_LOCK_RECORD_STATE.to_string())?;
         cur.take().ok_or_else(|| "録音していません".to_string())?
     };
     let recorded = recording.finish()?;
@@ -630,7 +632,7 @@ async fn refine_text(
 /// メモ/テキストファイル(.txt/.md等)を読み込んで内容を返す（整形のみ用途 / 文字起こし不要）。
 #[tauri::command]
 fn read_text_file(path: String) -> Result<String, String> {
-    std::fs::read_to_string(&path).map_err(|e| format!("テキストの読み込みに失敗: {e}"))
+    std::fs::read_to_string(&path).map_err(|e| errcode::ec(errcode::E_TEXT_READ, e))
 }
 
 /// タスクバーボタンに録音中バッジ(オーバーレイ)を表示/解除する（Windowsのみ。状態の可視化）。
@@ -689,11 +691,11 @@ fn recording_tray_image() -> tauri::image::Image<'static> {
 fn set_record_shortcut(app: tauri::AppHandle, accelerator: String) -> Result<(), String> {
     let shortcut: Shortcut = accelerator
         .parse()
-        .map_err(|e| format!("ショートカット表記が不正です（{accelerator}）: {e}"))?;
+        .map_err(|e| errcode::ec(errcode::E_SHORTCUT_PARSE, format!("{accelerator}: {e}")))?;
     let gs = app.global_shortcut();
     let _ = gs.unregister_all();
     gs.register(shortcut)
-        .map_err(|e| format!("ショートカット登録に失敗: {e}"))?;
+        .map_err(|e| errcode::ec(errcode::E_SHORTCUT_REGISTER, e))?;
     Ok(())
 }
 
@@ -720,14 +722,14 @@ fn set_taskbar_widget(enabled: bool) {
 #[tauri::command]
 fn set_secret(key: String, value: String) -> Result<(), String> {
     let entry = keyring::Entry::new("QuickScribe", &key)
-        .map_err(|e| format!("keyring初期化に失敗: {e}"))?;
+        .map_err(|e| errcode::ec(errcode::E_KEYRING_INIT, e))?;
     if value.is_empty() {
         let _ = entry.delete_credential();
         return Ok(());
     }
     entry
         .set_password(&value)
-        .map_err(|e| format!("秘密情報の保存に失敗: {e}"))
+        .map_err(|e| errcode::ec(errcode::E_SECRET_SAVE, e))
 }
 
 /// OSセキュアストレージから秘密情報を取得する。未設定/取得不可(サービス無し等)は None。
@@ -742,10 +744,10 @@ fn get_secret(key: String) -> Option<String> {
 #[tauri::command]
 fn delete_secret(key: String) -> Result<(), String> {
     let entry = keyring::Entry::new("QuickScribe", &key)
-        .map_err(|e| format!("keyring初期化に失敗: {e}"))?;
+        .map_err(|e| errcode::ec(errcode::E_KEYRING_INIT, e))?;
     match entry.delete_credential() {
         Ok(_) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(format!("秘密情報の削除に失敗: {e}")),
+        Err(e) => Err(errcode::ec(errcode::E_SECRET_DELETE, e)),
     }
 }
 

@@ -29,7 +29,7 @@ impl Capture {
         let raw = self
             .samples
             .lock()
-            .map_err(|_| "録音バッファの取得に失敗".to_string())?
+            .map_err(|_| crate::errcode::E_REC_BUFFER.to_string())?
             .clone();
         Ok((raw, self.sample_rate, self.channels))
     }
@@ -198,7 +198,7 @@ pub fn start(device: Option<String>, kind: Option<String>) -> Result<Recording, 
             #[cfg(not(windows))]
             {
                 let _ = device;
-                Err("システム音(ループバック)はこのプラットフォームでは未対応です".into())
+                Err(crate::errcode::E_LOOPBACK_UNSUPPORTED.into())
             }
         }
         Some("mix") => {
@@ -214,7 +214,7 @@ pub fn start(device: Option<String>, kind: Option<String>) -> Result<Recording, 
             #[cfg(not(windows))]
             {
                 let _ = device;
-                Err("マイク＋システム音の同時取得はこのプラットフォームでは未対応です".into())
+                Err(crate::errcode::E_MIXED_UNSUPPORTED.into())
             }
         }
         _ => Ok(Recording {
@@ -247,14 +247,14 @@ fn start_input(device_name: Option<String>) -> Result<Capture, String> {
         let device = match picked {
             Some(d) => d,
             None => {
-                let _ = cfg_tx.send(Err("マイク(入力デバイス)が見つかりません".into()));
+                let _ = cfg_tx.send(Err(crate::errcode::E_NO_INPUT_DEVICE.into()));
                 return;
             }
         };
         let config = match device.default_input_config() {
             Ok(c) => c,
             Err(e) => {
-                let _ = cfg_tx.send(Err(format!("入力デバイス設定の取得に失敗: {e}")));
+                let _ = cfg_tx.send(Err(crate::errcode::ec(crate::errcode::E_INPUT_CONFIG, e)));
                 return;
             }
         };
@@ -303,7 +303,7 @@ fn start_input(device_name: Option<String>) -> Result<Capture, String> {
                 None,
             ),
             fmt => {
-                let _ = cfg_tx.send(Err(format!("未対応の入力音声フォーマット: {fmt:?}")));
+                let _ = cfg_tx.send(Err(crate::errcode::ec(crate::errcode::E_UNSUPPORTED_FORMAT, format!("{fmt:?}"))));
                 return;
             }
         };
@@ -311,12 +311,12 @@ fn start_input(device_name: Option<String>) -> Result<Capture, String> {
         let stream = match stream_res {
             Ok(s) => s,
             Err(e) => {
-                let _ = cfg_tx.send(Err(format!("録音ストリーム生成に失敗: {e}")));
+                let _ = cfg_tx.send(Err(crate::errcode::ec(crate::errcode::E_STREAM_BUILD, e)));
                 return;
             }
         };
         if let Err(e) = stream.play() {
-            let _ = cfg_tx.send(Err(format!("録音開始に失敗: {e}")));
+            let _ = cfg_tx.send(Err(crate::errcode::ec(crate::errcode::E_REC_START, e)));
             return;
         }
 
@@ -340,7 +340,7 @@ fn start_input(device_name: Option<String>) -> Result<Capture, String> {
             let _ = join.join();
             Err(e)
         }
-        Err(_) => Err("録音スレッドの初期化に失敗しました".into()),
+        Err(_) => Err(crate::errcode::E_REC_THREAD_INIT.into()),
     }
 }
 
@@ -360,13 +360,13 @@ fn start_loopback(device_id: Option<String>) -> Result<Capture, String> {
 
     let join = std::thread::spawn(move || {
         if let Err(e) = wasapi::initialize_mta().ok() {
-            let _ = cfg_tx.send(Err(format!("COM初期化に失敗: {e}")));
+            let _ = cfg_tx.send(Err(crate::errcode::ec(crate::errcode::E_COM_INIT, e)));
             return;
         }
         let enumerator = match DeviceEnumerator::new() {
             Ok(e) => e,
             Err(e) => {
-                let _ = cfg_tx.send(Err(format!("オーディオ列挙の初期化に失敗: {e}")));
+                let _ = cfg_tx.send(Err(crate::errcode::ec(crate::errcode::E_AUDIO_ENUM, e)));
                 return;
             }
         };
@@ -380,21 +380,21 @@ fn start_loopback(device_id: Option<String>) -> Result<Capture, String> {
         let device = match device {
             Ok(d) => d,
             Err(e) => {
-                let _ = cfg_tx.send(Err(format!("出力デバイスの取得に失敗: {e}")));
+                let _ = cfg_tx.send(Err(crate::errcode::ec(crate::errcode::E_OUTPUT_DEVICE, e)));
                 return;
             }
         };
         let mut audio_client = match device.get_iaudioclient() {
             Ok(c) => c,
             Err(e) => {
-                let _ = cfg_tx.send(Err(format!("オーディオクライアント取得に失敗: {e}")));
+                let _ = cfg_tx.send(Err(crate::errcode::ec(crate::errcode::E_AUDIO_CLIENT, e)));
                 return;
             }
         };
         let format = match audio_client.get_mixformat() {
             Ok(f) => f,
             Err(e) => {
-                let _ = cfg_tx.send(Err(format!("ミックスフォーマット取得に失敗: {e}")));
+                let _ = cfg_tx.send(Err(crate::errcode::ec(crate::errcode::E_MIX_FORMAT, e)));
                 return;
             }
         };
@@ -404,7 +404,7 @@ fn start_loopback(device_id: Option<String>) -> Result<Capture, String> {
         let (def_time, _min_time) = match audio_client.get_device_period() {
             Ok(t) => t,
             Err(e) => {
-                let _ = cfg_tx.send(Err(format!("デバイス周期の取得に失敗: {e}")));
+                let _ = cfg_tx.send(Err(crate::errcode::ec(crate::errcode::E_DEVICE_PERIOD, e)));
                 return;
             }
         };
@@ -414,25 +414,25 @@ fn start_loopback(device_id: Option<String>) -> Result<Capture, String> {
             buffer_duration_hns: def_time,
         };
         if let Err(e) = audio_client.initialize_client(&format, &Direction::Capture, &mode) {
-            let _ = cfg_tx.send(Err(format!("ループバック初期化に失敗: {e}")));
+            let _ = cfg_tx.send(Err(crate::errcode::ec(crate::errcode::E_LOOPBACK_INIT, e)));
             return;
         }
         let h_event = match audio_client.set_get_eventhandle() {
             Ok(h) => h,
             Err(e) => {
-                let _ = cfg_tx.send(Err(format!("イベントハンドル取得に失敗: {e}")));
+                let _ = cfg_tx.send(Err(crate::errcode::ec(crate::errcode::E_EVENT_HANDLE, e)));
                 return;
             }
         };
         let capture_client = match audio_client.get_audiocaptureclient() {
             Ok(c) => c,
             Err(e) => {
-                let _ = cfg_tx.send(Err(format!("キャプチャクライアント取得に失敗: {e}")));
+                let _ = cfg_tx.send(Err(crate::errcode::ec(crate::errcode::E_CAPTURE_CLIENT, e)));
                 return;
             }
         };
         if let Err(e) = audio_client.start_stream() {
-            let _ = cfg_tx.send(Err(format!("ループバック録音開始に失敗: {e}")));
+            let _ = cfg_tx.send(Err(crate::errcode::ec(crate::errcode::E_LOOPBACK_START, e)));
             return;
         }
 
@@ -466,7 +466,7 @@ fn start_loopback(device_id: Option<String>) -> Result<Capture, String> {
             let _ = join.join();
             Err(e)
         }
-        Err(_) => Err("ループバック録音スレッドの初期化に失敗しました".into()),
+        Err(_) => Err(crate::errcode::E_LOOPBACK_THREAD_INIT.into()),
     }
 }
 
