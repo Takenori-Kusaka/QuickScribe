@@ -264,6 +264,25 @@ struct BedrockEngine;
 /// Claude Platform on AWS(aws-external-anthropic / Messages API互換)。x-api-key/SigV4両対応。
 struct ClaudePlatformAwsEngine;
 
+/// 整形API(JSON POST)の共通呼び出し(#392 重複排除)。Content-Type: application/json を付与し、
+/// 追加ヘッダを載せて body を送信、応答JSONを返す。provider はエラーメッセージ用ラベル(例 "Gemini")。
+/// AWS署名系(body_bytesを署名)と Ollama(独自エラーメッセージ)は対象外。
+fn post_json_refine(
+    url: &str,
+    headers: &[(&str, &str)],
+    body: &serde_json::Value,
+    provider: &str,
+) -> Result<serde_json::Value, String> {
+    let mut request = ureq::post(url).header("Content-Type", "application/json");
+    for (k, v) in headers {
+        request = request.header(*k, *v);
+    }
+    let mut resp = request
+        .send_json(body)
+        .map_err(|e| format!("整形APIの呼び出しに失敗({provider}): {e}"))?;
+    resp.body_mut().read_json().map_err(|e| e.to_string())
+}
+
 /// Anthropic Messages 互換応答(content[] の type=="text" を連結)から本文を取り出す。
 fn anthropic_text(v: &serde_json::Value) -> String {
     let mut out = String::new();
@@ -297,11 +316,7 @@ impl FormattingEngine for GeminiEngine {
         );
         let body = json!({ "contents": [{ "parts": [{ "text": text }] }] });
 
-        let mut resp = ureq::post(&url)
-            .header("Content-Type", "application/json")
-            .send_json(&body)
-            .map_err(|e| format!("整形APIの呼び出しに失敗(Gemini): {e}"))?;
-        let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
+        let v = post_json_refine(&url, &[], &body, "Gemini")?;
 
         let mut out = String::new();
         if let Some(parts) = v
@@ -341,25 +356,18 @@ impl FormattingEngine for AnthropicEngine {
             ]
         });
 
-        let mut resp = ureq::post("https://api.anthropic.com/v1/messages")
-            .header("Content-Type", "application/json")
-            .header("x-api-key", req.api_key)
-            .header("anthropic-version", "2023-06-01")
-            .send_json(&body)
-            .map_err(|e| format!("整形APIの呼び出しに失敗(Anthropic): {e}"))?;
-        let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
+        let v = post_json_refine(
+            "https://api.anthropic.com/v1/messages",
+            &[
+                ("x-api-key", req.api_key),
+                ("anthropic-version", "2023-06-01"),
+            ],
+            &body,
+            "Anthropic",
+        )?;
 
-        // 応答は content[] のブロック配列。type=="text" の text を連結する。
-        let mut out = String::new();
-        if let Some(blocks) = v.get("content").and_then(|c| c.as_array()) {
-            for block in blocks {
-                if block.get("type").and_then(|t| t.as_str()) == Some("text") {
-                    if let Some(t) = block.get("text").and_then(|t| t.as_str()) {
-                        out.push_str(t);
-                    }
-                }
-            }
-        }
+        // 応答は content[] のブロック配列。type=="text" の text を連結する(anthropic_text)。
+        let out = anthropic_text(&v);
         let body = extract_tagged_body(&out);
         if body.is_empty() {
             return Err(format!("整形結果が空でした（Anthropic応答: {}）", v));
@@ -383,12 +391,13 @@ impl FormattingEngine for OpenAiEngine {
             ]
         });
 
-        let mut resp = ureq::post("https://api.openai.com/v1/chat/completions")
-            .header("Content-Type", "application/json")
-            .header("Authorization", &format!("Bearer {}", req.api_key))
-            .send_json(&body)
-            .map_err(|e| format!("整形APIの呼び出しに失敗(OpenAI): {e}"))?;
-        let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
+        let bearer = format!("Bearer {}", req.api_key);
+        let v = post_json_refine(
+            "https://api.openai.com/v1/chat/completions",
+            &[("Authorization", &bearer)],
+            &body,
+            "OpenAI",
+        )?;
 
         let out = v
             .get("choices")
