@@ -133,7 +133,7 @@
       args.customInstruction = DISCOVERY_INSTRUCTION;
       args.save = false; // 発見結果は一時表示（保管庫を汚さない）。
       delete args.tags;
-      discoveryResult = await invoke<string>("refine_text", args);
+      discoveryResult = await invoke<string>("refine_text", { params: args });
     } catch (e) {
       error = $_("errors.discover_failed", { values: { detail: errorText(e, $_) } });
     } finally {
@@ -564,7 +564,7 @@
     try {
       // 整形直前に最新モデルを確保（キャッシュが新しければ即返る。AWSはスキップ）。
       await resolveCurrentModel();
-      refined = await invoke<string>("refine_text", refineArgs(styleOverride));
+      refined = await invoke<string>("refine_text", { params: refineArgs(styleOverride) });
       refinedStyle = styleOverride ?? refineStyle; // どのスタイルで整形したか(再整形チップの強調用)。
     } catch (e) {
       error = $_("errors.refine_failed", { values: { detail: errorText(e, $_) } });
@@ -600,7 +600,7 @@
       args.customInstruction = CORRECTION_INSTRUCTION;
       args.save = false; // 校正候補は保存しない。
       delete args.tags;
-      const raw = await invoke<string>("refine_text", args);
+      const raw = await invoke<string>("refine_text", { params: args });
       corrections = parseCorrections(raw);
     } catch (e) {
       error = $_("errors.term_check_failed", { values: { detail: errorText(e, $_) } });
