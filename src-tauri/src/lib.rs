@@ -14,6 +14,8 @@ pub mod refine;
 pub mod stt;
 // 保管庫エントリの一覧・解析（S4.3 Phase1: アプリ内の横断導線）。
 pub mod vault;
+// 保管庫ドキュメントの本文組み立て・命名(#392 / DDD: lib.rs から抽出)。
+pub mod entry;
 // Windows タスクバーのサムネイルツールバー/オーバーレイ。Windowsのみ。
 #[cfg(windows)]
 mod taskbar;
@@ -27,6 +29,8 @@ use tauri::{
     Emitter, Manager, WindowEvent,
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+
+use entry::{build_document, doc_extension, filename_prefix, DocMeta};
 
 /// メモ内容を保存フォルダ(既定: ドキュメント/QuickScribe)へ書き出す。
 ///
@@ -73,64 +77,6 @@ impl Default for SaveSettings {
             output_format: "txt".to_string(),
         }
     }
-}
-
-/// エントリのメタデータ(S4.2/S4.3 / Markdownフロントマター用)。
-struct DocMeta<'a> {
-    /// 種別: "transcript"(文字起こし) / "refined"(整形) / "note"(任意保存)。
-    kind: &'a str,
-    /// 整形スタイル(refined のときのみ Some)。
-    style: Option<&'a str>,
-    /// 内省タグ(S4.3)。空なら付与しない。
-    tags: &'a [String],
-}
-
-/// 出力形式から拡張子を返す(純粋)。"md" 以外は "txt"。
-fn doc_extension(format: &str) -> &'static str {
-    if format.trim().eq_ignore_ascii_case("md") {
-        "md"
-    } else {
-        "txt"
-    }
-}
-
-/// YAMLフロントマターの値を1行・安全に整える(改行を空白化、前後空白除去)。
-/// コロン等を含んでもダブルクォートで囲むため曖昧にならない。
-fn yaml_scalar(v: &str) -> String {
-    let one_line = v.replace(['\n', '\r'], " ");
-    let escaped = one_line.replace('"', "'");
-    format!("\"{}\"", escaped.trim())
-}
-
-/// エントリのスキーマ版（ADR-0017 / S4.4）。md フロントマターに刻む。
-const CURRENT_ENTRY_SCHEMA: u32 = 1;
-
-/// 出力形式に応じてエントリ本文を組み立てる(純粋・テスト対象)。
-/// md は schema/created/type(/style/tags) のYAMLフロントマターを本文の前に付す。
-/// txt はタグがあれば末尾に `Tags: a, b` 行を付す(形式に依らずタグを残す / S4.3)。
-fn build_document(content: &str, format: &str, created_iso: &str, meta: &DocMeta) -> String {
-    if doc_extension(format) != "md" {
-        // プレーンテキスト: 本文＋(タグがあれば)末尾にタグ行。
-        if meta.tags.is_empty() {
-            return content.to_string();
-        }
-        return format!("{}\n\nTags: {}", content, meta.tags.join(", "));
-    }
-    let mut fm = String::from("---\n");
-    // エントリスキーマ版（S4.4 / ADR-0017）。将来の非破壊移行のための版マーカー。
-    fm.push_str(&format!("schema: {CURRENT_ENTRY_SCHEMA}\n"));
-    fm.push_str(&format!("created: {}\n", yaml_scalar(created_iso)));
-    fm.push_str(&format!("type: {}\n", yaml_scalar(meta.kind)));
-    if let Some(style) = meta.style {
-        fm.push_str(&format!("style: {}\n", yaml_scalar(style)));
-    }
-    if !meta.tags.is_empty() {
-        let items: Vec<String> = meta.tags.iter().map(|t| yaml_scalar(t)).collect();
-        fm.push_str(&format!("tags: [{}]\n", items.join(", ")));
-    }
-    fm.push_str("---\n\n");
-    fm.push_str(content);
-    fm
 }
 
 #[derive(Default)]
@@ -203,16 +149,6 @@ fn resolve_save_dir(settings: &SaveSettings) -> Result<std::path::PathBuf, Strin
 
 /// タイムスタンプ付きファイル名で dir 配下にエントリを書き出し、パスを返す（S4.1/S4.2）。
 /// 出力形式(txt/md)とメタデータに従って本文を組み立て、同一秒の衝突は一意名にする（非破壊）。
-/// 種別ごとのファイル名プレフィックス（純粋）。生の文字起こしと整形済みを名前で見分けられるようにする。
-/// transcript=生の文字起こし / refined=整形済み / note=その他。
-fn filename_prefix(kind: &str) -> &'static str {
-    match kind {
-        "transcript" => "transcript",
-        "refined" => "refined",
-        _ => "note",
-    }
-}
-
 fn save_document(
     dir: &std::path::Path,
     content: &str,
@@ -449,8 +385,9 @@ async fn transcribe_file(
         // 対応形式かを先に検証（非対応は分かりやすく弾く / #18）。
         check_audio_extension(p)?;
         // 巨大ファイルは復号前にサイズで弾く。metadata失敗は無警告スキップせず明示エラーにする。
-        let meta = std::fs::metadata(p)
-            .map_err(|e| format!("ファイルを開けませんでした（{e}）。パスや権限をご確認ください。"))?;
+        let meta = std::fs::metadata(p).map_err(|e| {
+            format!("ファイルを開けませんでした（{e}）。パスや権限をご確認ください。")
+        })?;
         check_input_size(meta.len())?;
         let _ = app.emit("status", "音声を読み込み中…");
         let audio = stt::decode_to_16k_mono(p)?;
@@ -518,7 +455,8 @@ async fn stop_recording(
     let recorded = recording.finish()?;
     if recorded.mono16k.is_empty() {
         return Err(
-            "録音データが空でした（録音が短すぎたか、選択した録音ソースに音声がありませんでした）".into(),
+            "録音データが空でした（録音が短すぎたか、選択した録音ソースに音声がありませんでした）"
+                .into(),
         );
     }
     let raw = recorded.raw;
@@ -793,8 +731,8 @@ fn set_taskbar_widget(enabled: bool) {
 /// 空文字は「削除」扱い。サービス名 "QuickScribe"、user=key。
 #[tauri::command]
 fn set_secret(key: String, value: String) -> Result<(), String> {
-    let entry =
-        keyring::Entry::new("QuickScribe", &key).map_err(|e| format!("keyring初期化に失敗: {e}"))?;
+    let entry = keyring::Entry::new("QuickScribe", &key)
+        .map_err(|e| format!("keyring初期化に失敗: {e}"))?;
     if value.is_empty() {
         let _ = entry.delete_credential();
         return Ok(());
@@ -815,8 +753,8 @@ fn get_secret(key: String) -> Option<String> {
 /// OSセキュアストレージから秘密情報を削除する(未設定はOK扱い)。
 #[tauri::command]
 fn delete_secret(key: String) -> Result<(), String> {
-    let entry =
-        keyring::Entry::new("QuickScribe", &key).map_err(|e| format!("keyring初期化に失敗: {e}"))?;
+    let entry = keyring::Entry::new("QuickScribe", &key)
+        .map_err(|e| format!("keyring初期化に失敗: {e}"))?;
     match entry.delete_credential() {
         Ok(_) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(format!("秘密情報の削除に失敗: {e}")),
@@ -831,10 +769,16 @@ mod tests {
     fn check_audio_extension_accepts_supported_rejects_others() {
         use std::path::Path;
         assert!(check_audio_extension(Path::new("a.mp3")).is_ok());
-        assert!(check_audio_extension(Path::new("A.WAV")).is_ok(), "大文字も許容");
+        assert!(
+            check_audio_extension(Path::new("A.WAV")).is_ok(),
+            "大文字も許容"
+        );
         let err = check_audio_extension(Path::new("a.txt")).unwrap_err();
         assert!(err.contains("対応形式"), "対応形式を案内する: {err}");
-        assert!(check_audio_extension(Path::new("noext")).is_err(), "拡張子なしは弾く");
+        assert!(
+            check_audio_extension(Path::new("noext")).is_err(),
+            "拡張子なしは弾く"
+        );
     }
 
     #[test]
@@ -842,101 +786,11 @@ mod tests {
         assert!(check_input_size(0).is_ok());
         assert!(check_input_size(MAX_INPUT_BYTES).is_ok());
         let err = check_input_size(MAX_INPUT_BYTES + 1).unwrap_err();
-        assert!(err.contains("大きすぎます"), "ユーザー向け理由を含む: {err}");
+        assert!(
+            err.contains("大きすぎます"),
+            "ユーザー向け理由を含む: {err}"
+        );
         assert!(err.contains("録音を分割"), "次の一手を含む: {err}");
-    }
-
-    #[test]
-    fn filename_prefix_distinguishes_kinds() {
-        // 生の文字起こしと整形済みをファイル名で見分けられる。
-        assert_eq!(filename_prefix("transcript"), "transcript");
-        assert_eq!(filename_prefix("refined"), "refined");
-        assert_eq!(filename_prefix("note"), "note");
-        assert_eq!(filename_prefix("unknown"), "note");
-    }
-
-    #[test]
-    fn doc_extension_maps_md_else_txt() {
-        assert_eq!(doc_extension("md"), "md");
-        assert_eq!(doc_extension("MD"), "md");
-        assert_eq!(doc_extension("txt"), "txt");
-        assert_eq!(doc_extension(""), "txt");
-        assert_eq!(doc_extension("zzz"), "txt");
-    }
-
-    #[test]
-    fn build_document_txt_is_content_only() {
-        let meta = DocMeta {
-            kind: "refined",
-            style: Some("構造化"),
-            tags: &[],
-        };
-        // txt は本文そのまま(フロントマター無し・後方互換)。
-        assert_eq!(build_document("本文", "txt", "2026-06-27T12:00:00", &meta), "本文");
-    }
-
-    #[test]
-    fn build_document_md_refined_has_frontmatter_with_style() {
-        let meta = DocMeta {
-            kind: "refined",
-            style: Some("構造化"),
-            tags: &[],
-        };
-        let out = build_document("本文ABC", "md", "2026-06-27T12:00:00", &meta);
-        assert!(out.starts_with("---\n"), "先頭はYAMLフロントマター");
-        assert!(out.contains("schema: 1"), "スキーマ版マーカーを含む(ADR-0017)");
-        assert!(out.contains("created: \"2026-06-27T12:00:00\""));
-        assert!(out.contains("type: \"refined\""));
-        assert!(out.contains("style: \"構造化\""));
-        assert!(out.contains("\n---\n\n本文ABC"), "本文が後続する");
-    }
-
-    #[test]
-    fn build_document_md_transcript_omits_style() {
-        // style 無し(transcript)では style 行を出さない(三角測量)。
-        let meta = DocMeta {
-            kind: "transcript",
-            style: None,
-            tags: &[],
-        };
-        let out = build_document("x", "md", "2026-06-27T12:00:00", &meta);
-        assert!(out.contains("type: \"transcript\""));
-        assert!(!out.contains("style:"), "style 行は無い");
-        assert!(!out.contains("tags:"), "tags 行は無い");
-    }
-
-    #[test]
-    fn build_document_md_includes_tags_when_present() {
-        let tags = vec!["仕事".to_string(), "不安".to_string()];
-        let meta = DocMeta {
-            kind: "refined",
-            style: Some("構造化"),
-            tags: &tags,
-        };
-        let out = build_document("本文", "md", "2026-06-27T12:00:00", &meta);
-        assert!(out.contains("tags: [\"仕事\", \"不安\"]"), "frontmatterにtags配列: {out}");
-    }
-
-    #[test]
-    fn build_document_txt_appends_tags_line() {
-        // txt でもタグがあれば末尾に Tags: 行を付す(形式に依らずタグを残す)。
-        let tags = vec!["アイデア".to_string()];
-        let meta = DocMeta {
-            kind: "note",
-            style: None,
-            tags: &tags,
-        };
-        let out = build_document("本文", "txt", "2026-06-27T12:00:00", &meta);
-        assert_eq!(out, "本文\n\nTags: アイデア");
-    }
-
-    #[test]
-    fn yaml_scalar_is_single_line_and_quoted() {
-        // 改行はスペース化、二重引用符は単引用符化し、ダブルクォートで囲む(YAML安全)。
-        let s = yaml_scalar("行1\n行2: \"値\"");
-        assert!(!s.contains('\n'));
-        assert!(s.starts_with('"') && s.ends_with('"'));
-        assert!(s.contains("行1 行2"));
     }
 
     #[test]
@@ -1108,8 +962,7 @@ pub fn run() {
             app.global_shortcut().register(toggle_shortcut.clone())?;
 
             // システムトレイ(右クリックメニュー)。タスクバー常駐の操作起点。
-            let record_i =
-                MenuItem::with_id(app, "record", "録音開始/停止", true, None::<&str>)?;
+            let record_i = MenuItem::with_id(app, "record", "録音開始/停止", true, None::<&str>)?;
             let show_i = MenuItem::with_id(app, "show", "ウィンドウを表示", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "終了", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&record_i, &show_i, &quit_i])?;
