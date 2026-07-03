@@ -2,8 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { open } from "@tauri-apps/plugin-dialog";
-  import { check } from "@tauri-apps/plugin-updater";
-  import { relaunch } from "@tauri-apps/plugin-process";
+  import { createUpdater } from "./lib/update.svelte";
   import {
     enable as enableAutostart,
     disable as disableAutostart,
@@ -167,7 +166,6 @@
     "claude-aws": "",
   });
   let resolvingModel = $state(false);
-  let updateMsg = $state<string>("");
 
   // AWS資格情報(Bedrock / Claude Platform on AWS 共通 / ADR-0011)。
   // ※localStorage平文保存は当面。秘密情報のkeyring化は S3.2 で対応(優先度を上げる)。
@@ -604,43 +602,8 @@
     }
   }
 
-  // 自動アップデート(起動時に非同期チェック→背景DL→完了後に再起動を確認)。
-  type UpdateState = "idle" | "downloading" | "ready";
-  let updateState = $state<UpdateState>("idle");
-  let updateVersion = $state<string>("");
-  let updatePct = $state<number>(0);
-
-  async function checkForUpdate(manual = false) {
-    try {
-      updateMsg = manual ? $_("update.checking") : "";
-      const update = await check();
-      if (!update) {
-        updateMsg = manual ? $_("update.latest") : "";
-        return;
-      }
-      updateMsg = "";
-      updateVersion = update.version;
-      updateState = "downloading";
-      let downloaded = 0;
-      let total = 0;
-      await update.downloadAndInstall((event) => {
-        if (event.event === "Started") {
-          total = event.data.contentLength ?? 0;
-        } else if (event.event === "Progress") {
-          downloaded += event.data.chunkLength;
-          updatePct = total > 0 ? Math.round((downloaded / total) * 100) : 0;
-        }
-      });
-      updateState = "ready";
-    } catch (e) {
-      console.error("update check failed", e);
-      updateMsg = manual ? $_("update.check_failed", { values: { detail: errorText(e, $_) } }) : "";
-    }
-  }
-
-  async function restartNow() {
-    await relaunch();
-  }
+  // 自動アップデート（状態と操作は lib/update.svelte.ts へ集約 / #392）。
+  const updater = createUpdater($_);
 
   // 音声ファイル(mp3等)を選んで文字起こし→保存する(S1.6)。非同期で実行しUIを固めない。
   async function transcribeFromFile() {
@@ -922,7 +885,7 @@
     void loadWhisperModels();
     void syncSaveSettings();
     void resolveCurrentModel();
-    void checkForUpdate();
+    void updater.checkForUpdate();
     // トレイ/メニュー/CLI --toggle-record は常にトグル。
     const unToggle = listen("toggle-record", () => void toggle());
     // ホットキー押下/解放（録音モードで振り分け）。
@@ -1041,15 +1004,17 @@
       <p class="tagline">{$_("main.tagline")}</p>
     </header>
 
-    {#if updateState === "downloading"}
+    {#if updater.updateState === "downloading"}
       <div class="update-banner">
         <span class="spinner" aria-hidden="true"></span>
-        {$_("update.downloading", { values: { version: updateVersion, pct: updatePct } })}
+        {$_("update.downloading", {
+          values: { version: updater.updateVersion, pct: updater.updatePct },
+        })}
       </div>
-    {:else if updateState === "ready"}
+    {:else if updater.updateState === "ready"}
       <div class="update-banner ready">
-        <span>{$_("update.ready", { values: { version: updateVersion } })}</span>
-        <button class="btn-restart" onclick={restartNow}>{$_("update.restart")}</button>
+        <span>{$_("update.ready", { values: { version: updater.updateVersion } })}</span>
+        <button class="btn-restart" onclick={updater.restartNow}>{$_("update.restart")}</button>
       </div>
     {/if}
 
@@ -1973,11 +1938,13 @@
 
       <div class="settings-actions">
         <button class="btn small" onclick={saveSettings}>{$_("settings.save")}</button>
-        <button class="btn small ghost" onclick={() => checkForUpdate(true)}
+        <button class="btn small ghost" onclick={() => updater.checkForUpdate(true)}
           >{$_("settings.check_update")}</button
         >
       </div>
-      {#if updateMsg}<p class="muted" role="status" aria-live="polite">{updateMsg}</p>{/if}
+      {#if updater.updateMsg}<p class="muted" role="status" aria-live="polite">
+          {updater.updateMsg}
+        </p>{/if}
     </div>
   </div>
 {/if}
