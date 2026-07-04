@@ -84,5 +84,15 @@ export function convertFileSrc(filePath: string): string {
   return filePath;
 }
 
+// Tauri プラグイン（例: notification）が @tauri-apps/api/core から取り込む API。
+// e2e/スクショでは副作用不要のため no-op スタブにする（依存最適化のエクスポート欠落を防ぐ）。
+export async function addPluginListener(
+  _plugin: string,
+  _event: string,
+  _cb: (payload: unknown) => void,
+): Promise<{ unregister: () => Promise<void> }> {
+  return { unregister: async () => {} };
+}
+
 // テスト/スクショから「文字起こし完了」などのイベントを発火するためのダミー本文を共有。
 export const __mockData = { REFINED, TRANSCRIPT, ENTRIES };

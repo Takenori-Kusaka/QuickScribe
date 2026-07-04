@@ -55,9 +55,8 @@ export async function maybeNudge(
 
 /** opt-in 時に通知権限を要求する（未付与なら要求）。付与されたら true。 */
 export async function requestNudgePermission(): Promise<boolean> {
-  const { isPermissionGranted, requestPermission } = await import(
-    "@tauri-apps/plugin-notification"
-  );
+  const { isPermissionGranted, requestPermission } =
+    await import("@tauri-apps/plugin-notification");
   let granted = await isPermissionGranted();
   if (!granted) granted = (await requestPermission()) === "granted";
   return granted;

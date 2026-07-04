@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import { maybeNudge, type NudgeDeps } from "./nudge";
 
 // 副作用依存をスタブし、maybeNudge のゲーティング/重複防止を検証する。
-function deps(over: Partial<NudgeDeps> = {}): NudgeDeps & { sent: string[]; last: { v: string | null } } {
+function deps(
+  over: Partial<NudgeDeps> = {},
+): NudgeDeps & { sent: string[]; last: { v: string | null } } {
   const state = { sent: [] as string[], last: { v: null as string | null } };
   return {
     notify: (t, b) => {
