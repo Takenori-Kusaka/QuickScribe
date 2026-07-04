@@ -90,6 +90,24 @@ impl Recording {
     }
 }
 
+/// テスト専用: 偽キャプチャから Recording を組み立てる（実デバイス不要で finish/停止経路を検証）。
+/// cfg(test) 限定のため公開挙動は不変。
+#[cfg(test)]
+pub(crate) fn test_recording(parts: Vec<(Vec<f32>, u32, u16)>) -> Recording {
+    Recording {
+        captures: parts
+            .into_iter()
+            .map(|(data, sample_rate, channels)| Capture {
+                stop: Arc::new(AtomicBool::new(false)),
+                samples: Arc::new(Mutex::new(data)),
+                sample_rate,
+                channels,
+                join: std::thread::spawn(|| {}),
+            })
+            .collect(),
+    }
+}
+
 /// 複数の 16kHz mono ストリームを加算合成し [-1,1] にクリップする（S1.3 Phase1 / 純粋）。
 /// 長さは最長に合わせ、短いストリームは無音として扱う（片側欠損でも他方は残る・R3）。
 fn mix_16k(parts: &[Vec<f32>]) -> Vec<f32> {
@@ -567,5 +585,66 @@ mod tests {
     fn mix_single_stream_is_identity() {
         let a = vec![0.1, -0.2, 0.3];
         assert_close(&mix_16k(&[a.clone()]), &a);
+    }
+
+    #[test]
+    fn finish_single_capture_keeps_raw_and_converts_mono16k() {
+        // 32kHz ステレオの原音を保持しつつ、16k mono へ変換する（保存用と文字起こし用の分離）。
+        let raw: Vec<f32> = (0..200).map(|i| (i % 7) as f32 / 10.0).collect();
+        let rec = test_recording(vec![(raw.clone(), 32000, 2)]);
+        let out = rec.finish().unwrap();
+        assert_eq!(out.raw, raw, "原音は無変換で保持");
+        assert_eq!(out.sample_rate, 32000);
+        assert_eq!(out.channels, 2);
+        assert!((out.mono16k.len() as i32 - 50).abs() <= 1, "16k mono へ変換");
+    }
+
+    #[test]
+    fn finish_multi_capture_mixes_to_16k_mono() {
+        // ミックス（マイク＋システム音）は各々16k monoへ変換後に加算合成し、保存用も合成音。
+        let a = vec![0.25; 160]; // 16kHz mono
+        let b = vec![0.25; 320]; // 32kHz mono → 16k で 160
+        let rec = test_recording(vec![(a, WHISPER_SR, 1), (b, 32000, 1)]);
+        let out = rec.finish().unwrap();
+        assert_eq!(out.sample_rate, WHISPER_SR);
+        assert_eq!(out.channels, 1);
+        assert_eq!(out.raw, out.mono16k, "ミックス時は保存用も合成後16k mono");
+        assert!((out.mono16k.len() as i32 - 160).abs() <= 1);
+        assert!((out.mono16k[10] - 0.5).abs() < 1e-3, "加算合成されている");
+    }
+
+    #[test]
+    fn list_audio_sources_does_not_panic() {
+        // デバイス構成に依らず総当たりで列挙できる（CIのヘッドレス環境では空でもよい）。
+        let sources = list_audio_sources().unwrap();
+        for s in &sources {
+            assert!(!s.label.is_empty());
+            assert!(s.kind == "input" || s.kind == "loopback");
+        }
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn loopback_and_mix_are_unsupported_off_windows() {
+        assert_eq!(
+            start(None, Some("loopback".into())).err().unwrap(),
+            crate::errcode::E_LOOPBACK_UNSUPPORTED
+        );
+        assert_eq!(
+            start(None, Some("mix".into())).err().unwrap(),
+            crate::errcode::E_MIXED_UNSUPPORTED
+        );
+    }
+
+    #[test]
+    fn start_input_falls_back_or_fails_cleanly() {
+        // 存在しないデバイス名は既定へフォールバック。デバイスが無い環境（CI）は
+        // 安定コードのエラーになる。いずれもパニックせず、成功時は即停止できる。
+        match start(Some("qs-no-such-device".into()), None) {
+            Ok(rec) => {
+                let _ = rec.finish();
+            }
+            Err(e) => assert!(!e.is_empty(), "エラーは安定コードを持つ: {e}"),
+        }
     }
 }

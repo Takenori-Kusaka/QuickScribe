@@ -24,6 +24,26 @@ mod taskbar;
 // Windows タスクバーに埋め込む録音ウィジェット（常時表示の操作ボタン）。Windowsのみ。
 #[cfg(windows)]
 mod taskbar_widget;
+// テスト専用の極小HTTPサーバ＋環境変数ガード（監査項目12: HTTP経路のユニットテスト）。
+#[cfg(test)]
+pub(crate) mod testhttp;
+
+/// APIベースURLを返す。テストビルドのみ環境変数でローカルテストサーバへ差し替え可能
+/// （cfg(test) 限定＝リリースの公開挙動は不変 / 監査項目12: ureq経路のユニットテスト用）。
+pub(crate) fn api_base(prod: &str, env_key: &str) -> String {
+    #[cfg(test)]
+    {
+        if let Ok(v) = std::env::var(env_key) {
+            let v = v.trim().trim_end_matches('/').to_string();
+            if !v.is_empty() {
+                return v;
+            }
+        }
+    }
+    #[cfg(not(test))]
+    let _ = env_key;
+    prod.to_string()
+}
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -102,7 +122,7 @@ struct SttState {
 }
 
 /// 現在のSTT設定のスナップショットを返す（未設定なら provider="local" 相当）。
-fn current_stt_settings(app: &tauri::AppHandle) -> SttSettings {
+fn current_stt_settings<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> SttSettings {
     app.state::<SttState>()
         .inner
         .lock()
@@ -131,7 +151,7 @@ fn set_stt_settings(
 }
 
 /// 現在の保存設定のスナップショットを返す。
-fn current_settings(app: &tauri::AppHandle) -> SaveSettings {
+fn current_settings<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> SaveSettings {
     app.state::<AppSettings>()
         .inner
         .lock()
@@ -172,14 +192,14 @@ fn save_document(
 
 /// 保管庫エントリ(.txt/.md)を一覧する（S4.3 Phase1）。created 降順。
 #[tauri::command]
-fn list_entries(app: tauri::AppHandle) -> Result<Vec<vault::EntrySummary>, String> {
+fn list_entries<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<Vec<vault::EntrySummary>, String> {
     let dir = resolve_save_dir(&current_settings(&app))?;
     vault::list_entries(&dir)
 }
 
 /// 保管庫フォルダを OS のファイルマネージャで開く（S4.1 R6）。無ければ作成してから開く。
 #[tauri::command]
-fn open_vault(app: tauri::AppHandle) -> Result<(), String> {
+fn open_vault<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<(), String> {
     let dir = resolve_save_dir(&current_settings(&app))?;
     std::fs::create_dir_all(&dir).map_err(|e| errcode::ec(errcode::E_JOURNAL_DIR, e))?;
     open_in_file_manager(&dir)
@@ -237,8 +257,8 @@ fn set_save_settings(
 
 /// 整形結果など任意テキストを保存先へ書き出す（整形は常に保存）。tags は内省タグ(S4.3)。
 #[tauri::command]
-fn save_note(
-    app: tauri::AppHandle,
+fn save_note<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     content: String,
     tags: Option<Vec<String>>,
 ) -> Result<String, String> {
@@ -260,8 +280,8 @@ fn save_note(
 /// 16kHz mono 音声を文字起こしし、保存して返す共通処理（録音/ファイル入力で共用）。
 /// 別スレッド(spawn_blocking 内)から呼ぶ前提。モデルが無ければ初回に自動DLする（S2.2）。
 /// 進捗(0-100%)と確定セグメントを逐次通知してUIに進捗UXを提供する。
-fn transcribe_blocking(
-    app: &tauri::AppHandle,
+fn transcribe_blocking<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
     audio: &[f32],
     timestamps: bool,
 ) -> Result<String, String> {
@@ -380,8 +400,8 @@ pub fn check_audio_extension(path: &std::path::Path) -> Result<(), String> {
 /// 音声ファイルから文字起こしし、結果を保存して返す（S1.6 ファイル入力）。
 /// 非同期＋別スレッド実行でUIをブロックしない。
 #[tauri::command]
-async fn transcribe_file(
-    app: tauri::AppHandle,
+async fn transcribe_file<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     path: String,
     timestamps: bool,
 ) -> Result<String, String> {
@@ -439,8 +459,8 @@ fn start_recording(
 /// マイク録音を停止し、録音音声を文字起こし・保存して返す（S1.1）。
 /// 非同期＋別スレッドで文字起こしを実行しUIをブロックしない。
 #[tauri::command]
-async fn stop_recording(
-    app: tauri::AppHandle,
+async fn stop_recording<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     state: tauri::State<'_, record::RecorderState>,
     timestamps: bool,
 ) -> Result<(), String> {
@@ -572,7 +592,10 @@ pub struct RefineTextParams {
 /// 非同期＋別スレッドでUIをブロックしない。プロバイダ(Gemini/Anthropic/OpenAI)と
 /// APIキー・モデルはフロントの設定から渡す（コードに鍵を埋め込まない / ADR-0005）。
 #[tauri::command]
-async fn refine_text(app: tauri::AppHandle, params: RefineTextParams) -> Result<String, String> {
+async fn refine_text<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    params: RefineTextParams,
+) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let RefineTextParams {
             text,
@@ -683,8 +706,8 @@ impl Default for TrayTexts {
 /// トレイのメニュー項目・ツールチップ文言を現在のUI言語へ更新する（フロントから呼ぶ）。
 /// メニューは項目テキストを変えるため作り直して差し替える（メニュー操作はメインスレッドで行う）。
 #[tauri::command]
-fn set_tray_texts(
-    app: tauri::AppHandle,
+fn set_tray_texts<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     record: String,
     show: String,
     quit: String,
@@ -974,6 +997,399 @@ mod tests {
         let body = std::fs::read_to_string(&p).unwrap();
         assert!(body.starts_with("---\n") && body.contains("type: \"refined\""));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ─── ここから コマンド層のテスト（tauri mock runtime / 監査項目12） ───
+    use crate::testhttp::{env_scope, serve, set_envs, Route};
+
+    /// アプリと同じ管理状態を備えた mock runtime アプリを組み立てる。
+    fn mock_app() -> tauri::App<tauri::test::MockRuntime> {
+        tauri::test::mock_builder()
+            .manage(AppSettings::default())
+            .manage(SttState::default())
+            .manage(record::RecorderState::default())
+            .manage(TrayTexts::default())
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app")
+    }
+
+    fn tmp_dir(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("qs_lib_{}_{}", std::process::id(), name));
+        let _ = std::fs::remove_dir_all(&d);
+        d
+    }
+
+    /// dir 配下に predicate を満たすファイル名が現れるまで待つ（非同期パイプラインの完了待ち）。
+    fn wait_for_file(dir: &std::path::Path, pred: impl Fn(&str) -> bool) -> bool {
+        for _ in 0..300 {
+            if let Ok(rd) = std::fs::read_dir(dir) {
+                for e in rd.flatten() {
+                    if pred(&e.file_name().to_string_lossy()) {
+                        return true;
+                    }
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        false
+    }
+
+    #[test]
+    fn settings_commands_update_managed_state() {
+        let app = mock_app();
+        set_save_settings(
+            app.state(),
+            Some("/tmp/qs-x".into()),
+            true,
+            "opus".into(),
+            false,
+            Some("md".into()),
+        )
+        .unwrap();
+        let s = current_settings(app.handle());
+        assert_eq!(s.save_dir.as_deref(), Some("/tmp/qs-x"));
+        assert!(s.save_audio);
+        assert_eq!(s.audio_format, "opus");
+        assert!(!s.keep_text);
+        assert_eq!(s.output_format, "md");
+        // 空白のみの保存先は未設定扱い / 出力形式 None は既存値を維持。
+        set_save_settings(app.state(), Some("  ".into()), false, "wav".into(), true, None).unwrap();
+        let s = current_settings(app.handle());
+        assert!(s.save_dir.is_none());
+        assert_eq!(s.output_format, "md", "None は上書きしない");
+
+        set_stt_settings(app.state(), "azure".into(), "m1".into(), "k1".into(), Some("res".into()))
+            .unwrap();
+        let st = current_stt_settings(app.handle());
+        assert_eq!(st.provider, "azure");
+        assert_eq!(st.model, "m1");
+        assert_eq!(st.api_key, "k1");
+        assert_eq!(st.azure_resource, "res");
+    }
+
+    #[test]
+    fn save_note_list_entries_and_open_vault_roundtrip() {
+        let app = mock_app();
+        let dir = tmp_dir("vault");
+        set_save_settings(
+            app.state(),
+            Some(dir.to_string_lossy().into_owned()),
+            false,
+            "wav".into(),
+            true,
+            Some("md".into()),
+        )
+        .unwrap();
+        let path = save_note(
+            app.handle().clone(),
+            "こころのメモ".into(),
+            Some(vec!["内省".into()]),
+        )
+        .unwrap();
+        assert!(path.ends_with(".md"));
+        let entries = list_entries(app.handle().clone()).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].kind, "note");
+        assert_eq!(entries[0].tags, vec!["内省"]);
+        // open_vault はフォルダを必ず作る（ファイルマネージャ起動の成否は環境依存で不問）。
+        let _ = open_vault(app.handle().clone());
+        assert!(dir.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn start_stop_recording_e2e_mode_short_circuits() {
+        let app = mock_app();
+        let _g = set_envs(&[("QUICKSCRIBE_E2E", "1")]);
+        assert!(start_recording(app.state(), None, None).is_ok());
+        assert!(tauri::async_runtime::block_on(stop_recording(
+            app.handle().clone(),
+            app.state(),
+            false
+        ))
+        .is_ok());
+    }
+
+    #[test]
+    fn start_recording_rejects_double_start() {
+        let app = mock_app();
+        let _g = env_scope(&[], &["QUICKSCRIBE_E2E"]);
+        // 録音中の状態を偽キャプチャで再現 → 二重開始は安定コードで拒否。
+        *app.state::<record::RecorderState>().current.lock().unwrap() =
+            Some(record::test_recording(vec![(vec![0.0; 16], 16000, 1)]));
+        let err = start_recording(app.state(), None, None).unwrap_err();
+        assert_eq!(err, errcode::E_ALREADY_RECORDING);
+    }
+
+    #[test]
+    fn stop_recording_errors_without_active_recording_or_speech() {
+        let app = mock_app();
+        let _g = env_scope(&[], &["QUICKSCRIBE_E2E"]);
+        // 録音していない。
+        let err = tauri::async_runtime::block_on(stop_recording(
+            app.handle().clone(),
+            app.state(),
+            false,
+        ))
+        .unwrap_err();
+        assert_eq!(err, errcode::E_NOT_RECORDING);
+        // 空の録音。
+        *app.state::<record::RecorderState>().current.lock().unwrap() =
+            Some(record::test_recording(vec![(vec![], 16000, 1)]));
+        let err = tauri::async_runtime::block_on(stop_recording(
+            app.handle().clone(),
+            app.state(),
+            false,
+        ))
+        .unwrap_err();
+        assert_eq!(err, errcode::E_EMPTY_RECORDING);
+    }
+
+    #[test]
+    fn stop_recording_pipeline_transcribes_and_saves_audio() {
+        // 停止 → クラウドSTT(モック) → transcript保存 → 録音音声(opus)保存 の貫通検証。
+        let (base, _) = serve(vec![Route::json(
+            "/v1/listen",
+            200,
+            r#"{"results":{"channels":[{"alternatives":[{"transcript":"クラウド文字起こし"}]}]}}"#,
+        )]);
+        let app = mock_app();
+        let dir = tmp_dir("pipeline");
+        let _g = env_scope(&[("QS_TEST_DEEPGRAM_BASE", base.as_str())], &["QUICKSCRIBE_E2E"]);
+        set_save_settings(
+            app.state(),
+            Some(dir.to_string_lossy().into_owned()),
+            true,
+            "opus".into(),
+            true,
+            Some("txt".into()),
+        )
+        .unwrap();
+        set_stt_settings(app.state(), "deepgram".into(), "".into(), "dk".into(), None).unwrap();
+        *app.state::<record::RecorderState>().current.lock().unwrap() =
+            Some(record::test_recording(vec![(vec![0.2; 3200], 16000, 1)]));
+        tauri::async_runtime::block_on(stop_recording(app.handle().clone(), app.state(), false))
+            .unwrap();
+        assert!(
+            wait_for_file(&dir, |n| n.starts_with("transcript-") && n.ends_with(".txt")),
+            "文字起こしテキストが保存される"
+        );
+        assert!(
+            wait_for_file(&dir, |n| n.starts_with("rec-") && n.ends_with(".opus")),
+            "録音音声が opus で保存される"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn transcribe_file_validates_and_transcribes_via_cloud() {
+        let app = mock_app();
+        // 非対応拡張子。
+        let err = tauri::async_runtime::block_on(transcribe_file(
+            app.handle().clone(),
+            "note.txt".into(),
+            false,
+        ))
+        .unwrap_err();
+        assert!(err.starts_with(errcode::E_UNSUPPORTED_AUDIO_EXT), "{err}");
+        // 実在しないファイル。
+        let err = tauri::async_runtime::block_on(transcribe_file(
+            app.handle().clone(),
+            "missing.wav".into(),
+            false,
+        ))
+        .unwrap_err();
+        assert!(err.starts_with(errcode::E_FILE_OPEN), "{err}");
+        // 成功: WAV → デコード → クラウドSTT(モック) → keep_text で保存。
+        let (base, _) = serve(vec![Route::json(
+            "/v1/listen",
+            200,
+            r#"{"results":{"channels":[{"alternatives":[{"transcript":"ファイル入力の本文"}]}]}}"#,
+        )]);
+        let _g = set_envs(&[("QS_TEST_DEEPGRAM_BASE", base.as_str())]);
+        let dir = tmp_dir("file-in");
+        set_save_settings(
+            app.state(),
+            Some(dir.to_string_lossy().into_owned()),
+            false,
+            "wav".into(),
+            true,
+            Some("txt".into()),
+        )
+        .unwrap();
+        set_stt_settings(app.state(), "deepgram".into(), "".into(), "dk".into(), None).unwrap();
+        let wav = audio_save::save_wav(&vec![0.1; 1600], 16000, 1, &dir, "input").unwrap();
+        let text = tauri::async_runtime::block_on(transcribe_file(
+            app.handle().clone(),
+            wav.to_string_lossy().into_owned(),
+            false,
+        ))
+        .unwrap();
+        assert_eq!(text, "ファイル入力の本文");
+        assert!(
+            wait_for_file(&dir, |n| n.starts_with("transcript-")),
+            "keep_text で文字起こしを保存"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn refine_text_command_refines_and_saves_markdown() {
+        let app = mock_app();
+        let (base, seen) = serve(vec![Route::json(
+            ":generateContent",
+            200,
+            r#"{"candidates":[{"content":{"parts":[{"text":"<journal>整形結果の本文</journal>"}]}}]}"#,
+        )]);
+        let _g = set_envs(&[("QS_TEST_GEMINI_BASE", base.as_str())]);
+        let dir = tmp_dir("refine");
+        set_save_settings(
+            app.state(),
+            Some(dir.to_string_lossy().into_owned()),
+            false,
+            "wav".into(),
+            true,
+            Some("txt".into()),
+        )
+        .unwrap();
+        let params = RefineTextParams {
+            text: "生の文字起こし".into(),
+            provider: "gemini".into(),
+            api_key: "k".into(),
+            model: "".into(), // 空はフォールバック既定モデルを使う。
+            style: "summary".into(),
+            custom_instruction: None,
+            tags: Some(vec!["夜".into()]),
+            save: Some(true),
+            region: None,
+            workspace_id: None,
+            auth_mode: None,
+            aws_access_key: None,
+            aws_secret_key: None,
+            aws_session_token: None,
+            output_lang: None,
+        };
+        let out =
+            tauri::async_runtime::block_on(refine_text(app.handle().clone(), params)).unwrap();
+        assert_eq!(out, "整形結果の本文");
+        assert!(
+            seen.lock().unwrap()[0].contains("gemini-flash-latest"),
+            "モデル未指定は既定へフォールバック"
+        );
+        // 整形結果は出力形式設定に依らず常に .md で保存。
+        assert!(wait_for_file(&dir, |n| n.starts_with("refined-") && n.ends_with(".md")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn refine_text_command_builds_aws_config_for_sigv4() {
+        let app = mock_app();
+        let (base, seen) = serve(vec![Route::json(
+            "/invoke",
+            200,
+            r#"{"content":[{"type":"text","text":"<journal>AWS整形</journal>"}]}"#,
+        )]);
+        let _g = set_envs(&[("QS_TEST_BEDROCK_BASE", base.as_str())]);
+        let params = RefineTextParams {
+            text: "本文".into(),
+            provider: "bedrock".into(),
+            api_key: "".into(),
+            model: "anthropic.claude-x".into(),
+            style: "structured".into(),
+            custom_instruction: None,
+            tags: None,
+            save: Some(false), // 一時結果は保管庫を汚さない。
+            region: Some("ap-northeast-1".into()),
+            workspace_id: None,
+            auth_mode: Some("sigv4".into()),
+            aws_access_key: Some("AKIA123".into()),
+            aws_secret_key: Some("secret".into()),
+            aws_session_token: None,
+            output_lang: None,
+        };
+        let out =
+            tauri::async_runtime::block_on(refine_text(app.handle().clone(), params)).unwrap();
+        assert_eq!(out, "AWS整形");
+        let req = seen.lock().unwrap()[0].clone();
+        assert!(req.contains("/model/anthropic.claude-x/invoke"), "{req}");
+        assert!(req.to_ascii_lowercase().contains("x-amz-date"), "SigV4署名が付く: {req}");
+    }
+
+    #[test]
+    fn resolve_model_falls_back_to_default_on_failure() {
+        // 鍵なし＝一覧取得不可 → プロバイダ既定へフォールバック（UIを止めない）。
+        let m = tauri::async_runtime::block_on(resolve_model("anthropic".into(), "".into()))
+            .unwrap();
+        assert_eq!(m, "claude-sonnet-4-6");
+        let m = tauri::async_runtime::block_on(resolve_model("".into(), "".into())).unwrap();
+        assert_eq!(m, "gemini-flash-latest");
+        // ヘルパの分岐も固定。
+        assert_eq!(default_model_for("openai"), "gpt-4o");
+        assert!(is_aws_provider("bedrock"));
+        assert!(!is_aws_provider("gemini"));
+    }
+
+    #[test]
+    fn read_text_file_reads_or_errors_with_stable_code() {
+        let p = std::env::temp_dir().join(format!("qs_read_{}.txt", std::process::id()));
+        std::fs::write(&p, "テキスト内容").unwrap();
+        assert_eq!(read_text_file(p.to_string_lossy().into_owned()).unwrap(), "テキスト内容");
+        let _ = std::fs::remove_file(&p);
+        let err = read_text_file("qs-definitely-missing.txt".into()).unwrap_err();
+        assert!(err.starts_with(errcode::E_TEXT_READ), "{err}");
+    }
+
+    #[test]
+    fn recording_tray_image_draws_red_disc_with_transparent_corners() {
+        let img = recording_tray_image();
+        assert_eq!(img.width(), 32);
+        assert_eq!(img.height(), 32);
+        let rgba = img.rgba();
+        let px = |x: usize, y: usize| {
+            let i = (y * 32 + x) * 4;
+            (rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3])
+        };
+        assert_eq!(px(16, 16), (0xE0, 0x20, 0x20, 0xFF), "中心は赤");
+        assert_eq!(px(0, 0).3, 0, "角は透明");
+    }
+
+    #[test]
+    fn set_tray_texts_updates_tooltip_state() {
+        let app = mock_app();
+        set_tray_texts(
+            app.handle().clone(),
+            "Record".into(),
+            "Show".into(),
+            "Quit".into(),
+            "QuickScribe — recording".into(),
+            "QuickScribe — idle".into(),
+        );
+        let g = app.state::<TrayTexts>().inner.lock().unwrap().clone();
+        assert_eq!(g.tooltip_recording, "QuickScribe — recording");
+        assert_eq!(g.tooltip_idle, "QuickScribe — idle");
+    }
+
+    #[test]
+    fn taskbar_and_startup_commands_are_safe_no_ops_here() {
+        // 非Windows/非perf環境では副作用なく完走する（Windowsでは実装へ委譲）。
+        set_taskbar_shortcut("Ctrl+Shift+R".into());
+        set_taskbar_widget(true);
+        set_taskbar_widget(false);
+        let _g = env_scope(&[], &["QS_PERF_STARTUP"]);
+        report_startup(); // 環境変数なし → 即 return。
+    }
+
+    #[test]
+    fn secret_commands_tolerate_headless_keyring() {
+        // 空値の保存は「削除」扱いで常に成功（ヘッドレスCIでも安全）。
+        assert!(set_secret("qs-test-empty-secret".into(), String::new()).is_ok());
+        // 未設定キーの取得は None。
+        assert!(get_secret("qs-test-definitely-missing".into()).is_none());
+        // 未設定キーの削除は OK か、セキュアストレージ不在の安定コード。
+        match delete_secret("qs-test-definitely-missing".into()) {
+            Ok(()) => {}
+            Err(e) => assert!(e.starts_with(errcode::E_SECRET_DELETE), "{e}"),
+        }
     }
 }
 

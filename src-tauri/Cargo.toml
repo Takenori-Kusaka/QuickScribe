@@ -76,6 +76,11 @@ keyring = { version = "3", default-features = false, features = [
     "crypto-rust",
 ] }
 
+[dev-dependencies]
+# tauri mock runtime（コマンド層のユニットテスト / カバレッジ80%ゲート 監査項目12・#481）。
+# dev-dependencies のため配布物には含まれない（about.toml はdev依存を通知から除外済み）。
+tauri = { version = "2", features = ["test"] }
+
 [target."cfg(windows)".dependencies]
 # Windows タスクバーのサムネイルツールバー(ITaskbarList3)実装用。
 # tauri 2.11系の windows クレートと整合させる(HWNDの型不一致回避)。HWNDは生ポインタ経由で再ラップ。
