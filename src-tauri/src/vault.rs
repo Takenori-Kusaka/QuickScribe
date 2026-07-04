@@ -277,4 +277,61 @@ mod tests {
         assert!(pv.ends_with('…'));
         assert_eq!(pv.chars().count(), 6); // 5文字＋…
     }
+
+    #[test]
+    fn parse_md_frontmatter_with_crlf_and_bom() {
+        // 外部エディタ由来の CRLF / BOM 付きでもフロントマターを解釈する。
+        let c = "\u{feff}---\r\ncreated: 2026-01-02T03:04:05\r\ntype: note\r\n---\r\n本文";
+        let p = parse_entry(c);
+        assert_eq!(p.created.as_deref(), Some("2026-01-02T03:04:05"));
+        assert_eq!(p.kind.as_deref(), Some("note"));
+        assert_eq!(p.body, "本文");
+    }
+
+    #[test]
+    fn parse_unterminated_frontmatter_falls_back_to_txt() {
+        // 終了 --- が無い場合はプレーンtxt扱い（本文を失わない）。
+        let p = parse_entry("---\ntype: note\n本文つづき");
+        assert!(p.kind.is_none());
+        assert!(p.body.contains("本文つづき"));
+    }
+
+    #[test]
+    fn parse_tag_inline_variants() {
+        assert_eq!(parse_tag_inline("[\"a\", \"b\"]"), vec!["a", "b"]);
+        assert_eq!(parse_tag_inline("#x、 y"), vec!["x", "y"]);
+        assert!(parse_tag_inline("[ , ]").is_empty());
+        assert_eq!(unquote("  \"q\"  "), "q");
+        assert_eq!(unquote("noquote"), "noquote");
+    }
+
+    #[test]
+    fn list_entries_reads_sorts_and_skips_non_entries() {
+        let dir = std::env::temp_dir().join(format!("qs_vault_list_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("refined-a.md"),
+            "---\ncreated: \"2026-07-02T10:00:00\"\ntype: \"refined\"\ntags: [\"内省\"]\n---\n新しい方の本文",
+        )
+        .unwrap();
+        std::fs::write(dir.join("transcript-b.txt"), "古い方の本文\n\nTags: 仕事").unwrap();
+        std::fs::write(dir.join("rec-c.wav"), b"RIFF....").unwrap(); // 対象外拡張子
+        let entries = list_entries(&dir).unwrap();
+        assert_eq!(entries.len(), 2, "音声ファイルは一覧に含めない");
+        // frontmatter の created は過去日付、txt はファイル更新時刻(今) → txt が先頭（降順）。
+        assert_eq!(entries[0].kind, "transcript", "txt はファイル名から種別推定");
+        assert_eq!(entries[0].tags, vec!["仕事"]);
+        assert!(!entries[0].created.is_empty(), "mtime を ISO で補完");
+        assert_eq!(entries[1].kind, "refined");
+        assert_eq!(entries[1].created, "2026-07-02T10:00:00");
+        assert_eq!(entries[1].preview, "新しい方の本文");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_entries_missing_dir_is_empty() {
+        let dir = std::env::temp_dir().join("qs_vault_definitely_missing_xyz");
+        assert!(list_entries(&dir).unwrap().is_empty());
+    }
 }

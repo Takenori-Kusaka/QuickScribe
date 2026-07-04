@@ -148,4 +148,76 @@ mod tests {
         assert_eq!(f32_to_i16(2.0), i16::MAX);
         assert_eq!(f32_to_i16(-2.0), -i16::MAX);
     }
+
+    fn tmp_dir(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("qs_audio_save_{}_{}", std::process::id(), name))
+    }
+
+    #[test]
+    fn save_wav_writes_readable_pcm16() {
+        let dir = tmp_dir("wav");
+        let _ = std::fs::remove_dir_all(&dir);
+        let samples = vec![0.0, 0.5, -0.5, 1.0, -1.0, 0.25];
+        let path = save_wav(&samples, 44_100, 2, &dir, "take1").unwrap();
+        assert!(path.ends_with("take1.wav"));
+        let mut reader = hound::WavReader::open(&path).unwrap();
+        let spec = reader.spec();
+        assert_eq!(spec.channels, 2);
+        assert_eq!(spec.sample_rate, 44_100);
+        assert_eq!(spec.bits_per_sample, 16);
+        let read: Vec<i16> = reader.samples::<i16>().map(|s| s.unwrap()).collect();
+        assert_eq!(read.len(), samples.len());
+        assert_eq!(read[3], i16::MAX, "1.0 はフルスケールへ量子化");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_wav_clamps_degenerate_spec() {
+        // channels=0 / 極端に低いレートは安全側（1ch / 8kHz 下限）に矯正して保存する。
+        let dir = tmp_dir("wav0");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = save_wav(&[0.1, 0.2], 4_000, 0, &dir, "weird").unwrap();
+        let spec = hound::WavReader::open(&path).unwrap().spec();
+        assert_eq!(spec.channels, 1);
+        assert_eq!(spec.sample_rate, 8_000);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_opus_rejects_empty_audio() {
+        let dir = tmp_dir("opus-empty");
+        let err = save_opus(&[], 48_000, 1, &dir, "empty").unwrap_err();
+        assert_eq!(err, crate::errcode::E_EMPTY_AUDIO);
+    }
+
+    #[test]
+    fn save_opus_writes_ogg_stream_with_headers() {
+        let dir = tmp_dir("opus");
+        let _ = std::fs::remove_dir_all(&dir);
+        // 0.2秒 44.1kHz ステレオ → 48kHz mono へ整えて 20ms フレームでエンコード。
+        let interleaved: Vec<f32> = (0..(8_820 * 2))
+            .map(|i| (i as f32 * 0.01).sin() * 0.4)
+            .collect();
+        let path = save_opus(&interleaved, 44_100, 2, &dir, "rec1").unwrap();
+        assert!(path.ends_with("rec1.opus"));
+        let bytes = std::fs::read(&path).unwrap();
+        assert_eq!(&bytes[0..4], b"OggS", "Oggコンテナで始まる");
+        let hay = |needle: &[u8]| bytes.windows(needle.len()).any(|w| w == needle);
+        assert!(hay(b"OpusHead"), "識別ヘッダを含む");
+        assert!(hay(b"OpusTags") && hay(b"QuickScribe"), "コメントヘッダとvendorを含む");
+        assert!(bytes.len() > 200, "音声パケットが書かれている: {}", bytes.len());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn to_mono_48k_downmixes_and_resamples() {
+        // 24kHz ステレオ L/R 平均 → 48kHz で約2倍長。
+        let interleaved = vec![0.0, 1.0, 0.0, 1.0, 0.0, 1.0];
+        let out = to_mono_48k(&interleaved, 24_000, 2);
+        assert!((out.len() as i32 - 6).abs() <= 1);
+        assert!(out.iter().all(|&s| (s - 0.5).abs() < 1e-6));
+        // mono はダウンミックス無しでリサンプルのみ。
+        let out = to_mono_48k(&[0.2; 48], 48_000, 1);
+        assert_eq!(out, vec![0.2; 48]);
+    }
 }

@@ -356,8 +356,10 @@ impl FormattingEngine for GeminiEngine {
             return Err(crate::errcode::E_REFINE_GEMINI_NO_KEY.into());
         }
         let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            req.model, req.api_key
+            "{}/v1beta/models/{}:generateContent?key={}",
+            crate::api_base("https://generativelanguage.googleapis.com", "QS_TEST_GEMINI_BASE"),
+            req.model,
+            req.api_key
         );
         // Gemini はシステムロールを使わないため、システム指示をユーザーテキストに前置する。
         let text = format!(
@@ -407,8 +409,12 @@ impl FormattingEngine for AnthropicEngine {
             ]
         });
 
+        let url = format!(
+            "{}/v1/messages",
+            crate::api_base("https://api.anthropic.com", "QS_TEST_ANTHROPIC_BASE")
+        );
         let v = post_json_refine(
-            "https://api.anthropic.com/v1/messages",
+            &url,
             &[
                 ("x-api-key", req.api_key),
                 ("anthropic-version", "2023-06-01"),
@@ -443,8 +449,12 @@ impl FormattingEngine for OpenAiEngine {
         });
 
         let bearer = format!("Bearer {}", req.api_key);
+        let url = format!(
+            "{}/v1/chat/completions",
+            crate::api_base("https://api.openai.com", "QS_TEST_OPENAI_BASE")
+        );
         let v = post_json_refine(
-            "https://api.openai.com/v1/chat/completions",
+            &url,
             &[("Authorization", &bearer)],
             &body,
             "OpenAI",
@@ -566,8 +576,11 @@ impl FormattingEngine for BedrockEngine {
             req.model.trim()
         };
         let url = format!(
-            "https://bedrock-runtime.{}.amazonaws.com/model/{}/invoke",
-            aws.region.trim(),
+            "{}/model/{}/invoke",
+            crate::api_base(
+                &format!("https://bedrock-runtime.{}.amazonaws.com", aws.region.trim()),
+                "QS_TEST_BEDROCK_BASE"
+            ),
             model
         );
         let body = json!({
@@ -610,8 +623,11 @@ impl FormattingEngine for ClaudePlatformAwsEngine {
             return Err(crate::errcode::E_REFINE_AWS_NO_REGION.into());
         }
         let url = format!(
-            "https://aws-external-anthropic.{}.api.aws/v1/messages",
-            aws.region.trim()
+            "{}/v1/messages",
+            crate::api_base(
+                &format!("https://aws-external-anthropic.{}.api.aws", aws.region.trim()),
+                "QS_TEST_CLAUDE_AWS_BASE"
+            )
         );
         let body = json!({
             "model": req.model,
@@ -693,7 +709,11 @@ fn latest_anthropic(api_key: &str) -> Result<String, String> {
     if api_key.trim().is_empty() {
         return Err(crate::errcode::E_REFINE_ANTHROPIC_NO_KEY.into());
     }
-    let mut resp = ureq::get("https://api.anthropic.com/v1/models?limit=1000")
+    let url = format!(
+        "{}/v1/models?limit=1000",
+        crate::api_base("https://api.anthropic.com", "QS_TEST_ANTHROPIC_BASE")
+    );
+    let mut resp = ureq::get(&url)
         .header("x-api-key", api_key)
         .header("anthropic-version", "2023-06-01")
         .call()
@@ -719,7 +739,11 @@ fn latest_openai(api_key: &str) -> Result<String, String> {
     if api_key.trim().is_empty() {
         return Err(crate::errcode::E_REFINE_OPENAI_NO_KEY.into());
     }
-    let mut resp = ureq::get("https://api.openai.com/v1/models")
+    let url = format!(
+        "{}/v1/models",
+        crate::api_base("https://api.openai.com", "QS_TEST_OPENAI_BASE")
+    );
+    let mut resp = ureq::get(&url)
         .header("Authorization", &format!("Bearer {api_key}"))
         .call()
         .map_err(|e| crate::errcode::ec(crate::errcode::E_REFINE_MODELS_HTTP, format!("OpenAI: {e}")))?;
@@ -778,7 +802,8 @@ fn latest_gemini(api_key: &str) -> Result<String, String> {
         return Err(crate::errcode::E_REFINE_GEMINI_NO_KEY.into());
     }
     let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key={api_key}"
+        "{}/v1beta/models?pageSize=1000&key={api_key}",
+        crate::api_base("https://generativelanguage.googleapis.com", "QS_TEST_GEMINI_BASE")
     );
     let mut resp = ureq::get(&url)
         .call()
@@ -1010,5 +1035,365 @@ mod tests {
         // 本文中にタグ様の語があっても最外(最初の開始〜最後の終了)で囲む。
         let raw = "<journal>A <journal> B</journal>";
         assert_eq!(extract_tagged_body(raw), "A <journal> B");
+    }
+
+    // ─── ここから HTTP 経路のテスト（ローカルテストサーバ / 監査項目12） ───
+    use crate::testhttp::{serve, set_envs, Route};
+
+    /// 標準の refine 呼び出し（スタイル固定・AWSなし）。
+    fn call(provider: &str, key: &str) -> Result<String, String> {
+        refine(provider, key, "test-model", "structured", "本文X", None, None, None)
+    }
+
+    #[test]
+    fn gemini_engine_http_paths() {
+        // 鍵なしは即エラー（HTTPを呼ばない）。
+        assert_eq!(call("gemini", " ").unwrap_err(), crate::errcode::E_REFINE_GEMINI_NO_KEY);
+        // 成功: candidates[].content.parts[].text を連結しタグ内を抽出。
+        let (base, seen) = serve(vec![Route::json(
+            ":generateContent",
+            200,
+            r#"{"candidates":[{"content":{"parts":[{"text":"<journal>G本文</journal>"}]}}]}"#,
+        )]);
+        {
+            let _g = set_envs(&[("QS_TEST_GEMINI_BASE", &base)]);
+            assert_eq!(call("gemini", "k").unwrap(), "G本文");
+        }
+        assert!(
+            seen.lock().unwrap()[0].contains("generateContent"),
+            "generateContent エンドポイントへPOSTする"
+        );
+        // 空応答は安定コード E_REFINE_EMPTY_RESULT。
+        let (base2, _) = serve(vec![Route::json(":generateContent", 200, r#"{"candidates":[]}"#)]);
+        {
+            let _g = set_envs(&[("QS_TEST_GEMINI_BASE", &base2)]);
+            let err = call("gemini", "k").unwrap_err();
+            assert!(err.starts_with(crate::errcode::E_REFINE_EMPTY_RESULT), "{err}");
+        }
+        // 非2xxは E_REFINE_HTTP。
+        let (base3, _) = serve(vec![Route::json(":generateContent", 500, "{}")]);
+        {
+            let _g = set_envs(&[("QS_TEST_GEMINI_BASE", &base3)]);
+            let err = call("gemini", "k").unwrap_err();
+            assert!(err.starts_with(crate::errcode::E_REFINE_HTTP), "{err}");
+        }
+    }
+
+    #[test]
+    fn anthropic_engine_http_paths() {
+        assert_eq!(call("anthropic", "").unwrap_err(), crate::errcode::E_REFINE_ANTHROPIC_NO_KEY);
+        // 成功: content[] の type=text のみ連結（非textブロックは無視）。
+        let (base, seen) = serve(vec![Route::json(
+            "/v1/messages",
+            200,
+            r#"{"content":[{"type":"text","text":"<journal>A本文</journal>"},{"type":"tool_use","id":"x"}]}"#,
+        )]);
+        {
+            let _g = set_envs(&[("QS_TEST_ANTHROPIC_BASE", &base)]);
+            assert_eq!(call("claude", "sk").unwrap(), "A本文");
+        }
+        let req = seen.lock().unwrap()[0].clone();
+        assert!(req.contains("x-api-key: sk"), "x-api-key ヘッダで認証: {req}");
+        assert!(req.contains("anthropic-version"), "versionヘッダ必須");
+        // 空応答。
+        let (base2, _) = serve(vec![Route::json("/v1/messages", 200, r#"{"content":[]}"#)]);
+        {
+            let _g = set_envs(&[("QS_TEST_ANTHROPIC_BASE", &base2)]);
+            let err = call("anthropic", "sk").unwrap_err();
+            assert!(err.starts_with(crate::errcode::E_REFINE_EMPTY_RESULT), "{err}");
+        }
+    }
+
+    #[test]
+    fn anthropic_latest_model_resolution() {
+        assert_eq!(
+            resolve_latest_model("anthropic", "").unwrap_err(),
+            crate::errcode::E_REFINE_ANTHROPIC_NO_KEY
+        );
+        // 新しい順の data[] から最初の sonnet を選ぶ。
+        let (base, _) = serve(vec![Route::json(
+            "/v1/models",
+            200,
+            r#"{"data":[{"id":"claude-opus-9"},{"id":"claude-sonnet-9"},{"id":"claude-sonnet-8"}]}"#,
+        )]);
+        {
+            let _g = set_envs(&[("QS_TEST_ANTHROPIC_BASE", &base)]);
+            assert_eq!(resolve_latest_model("anthropic", "k").unwrap(), "claude-sonnet-9");
+        }
+        // sonnet 不在は安定コード。
+        let (base2, _) = serve(vec![Route::json("/v1/models", 200, r#"{"data":[{"id":"claude-opus-9"}]}"#)]);
+        {
+            let _g = set_envs(&[("QS_TEST_ANTHROPIC_BASE", &base2)]);
+            assert_eq!(
+                resolve_latest_model("anthropic", "k").unwrap_err(),
+                crate::errcode::E_REFINE_NO_SONNET
+            );
+        }
+        // data 欠落は解析エラー。
+        let (base3, _) = serve(vec![Route::json("/v1/models", 200, "{}")]);
+        {
+            let _g = set_envs(&[("QS_TEST_ANTHROPIC_BASE", &base3)]);
+            let err = resolve_latest_model("anthropic", "k").unwrap_err();
+            assert!(err.starts_with(crate::errcode::E_REFINE_MODELS_PARSE), "{err}");
+        }
+    }
+
+    #[test]
+    fn openai_engine_and_latest_http_paths() {
+        assert_eq!(call("openai", "").unwrap_err(), crate::errcode::E_REFINE_OPENAI_NO_KEY);
+        assert_eq!(
+            resolve_latest_model("openai", "").unwrap_err(),
+            crate::errcode::E_REFINE_OPENAI_NO_KEY
+        );
+        // 整形成功（Bearer 認証）。
+        let (base, seen) = serve(vec![
+            Route::json(
+                "/v1/chat/completions",
+                200,
+                r#"{"choices":[{"message":{"content":"<journal>O本文</journal>"}}]}"#,
+            ),
+            Route::json("/v1/models", 200, r#"{"data":[{"id":"gpt-4.1"},{"id":"gpt-4o"}]}"#),
+        ]);
+        {
+            let _g = set_envs(&[("QS_TEST_OPENAI_BASE", &base)]);
+            assert_eq!(call("gpt", "sk").unwrap(), "O本文");
+            // 最新解決はローリングエイリアス gpt-4.1 を優先。
+            assert_eq!(resolve_latest_model("openai", "k").unwrap(), "gpt-4.1");
+        }
+        assert!(seen.lock().unwrap()[0].to_ascii_lowercase().contains("authorization: bearer sk"));
+        // content 欠落は空結果エラー。
+        let (base2, _) = serve(vec![Route::json("/v1/chat/completions", 200, r#"{"choices":[]}"#)]);
+        {
+            let _g = set_envs(&[("QS_TEST_OPENAI_BASE", &base2)]);
+            let err = call("openai", "sk").unwrap_err();
+            assert!(err.starts_with(crate::errcode::E_REFINE_EMPTY_RESULT), "{err}");
+        }
+    }
+
+    #[test]
+    fn ollama_engine_and_latest_http_paths() {
+        // 成功: OLLAMA_HOST(スキーム無し表記) → http:// を前置して解決する。
+        let (base, seen) = serve(vec![
+            Route::json("/api/chat", 200, r#"{"message":{"content":"<journal>L本文</journal>"}}"#),
+            Route::json("/api/tags", 200, r#"{"models":[{"name":"llama3.2:latest"}]}"#),
+        ]);
+        let hostport = base.strip_prefix("http://").unwrap().to_string();
+        {
+            let _g = set_envs(&[("OLLAMA_HOST", &hostport)]);
+            // model 空は既定 llama3.1 を送る。
+            let out = refine("ollama", "", "", "structured", "本文", None, None, None).unwrap();
+            assert_eq!(out, "L本文");
+            assert!(seen.lock().unwrap()[0].contains("llama3.1"), "既定モデルを送信");
+            // インストール済み一覧の先頭を最新として返す。
+            assert_eq!(resolve_latest_model("local", "").unwrap(), "llama3.2:latest");
+        }
+        // モデル未取得（models空）は安定コード。
+        let (base2, _) = serve(vec![Route::json("/api/tags", 200, r#"{"models":[]}"#)]);
+        {
+            let _g = set_envs(&[("OLLAMA_HOST", &base2)]);
+            assert_eq!(
+                resolve_latest_model("ollama", "").unwrap_err(),
+                crate::errcode::E_REFINE_NO_OLLAMA_MODEL
+            );
+        }
+        // 接続不能（未起動）は E_REFINE_OLLAMA_CONN / E_REFINE_MODELS_HTTP。
+        {
+            let _g = set_envs(&[("OLLAMA_HOST", "http://127.0.0.1:9")]);
+            let err = refine("ollama", "", "m", "structured", "x", None, None, None).unwrap_err();
+            assert!(err.starts_with(crate::errcode::E_REFINE_OLLAMA_CONN), "{err}");
+            let err = resolve_latest_model("ollama", "").unwrap_err();
+            assert!(err.starts_with(crate::errcode::E_REFINE_MODELS_HTTP), "{err}");
+        }
+        // OLLAMA_HOST 空は既定 localhost:11434。
+        {
+            let _g = set_envs(&[("OLLAMA_HOST", "  ")]);
+            assert_eq!(ollama_base(), "http://localhost:11434");
+        }
+    }
+
+    #[test]
+    fn gemini_latest_model_resolution() {
+        assert_eq!(
+            resolve_latest_model("gemini", "").unwrap_err(),
+            crate::errcode::E_REFINE_GEMINI_NO_KEY
+        );
+        // flash-latest ローリングエイリアスを最優先（generateContent 非対応は無視）。
+        let (base, _) = serve(vec![Route::json(
+            "/v1beta/models",
+            200,
+            r#"{"models":[
+                {"name":"models/gemini-2.5-flash","supportedGenerationMethods":["generateContent"]},
+                {"name":"models/gemini-flash-latest","supportedGenerationMethods":["generateContent"]},
+                {"name":"models/embedding-001","supportedGenerationMethods":["embedContent"]}
+            ]}"#,
+        )]);
+        {
+            let _g = set_envs(&[("QS_TEST_GEMINI_BASE", &base)]);
+            assert_eq!(resolve_latest_model("gemini", "k").unwrap(), "gemini-flash-latest");
+            // 未知プロバイダ/AWS系も gemini の解決へフォールバックする。
+            assert_eq!(resolve_latest_model("bedrock", "k").unwrap(), "gemini-flash-latest");
+        }
+        // エイリアス不在は gemini-<ver>-flash の最大バージョン。
+        let (base2, _) = serve(vec![Route::json(
+            "/v1beta/models",
+            200,
+            r#"{"models":[
+                {"name":"models/gemini-2.0-flash","supportedGenerationMethods":["generateContent"]},
+                {"name":"models/gemini-2.5-flash","supportedGenerationMethods":["generateContent"]},
+                {"name":"models/gemini-2.5-flash-lite","supportedGenerationMethods":["generateContent"]}
+            ]}"#,
+        )]);
+        {
+            let _g = set_envs(&[("QS_TEST_GEMINI_BASE", &base2)]);
+            assert_eq!(resolve_latest_model("gemini", "k").unwrap(), "gemini-2.5-flash");
+        }
+        // flash 候補ゼロは安定コード。
+        let (base3, _) = serve(vec![Route::json("/v1beta/models", 200, r#"{"models":[]}"#)]);
+        {
+            let _g = set_envs(&[("QS_TEST_GEMINI_BASE", &base3)]);
+            assert_eq!(
+                resolve_latest_model("gemini", "k").unwrap_err(),
+                crate::errcode::E_REFINE_NO_FLASH
+            );
+        }
+        // models 欠落は解析エラー。
+        let (base4, _) = serve(vec![Route::json("/v1beta/models", 200, "{}")]);
+        {
+            let _g = set_envs(&[("QS_TEST_GEMINI_BASE", &base4)]);
+            let err = resolve_latest_model("gemini", "k").unwrap_err();
+            assert!(err.starts_with(crate::errcode::E_REFINE_MODELS_PARSE), "{err}");
+        }
+    }
+
+    fn aws_cfg(auth: AwsAuth) -> AwsConfig {
+        AwsConfig {
+            region: "us-east-1".into(),
+            workspace_id: "ws-1".into(),
+            auth,
+        }
+    }
+
+    #[test]
+    fn aws_auth_headers_apikey_and_sigv4() {
+        let cfg = aws_cfg(AwsAuth::ApiKey);
+        // APIキー空はエラー。
+        assert_eq!(
+            aws_auth_headers("http://x", b"{}", "bedrock", &cfg, " ", true).unwrap_err(),
+            crate::errcode::E_REFINE_NO_KEY
+        );
+        // bearer=true は Authorization、false は x-api-key。
+        let h = aws_auth_headers("http://x", b"{}", "bedrock", &cfg, "k1", true).unwrap();
+        assert_eq!(h, vec![("Authorization".to_string(), "Bearer k1".to_string())]);
+        let h = aws_auth_headers("http://x", b"{}", "aws-external-anthropic", &cfg, "k1", false).unwrap();
+        assert_eq!(h, vec![("x-api-key".to_string(), "k1".to_string())]);
+        // SigV4: 鍵欠落はエラー、揃えば authorization/x-amz-date が付く。
+        let empty = aws_cfg(AwsAuth::SigV4 {
+            access_key: "".into(),
+            secret_key: "".into(),
+            session_token: None,
+        });
+        assert_eq!(
+            aws_auth_headers("http://x", b"{}", "bedrock", &empty, "", true).unwrap_err(),
+            crate::errcode::E_REFINE_AWS_NO_KEYS
+        );
+        let sig = aws_cfg(AwsAuth::SigV4 {
+            access_key: "AKIA123".into(),
+            secret_key: "secret".into(),
+            session_token: Some("tok".into()),
+        });
+        let h = aws_auth_headers("http://x/model/m/invoke", b"{}", "bedrock", &sig, "", true).unwrap();
+        let names: Vec<&str> = h.iter().map(|(k, _)| k.as_str()).collect();
+        assert!(names.iter().any(|n| n.eq_ignore_ascii_case("authorization")), "{names:?}");
+        assert!(names.iter().any(|n| n.eq_ignore_ascii_case("x-amz-date")), "{names:?}");
+    }
+
+    #[test]
+    fn bedrock_engine_http_paths() {
+        // AwsConfig 無しは設定エラー。
+        let err = call("bedrock", "k").unwrap_err();
+        assert!(err.starts_with(crate::errcode::E_REFINE_AWS_CONFIG), "{err}");
+        // region 空はエラー。
+        let mut cfg = aws_cfg(AwsAuth::ApiKey);
+        cfg.region = " ".into();
+        let err = refine("bedrock", "k", "", "structured", "x", Some(cfg), None, None).unwrap_err();
+        assert_eq!(err, crate::errcode::E_REFINE_AWS_NO_REGION);
+        // 成功（APIキー=Bearer / model 空は既定IDへ）。
+        let (base, seen) = serve(vec![Route::json(
+            "/invoke",
+            200,
+            r#"{"content":[{"type":"text","text":"<journal>B本文</journal>"}]}"#,
+        )]);
+        {
+            let _g = set_envs(&[("QS_TEST_BEDROCK_BASE", &base)]);
+            let out = refine(
+                "bedrock", "bk", "", "structured", "x",
+                Some(aws_cfg(AwsAuth::ApiKey)), None, None,
+            )
+            .unwrap();
+            assert_eq!(out, "B本文");
+            let req = seen.lock().unwrap()[0].clone();
+            assert!(req.contains("/model/anthropic.claude-sonnet-4-6/invoke"), "既定モデルID: {req}");
+            assert!(req.to_ascii_lowercase().contains("authorization: bearer bk"), "{req}");
+            // SigV4 でも送信できる（署名ヘッダ付与）。
+            let sig = aws_cfg(AwsAuth::SigV4 {
+                access_key: "AKIA123".into(),
+                secret_key: "secret".into(),
+                session_token: None,
+            });
+            let out = refine("aws-bedrock", "", "m1", "structured", "x", Some(sig), None, None).unwrap();
+            assert_eq!(out, "B本文");
+        }
+        // 空応答。
+        let (base2, _) = serve(vec![Route::json("/invoke", 200, r#"{"content":[]}"#)]);
+        {
+            let _g = set_envs(&[("QS_TEST_BEDROCK_BASE", &base2)]);
+            let err = refine(
+                "bedrock", "bk", "", "structured", "x",
+                Some(aws_cfg(AwsAuth::ApiKey)), None, None,
+            )
+            .unwrap_err();
+            assert!(err.starts_with(crate::errcode::E_REFINE_EMPTY_RESULT), "{err}");
+        }
+    }
+
+    #[test]
+    fn claude_platform_aws_engine_http_paths() {
+        // AwsConfig 無しは設定エラー。
+        let err = call("claude-aws", "k").unwrap_err();
+        assert!(err.starts_with(crate::errcode::E_REFINE_AWS_CONFIG), "{err}");
+        // region 空はエラー。
+        let mut cfg = aws_cfg(AwsAuth::ApiKey);
+        cfg.region = "".into();
+        let err = refine("claude-aws", "k", "m", "structured", "x", Some(cfg), None, None).unwrap_err();
+        assert_eq!(err, crate::errcode::E_REFINE_AWS_NO_REGION);
+        // 成功（x-api-key + anthropic-workspace-id）。
+        let (base, seen) = serve(vec![Route::json(
+            "/v1/messages",
+            200,
+            r#"{"content":[{"type":"text","text":"<journal>C本文</journal>"}]}"#,
+        )]);
+        {
+            let _g = set_envs(&[("QS_TEST_CLAUDE_AWS_BASE", &base)]);
+            let out = refine(
+                "claude-platform-aws", "pk", "m", "structured", "x",
+                Some(aws_cfg(AwsAuth::ApiKey)), None, None,
+            )
+            .unwrap();
+            assert_eq!(out, "C本文");
+            let req = seen.lock().unwrap()[0].clone();
+            assert!(req.contains("anthropic-workspace-id: ws-1"), "{req}");
+            assert!(req.contains("x-api-key: pk"), "{req}");
+        }
+        // 空応答は他エンジンと同じ安定コード（#462）。
+        let (base2, _) = serve(vec![Route::json("/v1/messages", 200, r#"{"content":[]}"#)]);
+        {
+            let _g = set_envs(&[("QS_TEST_CLAUDE_AWS_BASE", &base2)]);
+            let err = refine(
+                "anthropic-aws", "pk", "m", "structured", "x",
+                Some(aws_cfg(AwsAuth::ApiKey)), None, None,
+            )
+            .unwrap_err();
+            assert!(err.starts_with(crate::errcode::E_REFINE_EMPTY_RESULT), "{err}");
+        }
     }
 }

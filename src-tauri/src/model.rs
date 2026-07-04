@@ -297,4 +297,89 @@ mod tests {
         assert!(verify_integrity(9, "abcd", 10, "abcd").is_err()); // サイズ不一致
         assert!(verify_integrity(10, "dead", 10, "beef").is_err()); // ハッシュ不一致
     }
+
+    #[test]
+    fn model_dir_and_default_path_layout() {
+        assert!(model_dir().ends_with(std::path::Path::new("QuickScribe/models")));
+        assert!(model_path().ends_with(std::path::Path::new("QuickScribe/models/ggml-base.bin")));
+    }
+
+    // ─── download_to のローカルサーバ検証（#391 整合性検証を含む / 監査項目12） ───
+    use crate::testhttp::{serve, Route};
+
+    fn tmp_target(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("qs_model_dl_{}_{}", std::process::id(), name))
+    }
+
+    #[test]
+    fn download_to_writes_file_and_reports_progress() {
+        let body = b"hello-model-bytes".to_vec();
+        let sha = hex::encode(Sha256::digest(&body));
+        let (base, _) = serve(vec![Route {
+            path_contains: "/m.bin",
+            status: 200,
+            body: body.clone(),
+        }]);
+        let path = tmp_target("ok.bin");
+        let _ = std::fs::remove_file(&path);
+        let mut seen: Vec<(u64, Option<u64>)> = Vec::new();
+        download_to(
+            &format!("{base}/m.bin"),
+            &path,
+            &sha,
+            body.len() as u64,
+            |d, t| seen.push((d, t)),
+        )
+        .unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), body, "本文が完全に書けている");
+        assert!(!path.with_extension("part").exists(), ".part は残さない");
+        // Content-Length があるので total は Some(len)。
+        assert!(seen.iter().all(|(_, t)| *t == Some(body.len() as u64)));
+        assert_eq!(seen.last().unwrap().0, body.len() as u64);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn download_to_rejects_sha_mismatch_and_cleans_up() {
+        let body = b"corrupted-bytes".to_vec();
+        let (base, _) = serve(vec![Route {
+            path_contains: "/bad.bin",
+            status: 200,
+            body: body.clone(),
+        }]);
+        let path = tmp_target("bad.bin");
+        let err = download_to(
+            &format!("{base}/bad.bin"),
+            &path,
+            "00000000000000000000000000000000ffffffffffffffffffffffffffffffff",
+            body.len() as u64,
+            |_, _| {},
+        )
+        .unwrap_err();
+        assert!(err.starts_with(crate::errcode::E_MODEL_SHA256_MISMATCH), "{err}");
+        assert!(!path.exists(), "破損モデルを残さない");
+        assert!(!path.with_extension("part").exists(), ".part も削除");
+    }
+
+    #[test]
+    fn download_to_rejects_size_mismatch() {
+        let body = b"short".to_vec();
+        let (base, _) = serve(vec![Route {
+            path_contains: "/s.bin",
+            status: 200,
+            body: body.clone(),
+        }]);
+        let path = tmp_target("size.bin");
+        let err = download_to(&format!("{base}/s.bin"), &path, "", 999, |_, _| {}).unwrap_err();
+        assert!(err.starts_with(crate::errcode::E_MODEL_SIZE_MISMATCH), "{err}");
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn download_to_maps_http_error_to_stable_code() {
+        let (base, _) = serve(vec![]); // ルート無し → 404
+        let path = tmp_target("404.bin");
+        let err = download_to(&format!("{base}/none.bin"), &path, "", 0, |_, _| {}).unwrap_err();
+        assert!(err.starts_with(crate::errcode::E_MODEL_DOWNLOAD), "{err}");
+    }
 }

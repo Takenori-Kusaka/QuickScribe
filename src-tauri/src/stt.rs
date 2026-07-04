@@ -382,8 +382,10 @@ impl TranscriptionEngine for DeepgramSttEngine {
         let wav = encode_wav_16k_mono(audio)?;
         let lang = lang.unwrap_or("ja");
         let url = format!(
-            "https://api.deepgram.com/v1/listen?model={}&language={}&smart_format=true&mip_opt_out=true",
-            self.model, lang
+            "{}/v1/listen?model={}&language={}&smart_format=true&mip_opt_out=true",
+            crate::api_base("https://api.deepgram.com", "QS_TEST_DEEPGRAM_BASE"),
+            self.model,
+            lang
         );
         on_progress(30);
         let json = read_json_response(
@@ -438,8 +440,11 @@ impl TranscriptionEngine for AzureSttEngine {
         on_progress(5);
         let wav = encode_wav_16k_mono(audio)?;
         let url = format!(
-            "https://{}.cognitiveservices.azure.com/speechtotext/transcriptions:transcribe?api-version=2025-10-15",
-            self.resource.trim()
+            "{}/speechtotext/transcriptions:transcribe?api-version=2025-10-15",
+            crate::api_base(
+                &format!("https://{}.cognitiveservices.azure.com", self.resource.trim()),
+                "QS_TEST_AZURE_BASE"
+            )
         );
         let definition = format!("{{\"locales\":[\"{}\"]}}", self.locale);
         let (content_type, body) =
@@ -656,5 +661,216 @@ mod tests {
     #[test]
     fn timestamp_clamps_negative() {
         assert_eq!(format_timestamp(-50), "00:00:00");
+    }
+
+    // ─── ここから クラウドSTT/デコードの経路テスト（ローカルテストサーバ / 監査項目12） ───
+    use crate::testhttp::{serve, set_envs, Route};
+    use std::sync::{Arc, Mutex};
+
+    /// エンジンを呼び、(結果, 進捗履歴, セグメント履歴) を返す。
+    fn run_engine(
+        engine: &dyn TranscriptionEngine,
+        audio: &[f32],
+    ) -> (Result<String, String>, Vec<i32>, Vec<String>) {
+        let progress = Arc::new(Mutex::new(Vec::new()));
+        let segments = Arc::new(Mutex::new(Vec::new()));
+        let (p, s) = (progress.clone(), segments.clone());
+        let r = engine.transcribe(
+            audio,
+            Some("ja"),
+            false,
+            Box::new(move |pct| p.lock().unwrap().push(pct)),
+            Box::new(move |seg| s.lock().unwrap().push(seg)),
+        );
+        let progress = progress.lock().unwrap().clone();
+        let segments = segments.lock().unwrap().clone();
+        (r, progress, segments)
+    }
+
+    #[test]
+    fn openai_compatible_engine_http_paths() {
+        // 鍵なしは即エラー。
+        let engine = OpenAiCompatibleSttEngine {
+            base_url: "http://127.0.0.1:9".into(),
+            model: "m".into(),
+            api_key: " ".into(),
+        };
+        let (r, _, _) = run_engine(&engine, &[0.0; 160]);
+        assert_eq!(r.unwrap_err(), crate::errcode::E_CLOUD_STT_NO_KEY);
+        // 成功: multipart POST → {text} 抽出。進捗は 5→30→100、本文はセグメント通知。
+        let (base, seen) = serve(vec![Route::json(
+            "/audio/transcriptions",
+            200,
+            r#"{"text":" こんにちは "}"#,
+        )]);
+        let engine = OpenAiCompatibleSttEngine {
+            base_url: base.clone(),
+            model: "whisper-x".into(),
+            api_key: "gk".into(),
+        };
+        let (r, progress, segments) = run_engine(&engine, &[0.1; 160]);
+        assert_eq!(r.unwrap(), "こんにちは");
+        assert_eq!(progress, vec![5, 30, 100]);
+        assert_eq!(segments, vec!["こんにちは".to_string()]);
+        let req = seen.lock().unwrap()[0].clone();
+        assert!(req.to_ascii_lowercase().contains("authorization: bearer gk"), "{req}");
+        assert!(req.contains("name=\"model\"") && req.contains("whisper-x"), "モデルをmultipartで送る");
+        assert!(req.contains("name=\"language\"") && req.contains("ja"), "言語を送る");
+        // 非2xxは E_CLOUD_STT_STATUS（本文の先頭を詳細に含む）。
+        let (base2, _) = serve(vec![Route::json("/audio/transcriptions", 401, r#"{"error":"bad key"}"#)]);
+        let engine = OpenAiCompatibleSttEngine {
+            base_url: base2,
+            model: "m".into(),
+            api_key: "k".into(),
+        };
+        let (r, _, _) = run_engine(&engine, &[0.0; 16]);
+        let err = r.unwrap_err();
+        assert!(err.starts_with(crate::errcode::E_CLOUD_STT_STATUS), "{err}");
+        assert!(err.contains("401") && err.contains("bad key"), "{err}");
+        // 200 かつ 非JSONは E_CLOUD_STT_PARSE。
+        let (base3, _) = serve(vec![Route::json("/audio/transcriptions", 200, "not-json")]);
+        let engine = OpenAiCompatibleSttEngine {
+            base_url: base3,
+            model: "m".into(),
+            api_key: "k".into(),
+        };
+        let (r, _, _) = run_engine(&engine, &[0.0; 16]);
+        let err = r.unwrap_err();
+        assert!(err.starts_with(crate::errcode::E_CLOUD_STT_PARSE), "{err}");
+        // 接続不能は E_CLOUD_STT_HTTP。
+        let engine = OpenAiCompatibleSttEngine {
+            base_url: "http://127.0.0.1:9".into(),
+            model: "m".into(),
+            api_key: "k".into(),
+        };
+        let (r, _, _) = run_engine(&engine, &[0.0; 16]);
+        let err = r.unwrap_err();
+        assert!(err.starts_with(crate::errcode::E_CLOUD_STT_HTTP), "{err}");
+    }
+
+    #[test]
+    fn deepgram_engine_http_paths() {
+        let engine = DeepgramSttEngine {
+            model: "nova-3".into(),
+            api_key: "".into(),
+        };
+        let (r, _, _) = run_engine(&engine, &[0.0; 16]);
+        assert_eq!(r.unwrap_err(), crate::errcode::E_CLOUD_STT_NO_KEY);
+        // 成功: Token 認証・生WAV本文・results からの抽出。
+        let (base, seen) = serve(vec![Route::json(
+            "/v1/listen",
+            200,
+            r#"{"results":{"channels":[{"alternatives":[{"transcript":"深層の本文"}]}]}}"#,
+        )]);
+        {
+            let _g = set_envs(&[("QS_TEST_DEEPGRAM_BASE", &base)]);
+            let engine = DeepgramSttEngine {
+                model: "nova-3".into(),
+                api_key: "dk".into(),
+            };
+            let (r, progress, segments) = run_engine(&engine, &[0.1; 160]);
+            assert_eq!(r.unwrap(), "深層の本文");
+            assert_eq!(progress, vec![5, 30, 100]);
+            assert_eq!(segments, vec!["深層の本文".to_string()]);
+            let req = seen.lock().unwrap()[0].clone();
+            assert!(req.to_ascii_lowercase().contains("authorization: token dk"), "{req}");
+            assert!(req.contains("mip_opt_out=true"), "学習利用オプトアウトを付す: {req}");
+            assert!(req.contains("language=ja"), "{req}");
+        }
+        // transcript 空は空文字を返しセグメント通知しない。
+        let (base2, _) = serve(vec![Route::json("/v1/listen", 200, r#"{"results":{}}"#)]);
+        {
+            let _g = set_envs(&[("QS_TEST_DEEPGRAM_BASE", &base2)]);
+            let engine = DeepgramSttEngine {
+                model: "nova-3".into(),
+                api_key: "dk".into(),
+            };
+            let (r, _, segments) = run_engine(&engine, &[0.0; 16]);
+            assert_eq!(r.unwrap(), "");
+            assert!(segments.is_empty());
+        }
+    }
+
+    #[test]
+    fn azure_engine_http_paths() {
+        let engine = AzureSttEngine {
+            resource: "res".into(),
+            api_key: "".into(),
+            locale: "ja-JP".into(),
+        };
+        let (r, _, _) = run_engine(&engine, &[0.0; 16]);
+        assert_eq!(r.unwrap_err(), crate::errcode::E_CLOUD_STT_NO_KEY);
+        // リソース名なしは安定コード。
+        let engine = AzureSttEngine {
+            resource: " ".into(),
+            api_key: "ak".into(),
+            locale: "ja-JP".into(),
+        };
+        let (r, _, _) = run_engine(&engine, &[0.0; 16]);
+        assert_eq!(r.unwrap_err(), crate::errcode::E_AZURE_NO_RESOURCE);
+        // 成功: Ocp-Apim-Subscription-Key 認証・definition(locale) を multipart で送る。
+        let (base, seen) = serve(vec![Route::json(
+            "transcriptions:transcribe",
+            200,
+            r#"{"combinedPhrases":[{"text":"アジュールの本文"}]}"#,
+        )]);
+        {
+            let _g = set_envs(&[("QS_TEST_AZURE_BASE", &base)]);
+            let engine = AzureSttEngine {
+                resource: "myres".into(),
+                api_key: "ak".into(),
+                locale: "ja-JP".into(),
+            };
+            let (r, progress, segments) = run_engine(&engine, &[0.1; 160]);
+            assert_eq!(r.unwrap(), "アジュールの本文");
+            assert_eq!(progress, vec![5, 30, 100]);
+            assert_eq!(segments, vec!["アジュールの本文".to_string()]);
+            let req = seen.lock().unwrap()[0].clone();
+            assert!(req.to_ascii_lowercase().contains("ocp-apim-subscription-key: ak"), "{req}");
+            assert!(req.contains("ja-JP"), "locale を definition で送る: {req}");
+        }
+    }
+
+    #[test]
+    fn build_multipart_layout() {
+        let (ct, body) = build_multipart(&[("model", "m1")], "file", "audio.wav", "audio/wav", b"AB");
+        assert!(ct.starts_with("multipart/form-data; boundary="));
+        let s = String::from_utf8_lossy(&body);
+        assert!(s.contains("name=\"model\"") && s.contains("m1"));
+        assert!(s.contains("filename=\"audio.wav\"") && s.contains("Content-Type: audio/wav"));
+        assert!(s.contains("AB"));
+        assert!(s.trim_end().ends_with("--"), "終端バウンダリで閉じる");
+    }
+
+    #[test]
+    fn decode_missing_file_errors() {
+        assert!(decode_to_16k_mono(Path::new("no-such-file.mp3")).is_err());
+        assert!(decode_to_16k_mono(Path::new("no-such-file.opus")).is_err());
+    }
+
+    #[test]
+    fn decode_garbage_file_reports_probe_error() {
+        let path = std::env::temp_dir().join(format!("qs_garbage_{}.mp3", std::process::id()));
+        std::fs::write(&path, b"this is not audio at all").unwrap();
+        let err = decode_to_16k_mono(&path).unwrap_err();
+        let _ = std::fs::remove_file(&path);
+        assert!(err.starts_with(crate::errcode::E_AUDIO_PROBE), "{err}");
+    }
+
+    /// Opus 保存(save_opus) → .opus 自前デコードの往復（S1.6 / #560 回帰ガード）。
+    #[test]
+    fn opus_roundtrip_decodes_saved_recording() {
+        let dir = std::env::temp_dir().join(format!("qs_opus_rt_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // 0.5秒 48kHz mono の 440Hz 正弦波。
+        let pcm: Vec<f32> = (0..24_000)
+            .map(|i| (i as f32 * 440.0 * 2.0 * std::f32::consts::PI / 48_000.0).sin() * 0.5)
+            .collect();
+        let path = crate::audio_save::save_opus(&pcm, 48_000, 1, &dir, "rt").unwrap();
+        let out = decode_to_16k_mono(&path).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        // 48k→16k で約1/3（プリスキップ等の誤差は許容）。
+        assert!((6000..10000).contains(&out.len()), "想定外の長さ: {}", out.len());
+        assert!(out.iter().any(|&s| s.abs() > 0.05), "無音でない");
     }
 }
