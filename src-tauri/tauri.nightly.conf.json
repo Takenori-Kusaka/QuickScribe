@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "//": "nightly チャネル用の上書き設定（S8.5 #52 / docs/process/release-channels.md）。stable とは updater 鍵・エンドポイントを分離する。pubkey は nightly 鍵ペア生成後に置換する（それまで nightly.yml はガードでスキップ）。",
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/Takenori-Kusaka/QuickScribe/releases/download/nightly/latest.json"
+      ],
+      "pubkey": "REPLACE_WITH_NIGHTLY_PUBKEY"
+    }
+  }
+}

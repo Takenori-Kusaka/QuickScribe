@@ -1,0 +1,139 @@
+name: Nightly
+
+# nightly チャネル（S8.5 #52 / docs/process/release-channels.md）。
+# main HEAD をビルドし、ローリング `nightly` タグの prerelease として公開する。
+# stable とは updater 署名鍵・エンドポイントを分離する（tauri.nightly.conf.json）。
+# 【重要】nightly 鍵(secret)と pubkey が未設定の間は guard で自動スキップ＝誤公開しない・stable に無影響。
+on:
+  workflow_dispatch:
+  schedule:
+    # 毎週月曜 18:00 UTC。頻度は必要に応じて調整。
+    - cron: "0 18 * * 1"
+
+permissions:
+  contents: write
+
+env:
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+  CARGO_NET_RETRY: "10"
+  CARGO_HTTP_MULTIPLEXING: "false"
+
+jobs:
+  # nightly 鍵と pubkey が設定済みかを判定。未設定なら以降を丸ごとスキップ（inert）。
+  guard:
+    runs-on: ubuntu-22.04
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: check
+        env:
+          NIGHTLY_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_NIGHTLY }}
+        run: |
+          PUBKEY=$(grep -o 'REPLACE_WITH_NIGHTLY_PUBKEY' src-tauri/tauri.nightly.conf.json || true)
+          if [ -n "$NIGHTLY_KEY" ] && [ -z "$PUBKEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "nightly 有効: 署名鍵と pubkey が設定済み。"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::nightly は未設定のためスキップ（docs/process/release-channels.md のセットアップ参照）。" \
+              "key_set=$([ -n "$NIGHTLY_KEY" ] && echo yes || echo no) pubkey_placeholder=$([ -n "$PUBKEY" ] && echo yes || echo no)"
+          fi
+
+  # ローリング `nightly` タグ/リリースを一旦掃除して、常に最新1本だけにする。
+  rotate:
+    needs: guard
+    if: needs.guard.outputs.enabled == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Delete previous nightly release and tag (rolling)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete nightly --yes --cleanup-tag || echo "既存の nightly リリースなし"
+
+  nightly:
+    needs: rotate
+    name: nightly (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      # tauri-action が latest.json を read-modify-write するため直列化（release.yml と同様）。
+      max-parallel: 1
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            label: linux-x64
+            rust_target: ""
+            tauri_args: "--config src-tauri/tauri.release.conf.json --config src-tauri/tauri.nightly.conf.json"
+          - os: windows-latest
+            label: windows-x64
+            rust_target: x86_64-pc-windows-msvc
+            tauri_args: "--config src-tauri/tauri.release.conf.json --config src-tauri/tauri.nightly.conf.json --target x86_64-pc-windows-msvc"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: nightly-${{ matrix.label }}
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
+            libxdo-dev build-essential file clang libclang-dev cmake \
+            libasound2-dev pkg-config
+
+      - name: Set LIBCLANG_PATH (Windows, for whisper-rs bindgen)
+        if: matrix.os == 'windows-latest'
+        run: echo "LIBCLANG_PATH=$((Get-Command clang).Source | Split-Path)" >> $env:GITHUB_ENV
+        shell: pwsh
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Generate icons
+        run: npm run icons
+
+      - name: Generate THIRD-PARTY-NOTICES (cargo-about / 法的MUST・ADR-0010)
+        shell: bash
+        run: |
+          cargo install cargo-about --locked --features cli
+          cd src-tauri
+          cargo about generate about.hbs > THIRD-PARTY-NOTICES.txt
+
+      - name: Set nightly version marker (Cargo.toml)
+        shell: bash
+        run: |
+          # nightly は現行版のまま（ローリング）。版は stable のタグ運用に委ね、ここでは変更しない。
+          head -5 src-tauri/Cargo.toml
+
+      - name: Build and publish nightly
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # stable とは別の nightly 署名鍵で署名する（越境更新を防ぐ / 鍵分離）。
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_NIGHTLY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_NIGHTLY_PASSWORD }}
+        with:
+          args: ${{ matrix.tauri_args }}
+          tagName: nightly
+          releaseName: "QuickScribe nightly"
+          releaseBody: "自動ビルドの nightly（早期検証用・未署名・不安定）。stable とは updater 鍵を分離。docs/process/release-channels.md 参照。"
+          releaseDraft: false
+          prerelease: true
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
