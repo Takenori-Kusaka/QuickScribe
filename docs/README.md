@@ -27,6 +27,7 @@
 |---|---|
 | [design.md](design.md) | アーキテクチャ設計（構成図・データフロー・抽象境界） |
 | [adr/README.md](adr/README.md) | ADR 索引（設計判断の「なぜ」。1決定1ファイル） |
+| [design/brand-colors.md](design/brand-colors.md) | ブランドカラーパレット（トークン定義・ロゴとUIの対応・生hex禁止の運用） |
 | [research/](research/) | 技術調査（問い設計メソッド・一次情報は sources/ に保存） |
 
 ## 4. 品質・テスト（どう検証するか）

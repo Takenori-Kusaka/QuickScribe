@@ -1,0 +1,16 @@
+{
+  "rules": {
+    "color-no-hex": [
+      true,
+      {
+        "message": "生の hex 色は禁止です。src/app.css の :root で定義したブランドトークン（var(--color-*)）を使ってください（docs/design/brand-colors.md）。"
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["**/*.svelte", "**/*.html"],
+      "customSyntax": "postcss-html"
+    }
+  ]
+}

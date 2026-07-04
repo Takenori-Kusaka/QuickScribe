@@ -1,12 +1,59 @@
 :root {
   color-scheme: light;
+
+  /* Brand color tokens — single source of truth: docs/design/brand-colors.md
+     Raw hex is allowed ONLY here (enforced by stylelint color-no-hex). */
+  /* stylelint-disable color-no-hex */
+
+  /* Accent (deep indigo, hue 250-275 / docs/research/logo-redesign.md) */
+  --color-accent: #4f46e5;
+  --color-accent-strong: #4338ca;
+  --color-accent-bright: #6366f1;
+  --color-accent-deep: #3730a3;
+  --color-accent-border: #c7d2fe;
+  --color-accent-border-strong: #a5b4fc;
+  --color-accent-bg: #eef2ff;
+  --color-accent-bg-hover: #f8faff;
+  --color-accent-bg-tint: #fbfbff;
+  --color-link: #2563eb;
+
+  /* Neutrals (text / border / background) */
+  --color-text: #1f2330;
+  --color-text-secondary: #374151;
+  --color-text-muted: #4b5563;
+  --color-text-faint: #6b7280;
+  --color-border: #e5e7eb;
+  --color-border-strong: #d1d5db;
+  --color-border-faint: #eef0f3;
+  --color-surface: #ffffff;
+  --color-bg: #f8fafc;
+  --color-bg-muted: #f3f4f6;
+  --color-bg-subtle: #f9fafb;
+
+  /* Status: success / warning / danger */
+  --color-success: #10b981;
+  --color-success-strong: #059669;
+  --color-success-hover: #047857;
+  --color-success-bg: #ecfdf5;
+  --color-success-border: #a7f3d0;
+  --color-success-text: #065f46;
+  --color-warning: #f59e0b;
+  --color-warning-bg: #fffbeb;
+  --color-warning-border: #fde68a;
+  --color-warning-text: #92400e;
+  --color-danger: #b91c1c;
+  --color-danger-bright: #dc2626;
+  --color-danger-bg: #fef2f2;
+  --color-danger-border: #fecaca;
+
+  /* stylelint-enable color-no-hex */
 }
 
 html,
 body {
   margin: 0;
   padding: 0;
-  background: #f8fafc;
+  background: var(--color-bg);
 }
 
 #app {

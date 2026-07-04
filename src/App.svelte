@@ -1875,7 +1875,7 @@
   }
   :global(body) {
     margin: 0;
-    background: #f3f4f6;
+    background: var(--color-bg-muted);
   }
   main {
     font-family:
@@ -1885,7 +1885,7 @@
       "Hiragino Kaku Gothic ProN",
       "Noto Sans JP",
       sans-serif;
-    color: #1f2330;
+    color: var(--color-text);
     padding: 1.25rem 1.25rem 1.75rem;
     max-width: 560px;
     margin: 0 auto;
@@ -1959,12 +1959,12 @@
     border: none;
     font-size: 1.4rem;
     line-height: 1;
-    color: #6b7280;
+    color: var(--color-text-faint);
     cursor: pointer;
     padding: 0 0.2rem;
   }
   .close:hover {
-    color: #1f2330;
+    color: var(--color-text);
   }
   header {
     margin-bottom: 1.1rem;
@@ -1998,7 +1998,7 @@
     cursor: pointer;
     /* WCAG AA 非テキストコントラスト(#395): 旧 opacity 0.55 は実効 2.58:1。0.8 で 3:1 を満たす。 */
     opacity: 0.8;
-    color: #4b5563;
+    color: var(--color-text-muted);
     line-height: 1;
     padding: 0.3rem;
     border-radius: 8px;
@@ -2009,7 +2009,7 @@
   }
   .gear:hover {
     opacity: 1;
-    background: #f3f4f6;
+    background: var(--color-bg-muted);
   }
   .ic-sm {
     width: 0.9rem;
@@ -2019,15 +2019,15 @@
   }
   .tagline {
     /* 薄いグレー背景上でも AA(4.5:1) を満たす濃さ (#395)。 */
-    color: #4b5563;
+    color: var(--color-text-muted);
     font-size: 0.8rem;
     margin: 0.25rem 0 0;
     text-align: center;
   }
 
   .settings {
-    background: #fff;
-    border: 1px solid #e5e7eb;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: 14px;
     padding: 1.1rem 1.2rem;
     width: 100%;
@@ -2042,7 +2042,7 @@
   .settings label {
     display: block;
     font-size: 0.76rem;
-    color: #4b5563;
+    color: var(--color-text-muted);
     margin-bottom: 0.7rem;
   }
   .settings input,
@@ -2051,24 +2051,24 @@
     box-sizing: border-box;
     margin-top: 0.25rem;
     padding: 0.5rem 0.6rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-border-strong);
     border-radius: 8px;
     font-size: 0.85rem;
-    background: #fff;
+    background: var(--color-surface);
   }
   .settings-actions {
     display: flex;
     gap: 0.5rem;
   }
   .meta-group {
-    border-top: 1px solid #eef0f3;
+    border-top: 1px solid var(--color-border-faint);
     padding-top: 0.7rem;
     margin-bottom: 0.8rem;
   }
   .meta-title {
     display: block;
     font-size: 0.76rem;
-    color: #4b5563;
+    color: var(--color-text-muted);
     font-weight: 600;
     margin-bottom: 0.45rem;
   }
@@ -2081,7 +2081,7 @@
     user-select: none;
   }
   details.meta-group > summary.meta-title:hover {
-    color: #4338ca;
+    color: var(--color-accent-strong);
   }
   .hotkey-row {
     display: flex;
@@ -2096,9 +2096,9 @@
   .device-row select {
     flex: 1;
     padding: 0.5rem 0.6rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-border-strong);
     border-radius: 6px;
-    background: #fff;
+    background: var(--color-surface);
   }
   .custom-list {
     list-style: none;
@@ -2114,9 +2114,9 @@
     justify-content: space-between;
     gap: 0.5rem;
     padding: 0.3rem 0.5rem;
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--color-border);
     border-radius: 6px;
-    background: #fff;
+    background: var(--color-surface);
   }
   .custom-name {
     font-weight: 600;
@@ -2128,9 +2128,9 @@
   .custom-instruction-input {
     width: 100%;
     padding: 0.5rem 0.6rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-border-strong);
     border-radius: 6px;
-    background: #fff;
+    background: var(--color-surface);
     margin-bottom: 0.4rem;
     box-sizing: border-box;
     font-family: inherit;
@@ -2143,8 +2143,8 @@
   }
   .corrections {
     margin-top: 0.6rem;
-    border: 1px solid #fde68a;
-    background: #fffbeb;
+    border: 1px solid var(--color-warning-border);
+    background: var(--color-warning-bg);
     border-radius: 8px;
     padding: 0.5rem 0.6rem;
   }
@@ -2154,7 +2154,7 @@
     justify-content: space-between;
     gap: 0.5rem;
     font-size: 0.74rem;
-    color: #92400e;
+    color: var(--color-warning-text);
     margin-bottom: 0.4rem;
   }
   .correction-list {
@@ -2178,23 +2178,23 @@
   }
   .correction-orig {
     text-decoration: line-through;
-    color: #b91c1c;
+    color: var(--color-danger);
   }
   .correction-arrow {
-    color: #6b7280;
+    color: var(--color-text-faint);
   }
   .correction-sugg {
     flex: 1;
     min-width: 8rem;
     padding: 0.3rem 0.45rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-border-strong);
     border-radius: 6px;
-    background: #fff;
+    background: var(--color-surface);
     font-family: inherit;
   }
   .correction-reason {
     font-size: 0.7rem;
-    color: #6b7280;
+    color: var(--color-text-faint);
     max-width: 12rem;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2234,28 +2234,28 @@
   .entry-item {
     width: 100%;
     text-align: left;
-    background: #fff;
-    border: 1px solid #e5e7eb;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: 10px;
     padding: 0.85rem 1rem;
     cursor: pointer;
     font-family: inherit;
   }
   .entry-item:hover {
-    border-color: #c7d2fe;
-    background: #f8faff;
+    border-color: var(--color-accent-border);
+    background: var(--color-accent-bg-hover);
   }
   .entry-meta {
     display: flex;
     gap: 0.5rem;
     align-items: center;
     font-size: 0.72rem;
-    color: #6b7280;
+    color: var(--color-text-faint);
     margin-bottom: 0.3rem;
   }
   .entry-kind {
-    background: #eef2ff;
-    color: #4338ca;
+    background: var(--color-accent-bg);
+    color: var(--color-accent-strong);
     border-radius: 4px;
     padding: 0 0.3rem;
   }
@@ -2267,18 +2267,18 @@
   }
   .entry-tag {
     font-size: 0.68rem;
-    color: #2563eb;
+    color: var(--color-link);
   }
   .entry-preview {
     font-size: 0.82rem;
-    color: #374151;
+    color: var(--color-text-secondary);
     line-height: 1.5;
   }
   .entry-view {
     white-space: pre-wrap;
     word-break: break-word;
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
+    background: var(--color-bg-subtle);
+    border: 1px solid var(--color-border);
     border-radius: 8px;
     padding: 0.6rem;
     font-family: inherit;
@@ -2291,9 +2291,9 @@
   .tags-input {
     width: 100%;
     padding: 0.45rem 0.6rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-border-strong);
     border-radius: 6px;
-    background: #fff;
+    background: var(--color-surface);
     box-sizing: border-box;
     font-family: inherit;
   }
@@ -2301,20 +2301,20 @@
     flex: 1;
     text-align: left;
     padding: 0.5rem 0.6rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-border-strong);
     border-radius: 8px;
-    background: #fff;
+    background: var(--color-surface);
     font-size: 0.85rem;
-    color: #1f2330;
+    color: var(--color-text);
     cursor: pointer;
   }
   .hotkey-capture:hover {
-    border-color: #a5b4fc;
+    border-color: var(--color-accent-border-strong);
   }
   .hotkey-capture.capturing {
-    border-color: #4f46e5;
-    background: #eef2ff;
-    color: #4338ca;
+    border-color: var(--color-accent);
+    background: var(--color-accent-bg);
+    color: var(--color-accent-strong);
     font-weight: 600;
   }
   .check {
@@ -2322,7 +2322,7 @@
     align-items: center;
     gap: 0.4rem;
     font-size: 0.84rem;
-    color: #1f2330;
+    color: var(--color-text);
     margin-bottom: 0.3rem;
   }
   .check input {
@@ -2331,14 +2331,14 @@
   }
   .tip {
     font-size: 0.7rem;
-    color: #6b7280;
+    color: var(--color-text-faint);
     margin: 0.2rem 0 0;
     line-height: 1.5;
   }
   .tip.warn {
-    color: #92400e;
-    background: #fffbeb;
-    border: 1px solid #fde68a;
+    color: var(--color-warning-text);
+    background: var(--color-warning-bg);
+    border: 1px solid var(--color-warning-border);
     border-radius: 6px;
     padding: 0.4rem 0.5rem;
   }
@@ -2359,23 +2359,23 @@
     justify-content: center;
     gap: 0.6rem;
     flex-wrap: wrap;
-    background: #eef2ff;
-    border: 1px solid #c7d2fe;
-    color: #3730a3;
+    background: var(--color-accent-bg);
+    border: 1px solid var(--color-accent-border);
+    color: var(--color-accent-deep);
     border-radius: 12px;
     padding: 0.6rem 0.9rem;
     font-size: 0.82rem;
     margin-bottom: 1rem;
   }
   .update-banner.ready {
-    background: #ecfdf5;
-    border-color: #a7f3d0;
-    color: #065f46;
+    background: var(--color-success-bg);
+    border-color: var(--color-success-border);
+    color: var(--color-success-text);
   }
   .btn-restart {
     border: none;
-    background: #059669;
-    color: #fff;
+    background: var(--color-success-strong);
+    color: var(--color-surface);
     font-weight: 600;
     font-size: 0.8rem;
     padding: 0.4rem 0.8rem;
@@ -2383,7 +2383,7 @@
     cursor: pointer;
   }
   .btn-restart:hover {
-    background: #047857;
+    background: var(--color-success-hover);
   }
 
   .actions {
@@ -2417,38 +2417,38 @@
     cursor: not-allowed;
   }
   .btn.primary {
-    background: #4f46e5;
-    color: #fff;
+    background: var(--color-accent);
+    color: var(--color-surface);
     box-shadow: 0 2px 8px rgba(79, 70, 229, 0.35);
   }
   .btn.primary:hover {
-    background: #4338ca;
+    background: var(--color-accent-strong);
   }
   .btn.primary.recording {
-    background: #dc2626;
+    background: var(--color-danger-bright);
     box-shadow: 0 2px 8px rgba(220, 38, 38, 0.35);
   }
   .btn.secondary {
-    background: #fff;
-    color: #4f46e5;
-    border: 1.5px solid #c7d2fe;
+    background: var(--color-surface);
+    color: var(--color-accent);
+    border: 1.5px solid var(--color-accent-border);
     box-shadow: 0 1px 4px rgba(17, 24, 39, 0.06);
   }
   .btn.secondary:hover:not(:disabled) {
-    background: #eef2ff;
-    border-color: #a5b4fc;
+    background: var(--color-accent-bg);
+    border-color: var(--color-accent-border-strong);
   }
   .btn.small {
     font-size: 0.8rem;
     padding: 0.45rem 0.85rem;
     border-radius: 10px;
-    background: #4f46e5;
-    color: #fff;
+    background: var(--color-accent);
+    color: var(--color-surface);
   }
   .btn.small.ghost {
-    background: #fff;
-    color: #4f46e5;
-    border: 1px solid #c7d2fe;
+    background: var(--color-surface);
+    color: var(--color-accent);
+    border: 1px solid var(--color-accent-border);
   }
   .dot {
     width: 10px;
@@ -2457,24 +2457,24 @@
     background: rgba(255, 255, 255, 0.9);
   }
   .dot.on {
-    background: #fff;
+    background: var(--color-surface);
     box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.3);
   }
 
   .hint {
     /* WCAG AA(#395): body背景 #f3f4f6 上でも 4.5:1 を満たす濃さにする(旧 #6b7280 は 4.34:1)。 */
-    color: #4b5563;
+    color: var(--color-text-muted);
     font-size: 0.72rem;
     text-align: center;
     margin: 0.7rem 0 1.1rem;
   }
 
   .empty-cta {
-    color: #4b5563;
+    color: var(--color-text-muted);
     font-size: 0.82rem;
     text-align: center;
-    background: #f9fafb;
-    border: 1px dashed #d1d5db;
+    background: var(--color-bg-subtle);
+    border: 1px dashed var(--color-border-strong);
     border-radius: 8px;
     padding: 0.7rem 0.9rem;
     margin: 0.2rem 0 1rem;
@@ -2491,12 +2491,12 @@
     border: 1px solid transparent;
   }
   .privacy-status.local {
-    background: #ecfdf5;
-    border-color: #a7f3d0;
+    background: var(--color-success-bg);
+    border-color: var(--color-success-border);
   }
   .privacy-status.cloud {
-    background: #fffbeb;
-    border-color: #fde68a;
+    background: var(--color-warning-bg);
+    border-color: var(--color-warning-border);
   }
   .privacy-dot {
     flex: 0 0 auto;
@@ -2505,10 +2505,10 @@
     border-radius: 50%;
   }
   .privacy-status.local .privacy-dot {
-    background: #10b981;
+    background: var(--color-success);
   }
   .privacy-status.cloud .privacy-dot {
-    background: #f59e0b;
+    background: var(--color-warning);
   }
   .privacy-text {
     flex: 1 1 auto;
@@ -2521,14 +2521,14 @@
   .privacy-text p {
     margin: 0.1rem 0 0;
     font-size: 0.76rem;
-    color: #4b5563;
+    color: var(--color-text-muted);
     line-height: 1.4;
   }
 
   /* 初回オンボーディング（#397）。操作を妨げない非ブロッキングのインラインカード。 */
   .onboarding-card {
-    background: #fff;
-    border: 1px solid #e5e7eb;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: 12px;
     padding: 1.1rem 1.2rem;
     margin: 0.2rem 0 1.1rem;
@@ -2545,7 +2545,7 @@
     font-size: 1.05rem;
   }
   .onboarding-local {
-    color: #6b7280;
+    color: var(--color-text-faint);
     font-size: 0.8rem;
     margin: 0.35rem 0 1rem;
   }
@@ -2569,7 +2569,7 @@
   }
   .onboarding-steps p {
     margin: 0;
-    color: #4b5563;
+    color: var(--color-text-muted);
     font-size: 0.82rem;
     line-height: 1.45;
   }
@@ -2578,8 +2578,8 @@
     width: 1.6rem;
     height: 1.6rem;
     border-radius: 50%;
-    background: #eef2ff;
-    color: #4338ca;
+    background: var(--color-accent-bg);
+    color: var(--color-accent-strong);
     font-weight: 700;
     font-size: 0.85rem;
     display: flex;
@@ -2593,8 +2593,8 @@
   }
 
   .panel {
-    background: #fff;
-    border: 1px solid #e5e7eb;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: 14px;
     padding: 0.9rem 1rem;
     box-shadow: 0 1px 4px rgba(17, 24, 39, 0.05);
@@ -2604,13 +2604,13 @@
     align-items: center;
     gap: 0.6rem;
     font-size: 0.85rem;
-    color: #374151;
+    color: var(--color-text-secondary);
   }
   .spinner {
     width: 15px;
     height: 15px;
-    border: 2px solid #c7d2fe;
-    border-top-color: #4f46e5;
+    border: 2px solid var(--color-accent-border);
+    border-top-color: var(--color-accent);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
     flex: none;
@@ -2625,25 +2625,25 @@
   .progress {
     margin-top: 0.7rem;
     height: 8px;
-    background: #e5e7eb;
+    background: var(--color-border);
     border-radius: 999px;
     overflow: hidden;
   }
   .bar {
     height: 100%;
-    background: linear-gradient(90deg, #6366f1, #4f46e5);
+    background: linear-gradient(90deg, var(--color-accent-bright), var(--color-accent));
     transition: width 0.2s ease;
   }
   .progress-meta {
     display: flex;
     justify-content: space-between;
     font-size: 0.72rem;
-    color: #6b7280;
+    color: var(--color-text-faint);
     margin-top: 0.3rem;
   }
   .progress-meta .pct {
     font-weight: 600;
-    color: #4f46e5;
+    color: var(--color-accent);
   }
   .segments {
     margin-top: 0.6rem;
@@ -2651,22 +2651,22 @@
     overflow-y: auto;
     font-size: 0.82rem;
     line-height: 1.6;
-    color: #4b5563;
+    color: var(--color-text-muted);
     text-align: left;
   }
 
   .card {
     margin-top: 1rem;
-    background: #fff;
-    border: 1px solid #e5e7eb;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: 14px;
     padding: 0.9rem 1rem;
     text-align: left;
     box-shadow: 0 1px 4px rgba(17, 24, 39, 0.05);
   }
   .card.refined {
-    border-color: #c7d2fe;
-    background: #fbfbff;
+    border-color: var(--color-accent-border);
+    background: var(--color-accent-bg-tint);
   }
   /* 段階的深掘り(S3.5): 結果から別スタイルで整形し直すチップ列。控えめに。 */
   .restyle-row {
@@ -2676,29 +2676,29 @@
     gap: 0.35rem;
     margin-top: 0.6rem;
     padding-top: 0.5rem;
-    border-top: 1px solid #eef2ff;
+    border-top: 1px solid var(--color-accent-bg);
   }
   .restyle-label {
     font-size: 0.74rem;
-    color: #6b7280;
+    color: var(--color-text-faint);
   }
   .chip {
     font-size: 0.76rem;
     padding: 0.2rem 0.55rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-border-strong);
     border-radius: 999px;
-    background: #fff;
-    color: #4b5563;
+    background: var(--color-surface);
+    color: var(--color-text-muted);
     cursor: pointer;
   }
   .chip:hover:not(:disabled) {
-    border-color: #a5b4fc;
-    color: #4338ca;
+    border-color: var(--color-accent-border-strong);
+    color: var(--color-accent-strong);
   }
   .chip.active {
-    border-color: #6366f1;
-    background: #eef2ff;
-    color: #4338ca;
+    border-color: var(--color-accent-bright);
+    background: var(--color-accent-bg);
+    color: var(--color-accent-strong);
     font-weight: 600;
   }
   .chip:disabled {
@@ -2726,24 +2726,24 @@
   /* 処理画面: 整形スタイルは表示のみ(選択は設定画面)。ホバーで解説を出す。 */
   .style-indicator {
     font-size: 0.78rem;
-    color: #6b7280;
+    color: var(--color-text-faint);
     cursor: help;
   }
   .style-indicator strong {
-    color: #374151;
+    color: var(--color-text-secondary);
     font-weight: 600;
   }
   /* 設定画面: 選択中スタイルの解説。 */
   .style-desc {
     margin: 0.3rem 0 0;
     font-size: 0.78rem;
-    color: #6b7280;
+    color: var(--color-text-faint);
     line-height: 1.5;
   }
   .card h2 {
     margin: 0;
     font-size: 0.82rem;
-    color: #6b7280;
+    color: var(--color-text-faint);
     font-weight: 600;
   }
   /* 文字列エリアは固定高でスクロール。アプリ全体はスクロールせず保存先まで見える。 */
@@ -2757,15 +2757,15 @@
   }
 
   .muted {
-    color: #6b7280;
+    color: var(--color-text-faint);
     font-size: 0.78rem;
   }
   .model-hint {
     margin: -0.2rem 0 0.8rem;
   }
   .model-hint code {
-    background: #eef2ff;
-    color: #4338ca;
+    background: var(--color-accent-bg);
+    color: var(--color-accent-strong);
     padding: 0.05rem 0.3rem;
     border-radius: 5px;
     font-size: 0.72rem;
@@ -2775,9 +2775,9 @@
   }
   .error {
     font-size: 0.78rem;
-    color: #b91c1c;
-    background: #fef2f2;
-    border: 1px solid #fecaca;
+    color: var(--color-danger);
+    background: var(--color-danger-bg);
+    border: 1px solid var(--color-danger-border);
     border-radius: 10px;
     padding: 0.6rem 0.8rem;
     margin-top: 0.9rem;
