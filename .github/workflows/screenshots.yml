@@ -44,6 +44,8 @@ jobs:
       - name: Open PR with updated screenshots
         uses: peter-evans/create-pull-request@v8
         with:
+          # タグpush経路は detached HEAD で実行されるため base を明示しないと PR 作成に失敗する(#59)。
+          base: main
           add-paths: |
             docs/assets/screenshot-*.png
             docs/assets/demo.gif
