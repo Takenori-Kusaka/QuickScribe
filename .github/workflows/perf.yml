@@ -191,31 +191,48 @@ jobs:
           dl models/ggml-base.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
           dl models/ggml-kotoba-whisper-v2.0-q5_0.bin https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0-q5_0.bin
 
+      # tauri のビルドマクロがアイコン(icons/32x32.png)を要求するため、ビルド前に生成する。
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Generate icons (tauri generate_context にアイコンが必要)
+        run: npm run icons
+
       - name: Build test binary (compile excluded from run loop)
         run: cargo test --manifest-path src-tauri/Cargo.toml --test transcribe_integration --no-run
 
       - name: Measure CER per model x sample
         run: |
-          FIX=src-tauri/tests/fixtures/ja-accuracy
+          # cargo test はテストプロセスの CWD を src-tauri/ にするため、音源/モデルは絶対パスで渡す。
+          FIX="$GITHUB_WORKSPACE/src-tauri/tests/fixtures/ja-accuracy"
+          MODELS_DIR="$GITHUB_WORKSPACE/models"
           SLUGS="gingatetsudo-no-yoru kumonoito wagahaiha-neko-dearu"
           MODEL_IDS="tiny base kotoba-q5"
           model_file() {
             case "$1" in
-              tiny) echo models/ggml-tiny.bin;;
-              base) echo models/ggml-base.bin;;
-              kotoba-q5) echo models/ggml-kotoba-whisper-v2.0-q5_0.bin;;
+              tiny) echo "$MODELS_DIR/ggml-tiny.bin";;
+              base) echo "$MODELS_DIR/ggml-base.bin";;
+              kotoba-q5) echo "$MODELS_DIR/ggml-kotoba-whisper-v2.0-q5_0.bin";;
             esac
           }
           : > cer.tsv
           for slug in $SLUGS; do
             for mid in $MODEL_IDS; do
-              QS_LANG=ja \
-              QS_MODEL_PATH="$(model_file "$mid")" \
-              QS_AUDIO_PATH="$FIX/$slug/audio.opus" \
-              QS_TRANSCRIPT_OUT="hyp-$slug-$mid.txt" \
-                cargo test --manifest-path src-tauri/Cargo.toml \
-                  --test transcribe_integration -- --nocapture >/dev/null 2>&1
-              CER=$(python3 scripts/cer_ja.py "$FIX/$slug/reference.txt" "hyp-$slug-$mid.txt" | cut -f1)
+              # 出力も絶対パス（テストプロセスの CWD は src-tauri/ のため）。
+              OUT="$GITHUB_WORKSPACE/hyp-$slug-$mid.txt"
+              if ! QS_LANG=ja \
+                QS_MODEL_PATH="$(model_file "$mid")" \
+                QS_AUDIO_PATH="$FIX/$slug/audio.opus" \
+                QS_TRANSCRIPT_OUT="$OUT" \
+                  cargo test --manifest-path src-tauri/Cargo.toml \
+                    --test transcribe_integration -- --nocapture > "run-$slug-$mid.log" 2>&1; then
+                echo "::error::文字起こし失敗 $slug / $mid"; cat "run-$slug-$mid.log"; exit 1
+              fi
+              CER=$(python3 scripts/cer_ja.py "$FIX/$slug/reference.txt" "$OUT" | cut -f1)
+              if [ -z "$CER" ]; then echo "::error::CER算出失敗 $slug / $mid"; exit 1; fi
+              echo "measured $slug / $mid -> CER=$CER"
               printf "%s\t%s\t%s\n" "$slug" "$mid" "$CER" >> cer.tsv
             done
           done
