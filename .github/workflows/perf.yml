@@ -220,15 +220,18 @@ jobs:
           : > cer.tsv
           for slug in $SLUGS; do
             for mid in $MODEL_IDS; do
+              # 出力も絶対パス（テストプロセスの CWD は src-tauri/ のため）。
+              OUT="$GITHUB_WORKSPACE/hyp-$slug-$mid.txt"
               if ! QS_LANG=ja \
                 QS_MODEL_PATH="$(model_file "$mid")" \
                 QS_AUDIO_PATH="$FIX/$slug/audio.opus" \
-                QS_TRANSCRIPT_OUT="hyp-$slug-$mid.txt" \
+                QS_TRANSCRIPT_OUT="$OUT" \
                   cargo test --manifest-path src-tauri/Cargo.toml \
                     --test transcribe_integration -- --nocapture > "run-$slug-$mid.log" 2>&1; then
                 echo "::error::文字起こし失敗 $slug / $mid"; cat "run-$slug-$mid.log"; exit 1
               fi
-              CER=$(python3 scripts/cer_ja.py "$FIX/$slug/reference.txt" "hyp-$slug-$mid.txt" | cut -f1)
+              CER=$(python3 scripts/cer_ja.py "$FIX/$slug/reference.txt" "$OUT" | cut -f1)
+              if [ -z "$CER" ]; then echo "::error::CER算出失敗 $slug / $mid"; exit 1; fi
               echo "measured $slug / $mid -> CER=$CER"
               printf "%s\t%s\t%s\n" "$slug" "$mid" "$CER" >> cer.tsv
             done
