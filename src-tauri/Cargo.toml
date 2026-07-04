@@ -49,7 +49,7 @@ hound = "3"
 opus = "0.3"
 ogg = "0.9"
 # 文字起こし(ローカル whisper.cpp / ADR-0002)。whisper-rs が whisper.cpp をビルドする。
-whisper-rs = "0.16"
+whisper-rs = "0.14"
 # 音声デコード(純Rust)。mp3等の圧縮音声/WAVを読む(S1.6)。外部ffmpeg不要・配布が軽い。
 symphonia = { version = "0.6", default-features = false, features = [
     "mp3",
