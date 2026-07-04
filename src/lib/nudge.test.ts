@@ -1,5 +1,14 @@
-import { describe, it, expect } from "vitest";
-import { maybeNudge, type NudgeDeps } from "./nudge";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { maybeNudge, requestNudgePermission, type NudgeDeps } from "./nudge";
+
+// requestNudgePermission は通知プラグインを動的 import するためモジュールをモックする。
+const isGrantedMock = vi.fn<() => Promise<boolean>>();
+const requestPermissionMock = vi.fn<() => Promise<string>>();
+vi.mock("@tauri-apps/plugin-notification", () => ({
+  isPermissionGranted: () => isGrantedMock(),
+  requestPermission: () => requestPermissionMock(),
+  sendNotification: vi.fn(),
+}));
 
 // 副作用依存をスタブし、maybeNudge のゲーティング/重複防止を検証する。
 function deps(
@@ -60,5 +69,31 @@ describe("maybeNudge（習慣ナッジ発火 #58）", () => {
     expect(await maybeNudge(base, d)).toBe(false);
     expect(d.sent).toEqual([]);
     expect(d.last.v).toBe(null); // 未記録のまま（次回権限付与後に再挑戦できる）
+  });
+});
+
+describe("requestNudgePermission（opt-in 時の権限要求 #58）", () => {
+  beforeEach(() => {
+    isGrantedMock.mockReset();
+    requestPermissionMock.mockReset();
+  });
+
+  it("付与済みなら要求せず true", async () => {
+    isGrantedMock.mockResolvedValueOnce(true);
+    expect(await requestNudgePermission()).toBe(true);
+    expect(requestPermissionMock).not.toHaveBeenCalled();
+  });
+
+  it("未付与→要求で granted なら true", async () => {
+    isGrantedMock.mockResolvedValueOnce(false);
+    requestPermissionMock.mockResolvedValueOnce("granted");
+    expect(await requestNudgePermission()).toBe(true);
+    expect(requestPermissionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("未付与→要求が denied なら false", async () => {
+    isGrantedMock.mockResolvedValueOnce(false);
+    requestPermissionMock.mockResolvedValueOnce("denied");
+    expect(await requestNudgePermission()).toBe(false);
   });
 });

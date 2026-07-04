@@ -111,12 +111,18 @@ jobs:
   # Rust カバレッジ計測（#402/#392）。フロントは vitest で計測済み、Rust側の分母を可視化する。
   # cargo-llvm-cov で instrument ビルド。段階導入: まずは可視化(continue-on-error)、
   # 数値が安定したらゲート化(80%)する。lcov をアーティファクト保存。
+  # 注: continue-on-error はジョブレベルのみ（閾値ゲート化までの暫定）。計測ステップは
+  #     pipefail で失敗を可視化する（コンパイル失敗＝ステップ赤、閾値未達＝将来の別ステップで判定）。
   rust-coverage:
     name: rust-coverage (llvm-cov)
     runs-on: ubuntu-22.04
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
@@ -141,8 +147,14 @@ jobs:
             pkg-config
       - name: Install cargo-llvm-cov
         run: cargo install cargo-llvm-cov --locked
+      - name: Install npm dependencies
+        run: npm ci
+      - name: Generate icons (tauri generate_context にアイコンが必要)
+        run: npm run icons
       - name: Measure Rust coverage (unit tests)
+        # pipefail: tee に exit code を握られてコンパイル失敗が緑扱いになる事故を防ぐ。
         run: |
+          set -o pipefail
           cargo llvm-cov --manifest-path src-tauri/Cargo.toml --lib \
             --lcov --output-path lcov-rust.info --summary-only | tee rust-coverage-summary.txt
       - name: Upload Rust coverage

@@ -90,4 +90,55 @@ describe("modal アクション", () => {
     node.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
     expect(document.activeElement).toBe(buttons[0]);
   });
+
+  it("Tab: フォーカス可能要素が無ければモーダル自身へフォーカスする", () => {
+    document.body.innerHTML = "";
+    const node = document.createElement("div");
+    node.tabIndex = -1;
+    document.body.append(node);
+    modal(node, { onClose: vi.fn() });
+    const ev = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    node.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(node);
+  });
+
+  it("Shift+Tab: モーダル自身にフォーカスがある場合も最後へ循環する", () => {
+    const { node, buttons } = buildModal();
+    modal(node, { onClose: vi.fn() });
+    node.focus();
+    const ev = new KeyboardEvent("keydown", {
+      key: "Tab",
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    node.dispatchEvent(ev);
+    expect(document.activeElement).toBe(buttons[1]);
+  });
+
+  it("Tab: 末尾以外からは循環せずブラウザ既定に任せる", () => {
+    const { node, buttons } = buildModal();
+    modal(node, { onClose: vi.fn() });
+    buttons[0].focus();
+    const ev = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    node.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(buttons[0]);
+  });
+
+  it("document が無い環境(SSR相当)でも生成・破棄できる", async () => {
+    const node = document.createElement("div");
+    node.tabIndex = -1;
+    // typeof document === "undefined" の分岐（previouslyFocused = null 側）を通す。
+    vi.stubGlobal("document", undefined);
+    let action: ReturnType<typeof modal>;
+    try {
+      action = modal(node, { onClose: vi.fn() });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    await Promise.resolve(); // 初期フォーカスの microtask を消化（document 復元後）。
+    expect(() => action.destroy()).not.toThrow();
+  });
 });
