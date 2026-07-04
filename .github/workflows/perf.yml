@@ -191,6 +191,15 @@ jobs:
           dl models/ggml-base.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
           dl models/ggml-kotoba-whisper-v2.0-q5_0.bin https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0-q5_0.bin
 
+      # tauri のビルドマクロがアイコン(icons/32x32.png)を要求するため、ビルド前に生成する。
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Generate icons (tauri generate_context にアイコンが必要)
+        run: npm run icons
+
       - name: Build test binary (compile excluded from run loop)
         run: cargo test --manifest-path src-tauri/Cargo.toml --test transcribe_integration --no-run
 
