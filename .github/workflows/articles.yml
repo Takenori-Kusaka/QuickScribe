@@ -1,0 +1,81 @@
+name: Articles
+
+# 技術記事の校正・図生成の品質ゲート。
+# - textlint（preset-ja-technical-writing）で articles/ の日本語校正をゼロエラー必須にする。
+# - Mermaid 図（docs/design.md）を CI で SVG/PNG に書き出し、記事が絶対URLで参照する
+#   docs/assets/diagrams/ が最新かを検証する。
+# - main への push では図を再生成して差分があれば自動コミットする（記事本文と図の乖離防止）。
+# 方針の詳細: docs/process/article-publishing-policy.md
+
+on:
+  pull_request:
+    paths:
+      - "articles/**"
+      - "public/**"
+      - "docs/design.md"
+      - "docs/assets/diagrams/**"
+      - "scripts/render-diagrams.mjs"
+      - "scripts/zenn-to-qiita.mjs"
+      - ".textlintrc.json"
+      - ".github/workflows/articles.yml"
+  push:
+    branches: [main]
+    paths:
+      - "articles/**"
+      - "docs/design.md"
+      - "scripts/render-diagrams.mjs"
+      - ".github/workflows/articles.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: articles-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  textlint:
+    name: textlint (articles)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install npm dependencies
+        run: npm ci
+      - name: textlint (preset-ja-technical-writing)
+        run: npm run lint:text
+      - name: Verify Qiita variant is in sync
+        # public/ は articles/ から機械生成する。生成物がコミット漏れ/古い場合に落とす。
+        run: |
+          npm run qiita:build
+          git diff --exit-code -- public/ \
+            || (echo "::error::public/ is stale. Run 'npm run qiita:build' and commit." && exit 1)
+
+  diagrams:
+    name: diagrams (mermaid -> svg/png)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install npm dependencies
+        run: npm ci
+      - name: Install Chromium deps for mermaid-cli
+        run: npx --yes puppeteer browsers install chrome
+      - name: Verify committed diagrams exist (PR)
+        if: github.event_name == 'pull_request'
+        run: npm run diagrams:check
+      - name: Re-render and auto-commit diagrams (main)
+        if: github.event_name == 'push'
+        run: |
+          npm run diagrams
+          if ! git diff --quiet -- docs/assets/diagrams/; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add docs/assets/diagrams/
+            git commit -m "docs(diagrams): regenerate mermaid diagrams [skip ci]"
+            git push
+          fi

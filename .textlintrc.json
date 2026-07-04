@@ -1,0 +1,34 @@
+{
+  "rules": {
+    "preset-ja-technical-writing": {
+      "sentence-length": {
+        "max": 120
+      },
+      "max-comma": {
+        "max": 4
+      },
+      "max-kanji-continuous-len": false,
+      "ja-no-mixed-period": {
+        "allowPeriodMarks": ["：", "。」"]
+      },
+      "no-exclamation-question-mark": false,
+      "no-doubled-joshi": {
+        "strict": false,
+        "allow": ["か", "が", "に", "の", "は", "も", "で", "と"]
+      },
+      "ja-no-weak-phrase": false,
+      "no-doubled-conjunctive-particle-ga": false,
+      "no-mix-dearu-desumasu": {
+        "preferInHeader": "である",
+        "preferInBody": "である",
+        "preferInList": "である"
+      },
+      "max-ten": {
+        "max": 4
+      }
+    }
+  },
+  "filters": {
+    "comments": true
+  }
+}

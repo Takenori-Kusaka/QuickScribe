@@ -1,0 +1,72 @@
+name: Qiita Publish
+
+# Qiita への公開は qiita-cli の公式 GitHub Action で行う。
+# 運用ポリシー（docs/process/article-publishing-policy.md）:
+#  - 公開トリガは「メジャーバージョンアップ時のみ」（タグ vX.0.0）。細かな改訂は再公開しない。
+#  - Zenn は GitHub 連携で articles/ を自動同期するため、本ワークフローは Qiita 専用。
+#  - Secrets に QIITA_TOKEN が無い環境では publish をスキップする（フォーク/未設定でも失敗しない）。
+#  - 各記事の front-matter が private:true / ignorePublish:true の間は Qiita 側でも公開されない
+#    （下書きのまま。実公開は人間が front-matter を切り替えて判断する）。
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "メジャー版でなくても公開処理を試す（下書きは下書きのまま）"
+        type: boolean
+        default: false
+
+concurrency:
+  group: qiita-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: qiita publish (major releases only)
+    runs-on: ubuntu-22.04
+    env:
+      HAS_TOKEN: ${{ secrets.QIITA_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Decide whether to publish
+        id: gate
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          force="${{ github.event.inputs.force }}"
+          publish=false
+          # メジャー版 = vX.0.0（例: v1.0.0, v2.0.0）。
+          if [[ "$tag" =~ ^v[0-9]+\.0\.0$ ]]; then publish=true; fi
+          if [[ "$force" == "true" ]]; then publish=true; fi
+          if [[ "${HAS_TOKEN}" != "true" ]]; then
+            echo "::notice::QIITA_TOKEN 未設定のため Qiita 公開をスキップします。"
+            publish=false
+          fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v6
+        if: steps.gate.outputs.publish == 'true'
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install npm dependencies
+        if: steps.gate.outputs.publish == 'true'
+        run: npm ci
+
+      - name: Regenerate Qiita variant from single source (articles/)
+        if: steps.gate.outputs.publish == 'true'
+        run: npm run qiita:build
+
+      - name: Publish to Qiita
+        if: steps.gate.outputs.publish == 'true'
+        uses: increments/qiita-cli/actions/publish@v1
+        with:
+          qiita-token: ${{ secrets.QIITA_TOKEN }}
+          root: "."
