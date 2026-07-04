@@ -613,9 +613,12 @@ mod tests {
         assert!((out.mono16k[10] - 0.5).abs() < 1e-3, "加算合成されている");
     }
 
+    /// cpal(ALSA) はヘッドレスCIで segfault しうるため、実オーディオスタックを持つ
+    /// Windows でのみ実行する（Linuxカバレッジからは除外）。
+    #[cfg(windows)]
     #[test]
     fn list_audio_sources_does_not_panic() {
-        // デバイス構成に依らず総当たりで列挙できる（CIのヘッドレス環境では空でもよい）。
+        // デバイス構成に依らず総当たりで列挙できる。
         let sources = list_audio_sources().unwrap();
         for s in &sources {
             assert!(!s.label.is_empty());
@@ -636,6 +639,8 @@ mod tests {
         );
     }
 
+    /// cpal(ALSA) はヘッドレスCIで segfault しうるため、Windows でのみ実行する。
+    #[cfg(windows)]
     #[test]
     fn start_input_falls_back_or_fails_cleanly() {
         // 存在しないデバイス名は既定へフォールバック。デバイスが無い環境（CI）は
