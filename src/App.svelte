@@ -722,6 +722,8 @@
   }
 
   onMount(() => {
+    // 起動時間ベンチ(#403): UI 準備完了を通知（QS_PERF_STARTUP 設定時のみ Rust 側が計測）。
+    void invoke("report_startup").catch(() => {});
     loadSettings();
     // 初回起動（未表示）ならオンボーディングを出す（#397）。
     try {

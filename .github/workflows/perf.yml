@@ -155,3 +155,67 @@ jobs:
           name: perf-report
           path: perf-report.md
           if-no-files-found: error
+
+  # 起動時間ベンチ(#403 案A): run() 開始→フロント ready(onMount) の経過をアプリが記録し、
+  # CI は xvfb でヘッドレス起動→ログ(perf-startup.txt)を回収する（外部計時器は不要＝突合方式）。
+  startup-time:
+    name: 起動時間 (Linux, xvfb)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Install Linux dependencies (+xvfb)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
+            libxdo-dev build-essential file clang libclang-dev cmake \
+            libasound2-dev pkg-config xvfb
+      - run: npm ci
+      - name: Generate icons
+        run: npm run icons
+      - name: Build app (no bundle)
+        run: npx tauri build --no-bundle
+      - name: Measure startup time (xvfb)
+        env:
+          QS_PERF_STARTUP: "1"
+        run: |
+          BIN=$(find src-tauri/target/release -maxdepth 1 -type f -executable -iname 'quickscribe' | head -1)
+          if [ -z "$BIN" ]; then echo "::error::app binary not found"; ls -la src-tauri/target/release; exit 1; fi
+          echo "binary: $BIN"
+          LOG="$HOME/.local/share/QuickScribe/logs/perf-startup.txt"
+          rm -f "$LOG"
+          # ヘッドレス表示で起動 → onMount で report_startup が LOG を書く → 回収 → 終了。
+          xvfb-run -a "$BIN" >/tmp/app.out 2>&1 &
+          APP_PID=$!
+          for _ in $(seq 1 40); do [ -f "$LOG" ] && break; sleep 1; done
+          kill "$APP_PID" 2>/dev/null || true
+          if [ -f "$LOG" ]; then
+            MS=$(sed -n 's/^startup_ms=//p' "$LOG")
+            {
+              echo "# QuickScribe 起動時間 (Linux x64 / xvfb)"
+              echo ""
+              echo "| 指標 | 値 |"
+              echo "|---|---|"
+              echo "| **起動時間 (run()→UI ready)** | **${MS} ms** |"
+              echo ""
+              echo "_注: プロセス起動(run 入口)からフロント onMount までの経過。ヘッドレス表示(xvfb)での計測。_"
+            } | tee startup-report.md
+            cat startup-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::perf-startup.txt 未生成（表示/依存の問題の可能性）。ログ:"; cat /tmp/app.out || true
+            exit 1
+          fi
+      - name: Upload startup report
+        uses: actions/upload-artifact@v7
+        with:
+          name: startup-report
+          path: startup-report.md
+          if-no-files-found: warn
