@@ -46,4 +46,12 @@ describe("aggregateDownloads", () => {
   it("空でも壊れない", () => {
     expect(aggregateDownloads([]).total).toBe(0);
   });
+
+  it("assets 欠落のリリースは 0 件として集計する", () => {
+    // GitHub API 実レスポンスでは assets が欠落しうる（コードは r.assets ?? [] で防御）。
+    const noAssets = { tag_name: "v0.7.0", prerelease: false } as Release;
+    const agg = aggregateDownloads([noAssets]);
+    expect(agg.total).toBe(0);
+    expect(agg.releases).toEqual([{ tag: "v0.7.0", total: 0, perAsset: [] }]);
+  });
 });

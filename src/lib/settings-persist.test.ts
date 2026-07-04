@@ -69,6 +69,15 @@ describe("readSettings", () => {
     expect(s.sttProvider).toBe("local");
   });
 
+  it("offlineMode=true でも provider が既にローカルならそのまま", () => {
+    localStorage.setItem("offlineMode", "true");
+    localStorage.setItem("provider", "ollama");
+    const s = readSettings("ja");
+    expect(s.offlineMode).toBe(true);
+    expect(s.provider).toBe("ollama");
+    expect(s.sttProvider).toBe("local");
+  });
+
   it("customStyles を読み、破損 JSON は空配列", () => {
     localStorage.setItem(
       "customStyles",

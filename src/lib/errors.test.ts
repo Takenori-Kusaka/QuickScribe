@@ -40,6 +40,14 @@ describe("errorText", () => {
     const e = new Error("");
     expect(errorText(e)).toBe("Error");
   });
+
+  it("message が文字列でないオブジェクトは String() へフォールバック", () => {
+    expect(errorText({ message: 42 })).toBe("[object Object]");
+  });
+
+  it("数値など非オブジェクトは String() で文字列化する", () => {
+    expect(errorText(42)).toBe("42");
+  });
 });
 
 describe("errorText — Rust エラーコード (#462)", () => {
@@ -77,5 +85,11 @@ describe("errorText — Rust エラーコード (#462)", () => {
 
   it("翻訳器なしの空値は既定フォールバック", () => {
     expect(errorText("")).toBe("原因不明のエラーが発生しました。");
+  });
+
+  it("翻訳器が errors.unknown を解決できなければ既定フォールバック", () => {
+    // 未知キーをキー自身で返す翻訳器（カタログ未整備時）→ FALLBACK 側へ。
+    const echo: Translator = (key) => key;
+    expect(errorText("", echo)).toBe("原因不明のエラーが発生しました。");
   });
 });
