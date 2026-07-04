@@ -25,5 +25,10 @@ fn transcribes_known_audio_when_assets_present() {
     let text = quickscribe_lib::stt::transcribe(Path::new(&model), &samples, None)
         .expect("文字起こしに失敗");
     eprintln!("transcript = {text:?}");
+    // 精度ベンチ(#403 CER)向けに、認識テキストをファイルへ出力する(env 指定時のみ)。
+    // stderr パースより堅牢に、後段の CER 計算へ渡す。
+    if let Ok(out) = std::env::var("QS_TRANSCRIPT_OUT") {
+        std::fs::write(&out, &text).expect("transcript の書き出しに失敗");
+    }
     assert!(!text.trim().is_empty(), "文字起こし結果が空であってはならない");
 }
