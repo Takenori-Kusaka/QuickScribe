@@ -162,4 +162,4 @@ export const DEFAULT_SHORTCUT = "CommandOrControl+Shift+R";
 export const MAX_INPUT_MB = 500;
 
 // 対応する音声ファイル形式（ファイル選択フィルタ・UI通知で共用 / S1.6）。
-export const SUPPORTED_AUDIO_EXTS = ["mp3", "wav", "m4a", "flac", "ogg", "aac"];
+export const SUPPORTED_AUDIO_EXTS = ["mp3", "wav", "m4a", "flac", "ogg", "opus", "aac"];
