@@ -17,13 +17,22 @@
 
 インストール後はアプリ内の自動アップデートで最新版に更新されます。
 
-## コード署名について
+## 動作環境・対応形式
 
-QuickScribe の Windows バイナリのコード署名には、**[SignPath Foundation](https://signpath.org/)** の無償コード署名プログラム（オープンソース向け）を利用しています。
+| 項目 | 内容 |
+|---|---|
+| 対応OS | Windows 10/11（x64 / ARM64）、Linux（AppImage / deb・x64） |
+| 対応音声形式 | `mp3` / `wav` / `m4a` / `flac` / `ogg` / `opus` / `aac` |
+| 入力ファイルサイズ上限 | 500 MB |
+| ローカル文字起こしモデル | 初回文字起こし時に whisper モデルを自動ダウンロード（既定 `base` ≈ 142MB。日本語特化 `kotoba-whisper` 量子化 ≈ 538MB なども選択可）。以降はローカルに保存され再利用します。 |
 
-> Code signing for QuickScribe is provided by the **[SignPath Foundation](https://signpath.org/)** (free code signing for open-source projects).
+> ローカル文字起こしと録音は端末内で完結します。クラウド STT / AI 整形を明示的に選んだ場合のみ、対象データが各プロバイダへ送信されます（[プライバシーポリシー](/privacy)）。
 
-未署名の配布物で SmartScreen 警告が出る場合は、「詳細情報」→「実行」で起動できます（署名の整備状況により表示が変わります）。
+## コード署名について（現在は未署名）
+
+QuickScribe の Windows バイナリは **現在は未署名** です。そのため初回起動時に Microsoft Defender SmartScreen の「発行元不明」警告が出る場合があります。その際は **「詳細情報」→「実行」** で起動できます。
+
+将来的にはオープンソース向けの無償コード署名（[SignPath Foundation](https://signpath.org/) の OSS 署名プログラムなど）の利用を予定しています（申請・審査中）。署名が整備され次第、この警告は表示されなくなります。
 
 ## 完全性の検証
 
