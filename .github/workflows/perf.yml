@@ -205,14 +205,16 @@ jobs:
 
       - name: Measure CER per model x sample
         run: |
-          FIX=src-tauri/tests/fixtures/ja-accuracy
+          # cargo test はテストプロセスの CWD を src-tauri/ にするため、音源/モデルは絶対パスで渡す。
+          FIX="$GITHUB_WORKSPACE/src-tauri/tests/fixtures/ja-accuracy"
+          MODELS_DIR="$GITHUB_WORKSPACE/models"
           SLUGS="gingatetsudo-no-yoru kumonoito wagahaiha-neko-dearu"
           MODEL_IDS="tiny base kotoba-q5"
           model_file() {
             case "$1" in
-              tiny) echo models/ggml-tiny.bin;;
-              base) echo models/ggml-base.bin;;
-              kotoba-q5) echo models/ggml-kotoba-whisper-v2.0-q5_0.bin;;
+              tiny) echo "$MODELS_DIR/ggml-tiny.bin";;
+              base) echo "$MODELS_DIR/ggml-base.bin";;
+              kotoba-q5) echo "$MODELS_DIR/ggml-kotoba-whisper-v2.0-q5_0.bin";;
             esac
           }
           : > cer.tsv
