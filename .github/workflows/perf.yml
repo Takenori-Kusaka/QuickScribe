@@ -220,7 +220,7 @@ jobs:
             done
           done
           python3 - <<'PY' | tee ja-accuracy-report.md
-          import collections
+          import collections, json, os
           rows=collections.defaultdict(dict)
           models=[]
           for line in open("cer.tsv"):
@@ -240,12 +240,26 @@ jobs:
                   cells.append(("**%.1f%%**" if v==best else "%.1f%%") % (v*100))
               print(f"| {slug} | " + " | ".join(cells) + " |")
           n=len(rows)
-          avg=[sums[m]/n for m in models]
-          bestavg=min(avg)
-          cells=[("**%.1f%%**" if a==bestavg else "%.1f%%") % (a*100) for a in avg]
+          avg={m: sums[m]/n for m in models}
+          bestavg=min(avg.values())
+          cells=[("**%.1f%%**" if avg[m]==bestavg else "%.1f%%") % (avg[m]*100) for m in models]
           print("| **平均** | " + " | ".join(cells) + " |")
           print()
           print("_注: 本人音読のPD作品3点。原文へのルビ混入で絶対CERは悲観側＝相対/回帰指標。太字=各行の最良。_")
+          # 回帰ゲート(#403): 平均CERが baseline+margin を超えたら警告する。
+          bl=json.load(open("docs/perf/ja-cer-baseline.json", encoding="utf-8"))
+          margin=bl["margin"]; base=bl["baselines"]; regressed=[]
+          print(); print("## 回帰チェック（平均CER vs baseline）"); print()
+          print("| モデル | 実測 | baseline | 上限(=+margin) | 判定 |"); print("|---|---|---|---|---|")
+          for m in models:
+              if m not in base: continue
+              cur=avg[m]; lim=base[m]+margin
+              ok = cur <= lim
+              if not ok: regressed.append((m,cur,lim))
+              print(f"| {m} | {cur*100:.1f}% | {base[m]*100:.1f}% | {lim*100:.1f}% | {'✅' if ok else '⚠️ 回帰'} |")
+          for m,cur,lim in regressed:
+              print(f"::warning title=日本語CER回帰::{m} の平均CER {cur*100:.1f}% が上限 {lim*100:.1f}% を超過")
+          print(); print(f"_margin={margin*100:.0f}pt。基準は docs/perf/ja-cer-baseline.json。_")
           PY
           cat ja-accuracy-report.md >> "$GITHUB_STEP_SUMMARY"
 
@@ -296,20 +310,32 @@ jobs:
           xvfb-run -a "$BIN" >/tmp/app.out 2>&1 &
           APP_PID=$!
           for _ in $(seq 1 40); do [ -f "$LOG" ] && break; sleep 1; done
-          kill "$APP_PID" 2>/dev/null || true
           if [ -f "$LOG" ]; then
             MS=$(sed -n 's/^startup_ms=//p' "$LOG")
+            # アイドル時メモリ(#403): ready 後にアプリ実プロセスの RSS を数回サンプルし最大値を採る。
+            # xvfb-run の子として動く実体(quickscribe)を名前で拾う（APP_PID は xvfb-run のラッパ）。
+            PEAK_RSS_KB=0
+            for _ in $(seq 1 5); do
+              RSS_KB=$(ps -C quickscribe -o rss= 2>/dev/null | sort -n | tail -1 | tr -d ' ')
+              [ -n "$RSS_KB" ] && [ "$RSS_KB" -gt "$PEAK_RSS_KB" ] && PEAK_RSS_KB=$RSS_KB
+              sleep 1
+            done
+            kill "$APP_PID" 2>/dev/null || true
+            pkill -x quickscribe 2>/dev/null || true
+            IDLE_RSS_MB=$(awk -v k="$PEAK_RSS_KB" 'BEGIN{ printf "%.1f", k/1024 }')
             {
-              echo "# QuickScribe 起動時間 (Linux x64 / xvfb)"
+              echo "# QuickScribe 起動時間・アイドルメモリ (Linux x64 / xvfb)"
               echo ""
               echo "| 指標 | 値 |"
               echo "|---|---|"
               echo "| **起動時間 (run()→UI ready)** | **${MS} ms** |"
+              echo "| **アイドル時メモリ (アプリ実体 RSS)** | **${IDLE_RSS_MB} MB** |"
               echo ""
-              echo "_注: プロセス起動(run 入口)からフロント onMount までの経過。ヘッドレス表示(xvfb)での計測。_"
+              echo "_注: 起動時間=run 入口→フロント onMount。アイドルRSS=ready 後のアプリ実プロセス(quickscribe)のピーク RSS。ヘッドレス表示(xvfb)。_"
             } | tee startup-report.md
             cat startup-report.md >> "$GITHUB_STEP_SUMMARY"
           else
+            kill "$APP_PID" 2>/dev/null || true
             echo "::warning::perf-startup.txt 未生成（表示/依存の問題の可能性）。ログ:"; cat /tmp/app.out || true
             exit 1
           fi
