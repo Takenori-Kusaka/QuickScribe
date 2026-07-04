@@ -1,6 +1,8 @@
 // 文字起こし(TranscriptionEngine の実装: ローカル whisper.cpp / ADR-0002)。
-// 任意の対応音声(mp3/wav/flac/aac/ogg 等) → 16kHz mono f32 → テキスト。
+// 任意の対応音声(mp3/wav/flac/aac/ogg-vorbis 等) → 16kHz mono f32 → テキスト。
 // デコードは純Rustの symphonia（外部ffmpeg不要・配布が軽い / S1.6 圧縮音声対応）。
+// ただし .opus(Ogg Opus)は symphonia 非対応のため、録音で使う opus+ogg クレートで自前デコードする
+// （自分で保存した .opus 録音の再文字起こしを可能に。新規依存なし）。
 
 use std::fs::File;
 use std::path::Path;
@@ -17,6 +19,16 @@ pub const WHISPER_SR: u32 = 16000;
 
 /// 任意の対応音声ファイルを 16kHz mono f32 にデコードする。
 pub fn decode_to_16k_mono(path: &Path) -> Result<Vec<f32>, String> {
+    // .opus(Ogg Opus)は symphonia0.6 が非対応。録音(save_opus)で使う opus(libopus)+ogg クレートを
+    // そのまま流用して自前デコードする（新規依存なし。自分で保存した .opus 録音の再文字起こしを可能に）。
+    // 他形式(mp3/wav/flac/aac/ogg-vorbis 等)は従来どおり symphonia。
+    if path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("opus"))
+    {
+        return decode_opus_ogg_to_16k(path);
+    }
     let file = File::open(path).map_err(|e| e.to_string())?;
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
 
@@ -77,6 +89,36 @@ pub fn decode_to_16k_mono(path: &Path) -> Result<Vec<f32>, String> {
     }
 
     Ok(resample_linear(&mono, src_rate, WHISPER_SR))
+}
+
+/// 自前録音の Ogg Opus(.opus) を 16kHz mono f32 へデコードする。
+/// symphonia は Opus 非対応だが、録音で使う opus(libopus vendored)+ogg クレートをそのまま使う。
+/// save_opus と対称: 48kHz mono で復号し、先頭の識別/コメントヘッダ(OpusHead/OpusTags)は
+/// 音声でないためスキップ。最後に 48kHz→16kHz へ線形リサンプルする。
+fn decode_opus_ogg_to_16k(path: &Path) -> Result<Vec<f32>, String> {
+    let file = File::open(path).map_err(|e| e.to_string())?;
+    let mut reader = ogg::reading::PacketReader::new(std::io::BufReader::new(file));
+    let mut dec = opus::Decoder::new(48_000, opus::Channels::Mono)
+        .map_err(|e| crate::errcode::ec(crate::errcode::E_DECODER_BUILD, e))?;
+    let mut pcm: Vec<f32> = Vec::new();
+    let mut buf = vec![0f32; 5760]; // 120ms @48kHz mono の上限フレーム。
+    while let Some(packet) = reader
+        .read_packet()
+        .map_err(|e| crate::errcode::ec(crate::errcode::E_PACKET_READ, e))?
+    {
+        // 識別ヘッダ(OpusHead)/コメントヘッダ(OpusTags)は音声パケットではないのでスキップ。
+        if packet.data.starts_with(b"OpusHead") || packet.data.starts_with(b"OpusTags") {
+            continue;
+        }
+        match dec.decode_float(&packet.data, &mut buf, false) {
+            Ok(n) => pcm.extend_from_slice(&buf[..n]),
+            Err(_) => continue, // 壊れた/端数パケットは飛ばす。
+        }
+    }
+    if pcm.is_empty() {
+        return Err(crate::errcode::E_NO_CODEC_PARAMS.into());
+    }
+    Ok(resample_linear(&pcm, 48_000, WHISPER_SR))
 }
 
 /// 単純な線形補間リサンプラ（純粋関数・テスト対象 S7.1）。

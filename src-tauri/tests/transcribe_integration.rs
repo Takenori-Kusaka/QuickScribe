@@ -22,7 +22,10 @@ fn transcribes_known_audio_when_assets_present() {
         .expect("音声のデコードに失敗");
     assert!(!samples.is_empty(), "デコード結果が空");
 
-    let text = quickscribe_lib::stt::transcribe(Path::new(&model), &samples, None)
+    // 言語は QS_LANG で指定（未設定なら自動判定）。実運用ではアプリが言語を渡すため、
+    // 日本語音声の英語誤検出を避けたい検証では QS_LANG=ja を指定する。
+    let lang = std::env::var("QS_LANG").ok();
+    let text = quickscribe_lib::stt::transcribe(Path::new(&model), &samples, lang.as_deref())
         .expect("文字起こしに失敗");
     eprintln!("transcript = {text:?}");
     // 精度ベンチ(#403 CER)向けに、認識テキストをファイルへ出力する(env 指定時のみ)。
