@@ -1,17 +1,16 @@
 fn main() {
-    // Windows: テストバイナリにも Common-Controls v6 のSxSマニフェストを埋め込む。
-    // tauri の mock runtime(テスト専用feature・dev依存)が TaskDialogIndirect(comctl32 v6) を
-    // 静的インポートするため、マニフェスト無しのテストEXEは STATUS_ENTRYPOINT_NOT_FOUND で
-    // 起動できない。rustc-link-arg-tests は lib のユニットテストに適用されない(cargo仕様)ため
-    // rustc-link-arg を使う。アプリ本体bin側は tauri-build の埋め込みマニフェスト(.res)が
-    // そのまま有効（/MANIFEST:EMBED と重複しないことをCI buildで検証済み）。
+    // Windows: comctl32.dll を遅延ロード(delay-load)にする。
+    // tauri の mock runtime(テスト用 feature "test"・dev依存)をリンクすると
+    // TaskDialogIndirect(comctl32 v6) が静的インポートされ、SxSマニフェストを持たない
+    // テストEXEは起動時解決に失敗して STATUS_ENTRYPOINT_NOT_FOUND で落ちる。
+    // 遅延ロードなら解決は「最初の呼び出し時」に延びるため、テストEXEは起動でき、
+    // アプリ本体は tauri-build 埋め込みマニフェスト(comctl32 v6)の下で従来どおり解決される
+    // （公開挙動は不変）。/MANIFEST:EMBED 方式は tauri-build の RT_MANIFEST と重複し
+    // CVT1100/LNK1123 になるため不可。rustc-link-arg-tests は lib のユニットテストに
+    // 適用されない(cargo仕様)ため rustc-link-arg を使う。
     if std::env::var("CARGO_CFG_WINDOWS").is_ok() {
-        println!("cargo::rustc-link-arg=/MANIFEST:EMBED");
-        println!(
-            "cargo::rustc-link-arg=/MANIFESTDEPENDENCY:type='win32' \
-             name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
-             processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'"
-        );
+        println!("cargo::rustc-link-arg=/DELAYLOAD:comctl32.dll");
+        println!("cargo::rustc-link-arg=delayimp.lib");
     }
     tauri_build::build()
 }
