@@ -1,5 +1,5 @@
 ---
-title: "ローカル完結ボイスジャーナルをTauri+Rust+Svelteで作る：文字起こし精度ではなく“整形の知性”に賭けた設計判断"
+title: "ローカルで賢く整形する音声ジャーナルに、なぜ競合がいないのか"
 emoji: "🎙"
 type: "tech"
 topics: ["tauri", "rust", "svelte", "whisper", "設計"]
@@ -7,139 +7,105 @@ published: false
 ---
 
 <!--
-この記事は articles/ 配下を「単一ソース」として管理する（Zenn CLI/GitHub連携の慣習）。
-Qiita 版は `npm run qiita:build` で public/ に機械変換する。画像は必ず絶対URLで参照する
+この記事は articles/ 配下を単一ソースとして管理します（Zenn CLI/GitHub 連携の慣習）。
+Qiita 版は `npm run qiita:build` で public/ に機械変換します。画像は必ず絶対 URL で参照します
 （相対パスは Qiita 転載でリンク切れになるため）。詳細は docs/process/article-publishing-policy.md。
 -->
 
-> 検証時点: 2026-07-05 / 対象リリース: v1.0.0（2026-07-04 公開）/ リポジトリ: [Takenori-Kusaka/QuickScribe](https://github.com/Takenori-Kusaka/QuickScribe)。
-> 本文の数値・主張はすべてリポジトリの一次情報（ADR・実装コード・CI 実測）に紐づける。数値には必ず**計測条件**を併記する。
+> 対象リリース: v1.0.0（2026-07-04 公開）。競合調査のアクセス日はすべて 2026-07-05。
+> 本文の数値・主張はリポジトリの一次情報（ADR・実装コード・CI 実測）に紐づけ、数値には計測条件を併記します。
+> リポジトリ: [Takenori-Kusaka/QuickScribe](https://github.com/Takenori-Kusaka/QuickScribe)
 
-## 10秒で読む価値
+音声入力アプリを作るなら、普通は文字起こしの精度で勝負します。私も最初はそう考えていました。
 
-音声入力アプリを作るなら、普通は「文字起こし精度」を主戦場に据える。この記事はその逆を採った設計の記録である。**文字起こしは差し替え可能なコモディティ入力に格下げし、価値の重心を「ニュアンスを残したまま思考を整理する整形の知性」に置く**。この決定は4つの領域に波及した。アーキテクチャ（4つの差し替え可能境界）・技術選定（何を**採らなかった**か）・ベンチマーク設計（相対指標としての日本語CER）・プライバシー既定（ローカルファースト）である。以下ではそれぞれを、意思決定記録（ADR）と実装コードに紐づけて示す。
+ところが、自分が本当に欲しかったものを探しても見つかりませんでした。「話した内容を、要約して捨てるのではなく、言い直しや迷いといったニュアンスを残したまま整えてくれて、しかも全部この端末の中で完結する音声日記」です。作ってしまってから競合をあらためて洗い直しても、この真ん中には誰もいませんでした。
 
-対象読者は、音声/デスクトップアプリの設計判断を自分で下す人。「Whisperを組み込んでみた」の一段上、**どこを抽象化し、どこを捨て、その判断をどう検証可能にするか**に関心がある人を想定する。
+そこで気づいたのは、「空白がある」こと自体より、**なぜその空白が埋まっていないのか**のほうがずっと面白い、ということです。この記事はその問いを軸にしています。競合の空白を検証し、なぜ誰もやらないのかを仮説で掘り下げ、その説得力を確かめたうえで、自分の作った QuickScribe がそこにどう答えたのかを書きます。そして正直に言うと、この論を進める過程で、同じ壁が自分のプロダクトにも刺さっていることが見えてきました。それも隠さずに書きます。
 
-## 1. 課題設定：なぜ既存ツールでないのか
+先に結論だけ言っておきます。この空白は「つい最近まで技術的に不可能だった」ことと、「可能になった今もクラウド課金の経済がこの形を作らせない」ことの二重の壁で、かなりよく説明できます。以下はその検証の記録です。
 
-まず「作る理由」を一次情報で固める。競合ランドスケープ（自リポジトリの[competitive-landscape.md](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/research/competitive-landscape.md)、取得日 2026-06-28・各社公式を一次情報として優先）を整理すると、市場は次の2極に寄っている。
+## 何を作ったのか（専門用語なしで）
 
-- **会議特化**（Otter / Granola）：要約とアクション抽出に最適化。方向性は「決定事項を圧縮する」。
-- **汎用音声入力**（OpenWhispr / superwhisper / MacWhisper / Windows Fluid Dictation）：カーソル位置へ清書テキストを挿入する。整形は cleanup（清書）にとどまる。
+QuickScribe は、話した言葉を思考の整理に変えるための音声ジャーナルです。使い方はシンプルです。話して、端末の中で文字起こしして、端末の中の AI で「要約せずニュアンスを残したまま」整える。これを日記として端末に残すだけです。既定の状態では音声もテキストも端末の外に出ません。技術的には Tauri 2 のデスクトップアプリで、Rust のバックエンドと Svelte のフロントエンドでできています。
 
-ここに構造的な空白がある。**「ローカル完結 × ジャーナリング特化 × 要約ではなくニュアンス保持の思考整理」の交差点**に該当する製品が、調査範囲では見当たらない。隣接する最有力は Day One（ジャーナル × AI）だが、テキスト中心のジャーナルに AI を後付けした構造で、ローカル完結が不完全である。清書は「消す」方向、要約は「捨てる」方向。QuickScribe が狙うのは**「残して育てる」**方向であり、ベクトルが逆になる。
+ここで大事なのは「要約せず整える」の部分です。会議ツールのように決定事項へ圧縮するのでも、音声入力のように清書された一文を差し込むのでもなく、逐語と要約とブレストのあいだを行き来しながら、思考の流れを残して整える。QuickScribe が価値の本体だと考えているのはこの整形のほうで、文字起こしの精度は差し替え可能な入り口だと位置づけています（[ADR-0004](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0004-product-positioning-voice-journal.md)）。
 
-重要なのは、この分析が「単軸では勝てない」と正直に認めている点だ。ローカルプライバシーそのものは OpenWhispr や MacWhisper（"never phones home"）が既に埋めており、コモディティ化している。だから価値は**4軸の束ね方**に宿る、という仮説から設計を始める（[vision.md](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/vision.md)）。
+## 競合を洗い直したら、真ん中が無人だった
 
-そして製品の核心課題を一行で固定する。**「リッチすぎると簡便でなくなる」バランス**である。機能を足すたびにこの問いへ戻る。この制約が、後述する「モデルを削らずラベルで導く」判断（ADR-0022）や「トグルを増やさないプライバシー可視化」（ADR-0019）に直接効いてくる。
+最初にお断りしておくと、当初の社内調査（2026-06-28）では「該当製品なし」と結論していました。しかし今回あらためて反証を探しにいくと、その結論は少し甘かったことが分かりました。正直に修正しつつ書きます。
 
-## 2. アーキテクチャ：差し替え可能性を一級市民にする
+音声まわりのツールを「ローカル完結か」「要約ではなくニュアンスを残す整形か」「日記に特化しているか」の3つの軸で並べると、市場はきれいに3つの塊に寄っていました。
 
-QuickScribe は Tauri 2 のデスクトップアプリで、**Rust バックエンド**と **Svelte 5 フロントエンド（WebView）**が Tauri の `invoke`（コマンド）と `event`（イベント）で通信する。全体像は次の通り（図は CI で Mermaid から生成し、絶対URLで参照している。理由は §6）。
+- 会議特化（Otter / Granola / Fireflies）。要約とアクション抽出に最適化していて、方向は「決定事項へ圧縮する」。ニュアンスはむしろ削ぎ落とす対象です。
+- 汎用の音声入力（superwhisper / MacWhisper / Wispr Flow / Windows のディクテーション）。カーソル位置に清書テキストを差し込むのが仕事で、整形は文法補正やフィラー除去といった「清書」にとどまります。
+- 日記や内省と AI の組み合わせ（Day One / Rosebud / Apple の Journal）。ここが一番近いのですが、後述のとおり肝心のところでズレます。
 
-![QuickScribe 全体アーキテクチャ](https://raw.githubusercontent.com/Takenori-Kusaka/QuickScribe/main/docs/assets/diagrams/design-1.png)
+3つの軸を同時に満たす製品を探すと、意外なほど見当たりません。惜しいものはあります。Day One の Daily Chat は言葉やトーンや気分を反映してくれる点でニュアンス志向に最も踏み込んでいますが、その機能はクラウドで動きます（アクセス日 2026-07-05、公式のプライバシー説明より）。逆に Apple の Journal は完全にオンデバイスですが、そもそも文章を整形しません。書くきっかけを提案するだけです。片方を立てると、もう片方が崩れる、という状態でした。
 
-設計の背骨は、コア価値（整形の知性）を守るために「価値でない部分」を**差し替え可能な抽象境界**として切り出したことにある。[ADR-0005](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0005-tech-stack.md) は4つの境界を一級市民として定義する。
+正直に付け加えると、隣接圏には新しい顔も現れています。DailyVox（オンデバイスの音声日記）、Memex や JournalLM（ローカル LLM も選べる AI 日記）です。ただし、いずれも整形の性質がズレています。DailyVox は「人格モデル化・気分予測」、Memex は「構造化カードへの抽出」、JournalLM は「会話を要約してエントリ化」です。どれも私が言うところの「要約せずニュアンスを残す」とは、反対か直交する方向でした（各社 LP 主張ベース。実挙動までは未検証です）。
 
-| 抽象境界 | 役割 | 実装場所 | 差し替え例 |
-|---|---|---|---|
-| `TranscriptionEngine` | 音声 → テキスト（コモディティ） | `src-tauri/src/stt.rs` | ローカル whisper / Groq・OpenAI / Deepgram / Azure |
-| `FormattingEngine` | テキスト → 整形（**価値の本体**） | `src-tauri/src/refine.rs` | Gemini / Anthropic / OpenAI / Ollama / Bedrock / Claude Platform on AWS |
-| 録音ソース `SourceKind` | 音声取得 | `src-tauri/src/record.rs` | マイク / システム音ループバック（Win 実装済み・Linux は計画中）/ mix |
-| 保管ドメイン | 読み書き | `lib.rs`（書き）/ `vault.rs`（読み） | Markdown/テキスト・frontmatter・スキーマ版 |
+というわけで、厳密な意味での空白とは言えなくなりました。それでも「要約せずニュアンスを残す整形 × 完全ローカル × 日記特化」という真ん中は、2026 年時点でまだ無人だと考えています。そして隣接する3社がじわじわ近づいてきているので、この空白はむしろ縮みつつある、というのが今の見立てです。
 
-ポイントは、これが単なる「インターフェースを切りました」ではなく、**依存性逆転（DIP）を製品戦略に接続している**ことだ。`FormattingEngine` を Strategy 化しておくと、「ローカル完結 vs クラウド」というプライバシー方針の将来変更に、アーキテクチャが縛られずに追従できる。実際に後から既定をクラウド（Gemini）からローカル（Ollama）へ切り替える判断（[ADR-0021](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0021-local-first-defaults.md)）が入ったが、境界のおかげで**新プロバイダは trait 実装の追加で済み、既存コードを触らない**（OCP）。
+## なぜ誰もやらないのか（仮説を立てて確かめる）
 
-コード上でも境界は素直だ。STT 側は `pub trait TranscriptionEngine` を定義する。設定から実装を選ぶファクトリは `engine_for(cfg: SttConfig) -> Box<dyn TranscriptionEngine>` だ。整形側も対称だ。`pub trait FormattingEngine` と `engine_for(provider: &str) -> Box<dyn FormattingEngine>` を置く。実装は `RefineProvider` enum が束ねる（Gemini/Anthropic/OpenAi/Ollama/Bedrock/ClaudePlatformAws の6種）。整形スタイル（Structured/Verbatim/Summary/Brainstorm）は `RefineStyle` として型で表現し、「逐語 ⇄ 要約 ⇄ ブレスト」の行き来を一級の概念にしている。
+ここからが本題です。空白があるなら、埋まっていない理由があるはずです。いくつか仮説を立てて、それぞれ「これが正しければ何が観測されるはずか」「棄却する証拠は何か」まで考えてみました。
 
-コア・データフロー（録音 → 文字起こし → 用語補正 → 整形 → 保存）は次の通り。
+### 仮説1：ローカル完結はビジネスモデルと噛み合わない（説得力：強い）
 
-![コア・データフロー](https://raw.githubusercontent.com/Takenori-Kusaka/QuickScribe/main/docs/assets/diagrams/design-2.png)
+一番説得力があると感じたのはこれです。ローカル完結は、サブスクとデータ収集で稼ぐ SaaS のモデルと構造的に相性が悪い。データを持ち出さないと、乗り換えコストが限りなく小さくなって価格の支配力が落ち、データの二次利用によるマネタイズも、囲い込みも効きません。だから資本が本気で作りに来ない、という筋です。ローカルファースト・ソフトウェアの困難さは Ink & Switch の論考が早くから自認していますし、乗り換えコストがゼロに近づくと価格競争が激しくなる、という機構もよく指摘されます。
 
-秘密情報（APIキー・AWS資格情報）は **OS keyring**（Windows Credential Manager / Linux Secret Service）に格納し、バックエンドへはメモリ内注入のみで永続化しない。フロントの localStorage には非秘密設定だけを置く。この分離も「思考の生データを外に出さない」というプライバシー約束の一部である。
+ただ、この仮説には反例があります。Obsidian は無料コアに有料の Sync/Publish を乗せて成立しています。だから「不可能」ではなく「強い逆インセンティブがある」と言うのが正確でしょう。私はここを「壁ではないが、坂道になっている」と表現したいところです。
 
-## 3. 技術選定：何を採り、何を**採らなかったか**
+### 仮説2：端末の中で「賢い整形」ができるようになったのが最近だから（説得力：強い）
 
-技術選定は「採った理由」より「採らなかった理由」に説明可能性が宿る。QuickScribe は判断を1決定1ファイルの ADR に残す規律（[ADR-0001](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0001-record-architecture-decisions.md)）を敷いている。検証時点で ADR は0001〜0023の23件を記録し、うち22件が Accepted である（残る ADR-0013 はシステム音ループバックの Linux 経路を扱い、Status は Proposed=設計段階）。代表的な「不採用」を3つ挙げる。
+もう1つの柱がこれです。端末上で質の高い整形をこなせる小型 LLM と、実用的なローカル文字起こしが同時に揃ったのは、ざっくり 2024 年から 2026 年にかけてです。それ以前はそもそも技術的に成立しませんでした。依存なしで CPU でも動く whisper.cpp が実用域に入り、数 GB の量子化モデルが普通のノート PC で「整形」に足る品質を出すようになった。つまり、この製品は「作らなかった」のではなく「作れなかった」時期が長かった、という見方です。
 
-### 3.1 Google Docs 音声入力の自動駆動 → 不採用（ADR-0003）
+これが記事のなかで唯一の「なぜ今か」でもあります。棄却する証拠があるとすれば「2020 年ごろにも同等品質のローカル整形が可能だった」という事実ですが、今のところ見当たりません。ただし、日本語で「ニュアンスを残した整形」の品質がクラウドと並ぶかどうかは、公開ベンチが乏しく、私自身まだ胸を張れる段階ではありません。ここは推測混じりだと正直に書いておきます。
 
-初期構想に「梱包ブラウザで Google Docs の音声入力を自動駆動する」案があった。無料・高品質という期待があったが、[ADR-0003](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0003-reject-google-docs-automation.md) で棄却した。理由は積み上げると防御不能だった。
+### 仮説3：「要約して捨てる」は数字にできるが、「残して育てる」は測れない（説得力：中〜強）
 
-- **精度優位の客観的根拠がない**：独立ベンチで gpt-4o-transcribe ≈2.5% WER に対し Google Chirp2 ≈11.6%。Docs は旧世代の Web Speech API ベースで、製品自体の WER を測った査読データも存在しない。
-- **ToS違反リスク**：Google 利用規約は自動アクセス・スクレイピング・保護機構の回避を明示的に禁じている。
-- **技術的に持続しない**：Puppeteer/Selenium の自動ログインは "browser may not be secure" で弾かれ、`navigator.webdriver` 検出で回避は続かない。
-- **機能的障壁**：ライブマイク必須・ファイル流し込み不可・公式API不在。
+要約は「週に何時間の短縮」という売れる指標を作れます。一方で、ニュアンスを残した内省の価値は主観的で、言語化もマーケティングも計測も難しい。だから多くのプロダクトが、測れて売れる「要約」のほうへ流れていく、という仮説です。内省系アプリが継続率の壁（30 日後に数％まで落ちる、というのはこの領域でよく言われる水準です）に晒されがちなことも、これを補強します。この非対称は後で自分に跳ね返ってきます。
 
-この不採用が効いたのは、「梱包ブラウザ＋ブラウザ自動化」という**最大の保守コストと脆弱性源が丸ごと消えた**点だ。ブラウザ依存は STT からは外し、LLM整形の BYO 認証（既存ブラウザでの Gemini/Claude 認証）に限定して残した。副産物として、システム音取り込みも仮想オーディオデバイス不要の方針に落ち着いた。ただし実装状況は OS で分かれる。**Windows は WASAPI ループバックで実装済み**（`record.rs` の `start_loopback` が wasapi クレートで実装）。**Linux（PipeWire monitor 経路）は [ADR-0013](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0013-system-audio-loopback-and-source-unification.md) で設計済み・段階実装中**だ。現状のコードは Linux でのループバック/mix 要求に対し明示エラー（`E_LOOPBACK_UNSUPPORTED` / `E_MIXED_UNSUPPORTED`）を返す。ADR-0013 が Proposed のままなのはこのためだ。
+### 仮説4：日記は「事業」ではなく「機能」にされがち（説得力：中）
 
-### 3.2 STT 既定＝ローカル whisper.cpp（ADR-0002）
+当初は「日記の市場が薄いから大手が来ない」と考えていましたが、これは半分外れです。市場規模の推計は調査会社によって2〜3倍ばらつき、あまり当てになりません。しかも Apple は iOS に Journal を、Microsoft はディクテーションを、それぞれ軽い機能として載せています。「市場が絶対的に小さいから触らない」のではなく、「日記は単体で収益化しにくいので、本気の事業ではなく機能として軽く触れられる」と言い直すほうが正確でした。
 
-既定エンジンはローカルの `whisper.cpp` に置いた（[ADR-0002](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0002-stt-engine-strategy.md)）。理由は、完全オフライン・ToSフリーで動く既定体験がプライバシー約束と整合し、実在デスクトップアプリ8本中5本が whisper.cpp を採用するデファクトだからだ。クラウド（Groq/Deepgram/Azure）は**鍵を入れた人だけのプラグイン**にした。ここでも「不採用」を記録している。Parakeet/Canary（NVIDIA）は英語精度が世界最高だが日本語非対応で不採用。Moonshine は日本語モデルが非商用ライセンスで商用利用不可。Vosk は軽量だが精度が Whisper 系に劣るため、低スペック向けオプション候補に留めた。
+### どの仮説が一番効いているか
 
-### 3.3 実行基盤＝Tauri（Electron 不採用・ADR-0005）
+まとめると、**仮説2（最近まで作れなかった）と仮説1（作れる今もお金にしにくい）の掛け算**が、この空白を一番よく説明します。技術の窓がここ数年で開いたのに、その窓の先にある形はクラウド課金の経済に嫌われる。だから窓が開いても大手は測れて売れる要約のほうへ歩いていく。仮説3と、プライバシー単体では差別化にならない（支払意思が乏しい、という知見は繰り返し報告されています）という点が、それを後押しします。
 
-[ADR-0005](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0005-tech-stack.md) は Tauri 2 + Svelte 5（SPA・SvelteKit 不使用）+ Rust を採用した。Electron を**常駐メモリ・起動速度・依存ツリーの小ささ**で不採用にした点が肝で、非機能要件（軽量・監査容易性・プライバシー）から逆算した判断である。Tauri は Chromium 非同梱の OS ネイティブ WebView を使うため、「既存ブラウザに依存しない」を軽量に達成できる。加えて **Vibe（Tauri + whisper-rs）**という whisper 連携の先行実証があり、これが Wails/Qt/.NET に対する決め手になった。
+## じゃあ、自分は何を作ったのか
 
-ここで Rust のコストにも正直でありたい。ADR は「Rust はバックエンド配線/FFI に限定し、整形ロジック（プロンプト・逐語/要約スタイル）は TS 側/LLM 側へ寄せる」というガードレールを明記している。**本体価値（整形の知性）に工数を集中するため、あえて Rust の守備範囲を狭める**という設計判断だ。
+空白の理由が「技術の窓 × 経済の逆風」だとすると、QuickScribe の立ち位置ははっきりします。窓が開いた今、経済の逆風で大手が来ない隙間に、「ニュアンス保持 × ローカル × 日記」を束ねて先に立つ、ということです。技術的に真新しいことをやっているわけではありません。むしろ既存部品の組み合わせ方に賭けています。
 
-## 4. 日本語CERベンチをCIで回す：ただし“何を測っていないか”を明示する
+一番効いたのは、価値の本体でない部分を差し替え可能な境界として切り出したことです。文字起こしエンジンと整形エンジンをそれぞれ trait（`TranscriptionEngine` / `FormattingEngine`）にして、設定から実装を選ぶファクトリ越しに差し替えられるようにしました。おかげで、既定をクラウドからローカルへ動かす判断（[ADR-0021](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0021-local-first-defaults.md)）を、新しいプロバイダの trait 実装を足すだけで入れられました。整形の既定を Ollama（ローカル）にし、日本語の文字起こし既定を kotoba-whisper にしたのはこの判断です。「ローカル完結を既定にする」を、あとから設計に無理なく差し込めたのは、この境界のおかげでした。
 
-「文字起こし精度は価値でない」と言い切るなら、精度は**回帰監視の対象**として扱えば十分になる。QuickScribe は日本語 CER（文字誤り率）ベンチを CI（`.github/workflows/perf.yml` の「日本語精度 CER」ジョブ）で回している。本人音読のパブリックドメイン作品3点を `QS_LANG=ja` で認識し、`scripts/cer_ja.py`（NFKC・約物空白除去・文字単位 Levenshtein / 参照長）で CER を算出する。CI 実測のベースライン（ubuntu-22.04）は次の通り。
+文字起こしの精度は、旗印にせず回帰監視の対象に落としました。日本語 CER（文字誤り率）を CI で測っていますが、これは絶対精度を主張するための数字ではありません。本人が音読したパブリックドメイン作品 3 点での相対・回帰指標で、原文へのルビ混入で悲観側に振れます。ベンチ文書自身が「絶対精度の主張には使うな」と明記しています。数字を出すなら条件も一緒に、を徹底したいところです。平均 CER は ggml-tiny 56.9% / ggml-base 44.0% / kotoba-whisper v2.0 q5 38.3%（CI 実測・ubuntu-22.04・N=3）で、必ず但し書きつきで扱っています。この「精度は競争軸にしない」という判断が、モデルを削らずに用途で並べ替える設計（[ADR-0022](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0022-model-catalog-curation.md)）につながっています。
 
-| モデル | 平均CER | 位置づけ |
-|---|---|---|
-| ggml-tiny | 56.9% | 日本語で base に完全劣位 |
-| ggml-base | 44.0% | 頑健な既定 |
-| kotoba-whisper v2.0 q5 | 38.3% | 日本語推奨（素材により幻覚で悪化しうる） |
+## 正直に言うと、同じ壁が自分にも刺さっている
 
-ここで**この指標の限界を正直に明示する**ことが、玄人読者に対する誠実さだと考える。
+ここまで「なぜ誰もやらないのか」を偉そうに論じてきましたが、その論の刃は自分にも向きます。掘り下げる過程で見つかった、QuickScribe 自身の未解決を隠さずに書きます。むしろこの節が、この記事で一番読む価値のあるところだと思っています。
 
-- **これは絶対精度ではない。** 原文へのルビ混入で絶対CERは悲観側に振れる。ベンチ文書自身が「絶対精度の主張には使うな」と明記している。
-- **N=3 の相対/回帰指標である。** 使い道は「モデル間の相対比較」と「回帰ゲート」に限る。回帰基準は `docs/perf/ja-cer-baseline.json`（margin=5pt）で管理する。
-- **平均は分布を隠す。** kotoba-q5 はサンプルによっては幻覚（反復・脱落）で base より悪化する。だから既定を kotoba-q5 に寄せつつ、頑健な base をフォールバックに残す設計にした。
+- **ローカル整形の導入摩擦**。整形の既定をローカル（Ollama）にした結果、Ollama が入っていないと初回の整形が失敗します。明確なエラーとオンボーディング導線とクラウドへの即切替は用意しましたが、同梱や自動セットアップはまだです。「摩擦ゼロ」という理想には届いていません。
+- **肝心の「ニュアンス保持」を測れていない**。これはコア価値そのものなのに、客観指標がありません。仮説3で「内省の価値は測れない」と偉そうに言いましたが、自分もその通り免れていない。第三者から「本当に要約と違うのか」と問われて、数字では返せないのが現状です。
+- **日本語の実力はまだ弱い**。前述のとおり CER の絶対値は高く、素材によっては kotoba が幻覚（反復や脱落）で base を下回ります。整形の質は文字起こしの質に乗るので、ここは弱点です。
+- **「育てる」がまだ未実装**。「残して育てる」の「育てる」、つまり複数の記録を横断して問いや傾向を見つける機能は、タグ付与（[ADR-0015](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0015-introspective-tags-and-cross-entry-discovery.md) の Phase 0）までしか入っていません。今は Obsidian などの外部ツールに頼っている状態で、コア価値の最終形はプロダクト内で証明できていません。
+- **プラットフォームの穴**。システム音の取り込みは Windows では実装済みですが、Linux 経路は設計段階（[ADR-0013](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0013-system-audio-loopback-and-source-unification.md) は Proposed のまま）です。
 
-この「測っていないものを明示する」姿勢が、そのまま製品判断に接続する。[ADR-0022](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0022-model-catalog-curation.md) は、実測で tiny が日本語劣位だと分かっても**モデルを削除しない**。tiny は英語・下書き・低スペック機での最速選択肢として価値が残るからだ。代わりにモデルカタログ（`src-tauri/src/model.rs`・全6モデル）を用途優先で並べ替える（`base → kotoba-q5 → kotoba → small → medium → tiny`）。そして UI ラベルに「tiny=日本語は低精度で非推奨」と言語別の適否を明示する。**「削る」のではなく「正しい選択肢へ導く」**——核心課題「リッチすぎると簡便でなくなる」への一貫した回答である。
-
-RTF（実時間比）についても条件を厳密に添えておく。CI 実測で **RTF 0.857**（実時間以内）を確認している。ただしこれは限定条件の値だ。内訳は **ggml-tiny・Linux x64・決定的AVX2ベースライン・音源長18.88s・GitHub Actions（ubuntu-22.04）**（[perf/baseline.md](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/perf/baseline.md)）。「アプリ全般の速度」に一般化してはいけない。同じベンチのピークRSSにも但し書きが要る。あの値は `cargo test` ハーネス全体（テストプロセス＋ビルド成果物＋whisperコンテキスト）のものであって、配布アプリのアイドルメモリではない。この注記もドキュメント側に残している。**「測った条件の外へ数字を持ち出さない」**規律は、記事とコードのどちらにも等しく効かせる。
-
-## 5. プライバシー設計：既定を「正直」にする
-
-差別化4軸の1つがローカルプライバシーだが、前述の通りこれ単体はコモディティだ。だからこそ**既定と表示の誠実さ**で差をつける。ここには失敗と是正の履歴がある。
-
-初期 UI は「話した言葉はこの端末から出ません」と表示していた。ところが当時の既定整形はクラウド（BYO鍵）だったため、これは**実態に反する過剰主張**だった。[ADR-0019](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0019-privacy-indicator-and-offline-mode.md) はこれを是正した。**プライバシー状態インジケータ**を設定先頭に常時表示し、`isFullyLocal = (整形=ローカルOllama) かつ (STT=ローカルwhisper)` のときだけ「オンデバイス完結」と表示する。それ以外は「クラウド送信あり」と正直に出す。加えてクラウド時のみ「オフラインにする」ワンクリック導線（provider=ollama / stt=local へ即切替）を用意した。ここでも「トグルを1つに留め、選択肢を増やさない」核心課題が効いている。
-
-その後 [ADR-0021](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0021-local-first-defaults.md) で Decider が既定自体をローカルファーストへ動かした。整形の既定を Ollama（ローカル）に変更し、日本語UIユーザーの whisper 既定モデルを kotoba-q5 にした。トレードオフも ADR に正直に書いてある。ローカル整形は Ollama 稼働が前提で、未導入だと初回整形が失敗する。だから握り潰さず明確な i18n エラー（`E_REFINE_*`）で通知し、オンボーディングに導線を添え、クラウドへの即切替も残す。**リスクを「削る」のではなく「設計・段階実装で対処する」**（[ADR-0006](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0006-scope-completeness-policy.md) のスコープ完全性ポリシー）という原則が、ここでも貫かれている。
-
-非機能面の裏付けも列挙しておく（[non-functional-requirements.md](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/non-functional-requirements.md)）。テレメトリ・解析は持たない（[ADR-0020](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0020-metrics-and-telemetry-stance.md)）。クラウド連携はオプトインのみ。巨大入力には 500MB のサイズ上限ガード（`MAX_INPUT_BYTES`）を置き、対応音声は7形式（mp3/wav/m4a/flac/ogg/opus/aac）。UI は4言語（ja/en/zh/es）を出荷済み。品質ゲートは CI 実測に基づき、フロントは全指標80%のカバレッジ閾値、Rust も lines 80% を下限（実測は約86.9%）に設定している。テストは Rust 側で約125関数、フロントで27ファイルが動く。これらは「価値の本体でない部分こそ機械で守る」という配分の表れである。
-
-## 6. 図をCIで生成し、絶対URLで貼る（記事の再現性・エバーグリーン性）
-
-技術記事の腐りやすさは、①図が本文と乖離する、②相対パス画像が転載でリンク切れになる、の2点に集約される。QuickScribe ではこれを仕組みで潰した。
-
-- **図は Mermaid を単一ソースにし、CI で SVG/PNG に書き出す**（`scripts/render-diagrams.mjs` + `@mermaid-js/mermaid-cli`）。`docs/design.md` の ```mermaid``` ブロックがそのまま `docs/assets/diagrams/design-1.png` / `design-2.png` になる。図の更新は本文（design.md）の更新と同期する。
-- **記事内の画像は絶対URL**（`https://raw.githubusercontent.com/Takenori-Kusaka/QuickScribe/main/...`）で参照する。相対パスは Qiita 転載でリンク切れになるためだ。この方針は記事テンプレと運用ポリシーに明文化した。
-- 校正は **textlint（preset-ja-technical-writing）**を CI で回し、記事変更時にゼロエラーを必須にする。
-- Zenn/Qiita の front-matter とリンク形式の差は、**単一ソース（Zenn記事）→ Qiita（qiita-cli 形式）への機械変換**（`scripts/zenn-to-qiita.mjs`）で吸収する。Zenn は GitHub 連携で `articles/` を自動同期するため push 型 CI は要さない。Qiita は qiita-cli の GitHub Action で公開できる形を用意し、**実際の公開トリガはメジャーバージョンアップ時のみ**という運用にした（詳細は [記事公開・再デプロイポリシー](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/process/article-publishing-policy.md)）。
-
-なお、より重厚な C4/Structurizr DSL 生成は将来検討とし、まずは Mermaid→SVG/PNG の軽量経路で「CI 生成・所定配置・絶対パス」という要件を満たすことを優先した。ここでも「リッチすぎると簡便でなくなる」を適用している。
+こうして並べると、仮説1と仮説3で挙げた「ローカルは坂道」「内省は測れない」という空白の理由が、そのまま自分の宿題として返ってきているのが分かります。空白に立つというのは、その空白を作った引力の中で戦い続ける、ということでもありました。
 
 ## まとめ
 
-QuickScribe の設計は、一貫して1つの問いから導かれている。**「価値の本体はどこか、そして本体でない部分をどれだけ機械化・抽象化・差し替え可能にできるか」**。
+競合がいない理由を掘っていったら、それは「誰も思いつかなかったから」ではありませんでした。「最近まで作れず、作れる今もお金にしにくいから」でした。この2つの壁は、そのまま自分のプロダクトの弱点（導入摩擦・計測できない価値・未完の育てる体験）の説明にもなっていました。
 
-- 文字起こしは `TranscriptionEngine` の背後に隠し、精度は**相対的な回帰指標**として CI で監視する。
-- 整形の知性を `FormattingEngine` の Strategy として一級化し、プライバシー方針の変更にアーキテクチャを縛られないようにする。
-- 技術選定は「不採用の理由」を ADR に残し、説明可能性を担保する。
-- 数値は必ず**計測条件の内側**でだけ語り、「何を測っていないか」を明示する。
-
-「精度で殴らない音声アプリ」という一見不利な立ち位置は、抽象境界と正直なベンチマークに支えられて初めて成立する。もし同種のプロダクトを設計するなら、最初に決めるべきは Whisper のモデルではなく、**自分の製品にとってのコモディティ境界をどこに引くか**だと思う。
+競合の空白は、チャンスであると同時に警告でもあります。隣接する製品が近づいてきている以上、この真ん中がいつまで無人でいるかは分かりません。もし同じ領域で何かを作るなら、最初に決めるべきは Whisper のモデルではなく、「自分はどの軸で空白に立ち、その空白を作っている引力とどう付き合うか」だと思います。少なくとも私にとっては、そこを言語化できたことが、コードを書くより先に必要な設計でした。
 
 ---
 
-**一次情報・関連ADR**
+**一次情報・関連 ADR**
 
-- 設計: [design.md](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/design.md) / [vision.md](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/vision.md) / [ADR索引](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/README.md)
-- 実測: [perf/baseline.md](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/perf/baseline.md) / [non-functional-requirements.md](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/non-functional-requirements.md)
-- 判断: ADR-0002 / 0003 / 0005 / 0006 / 0019 / 0020 / 0021 / 0022
+- ポジショニング / 設計: [ADR-0004](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0004-product-positioning-voice-journal.md) / [vision.md](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/vision.md) / [ADR 索引](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/README.md)
+- 競合分析: [competitive-landscape.md](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/research/competitive-landscape.md)
+- ローカルファースト既定 / モデル精選: [ADR-0021](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0021-local-first-defaults.md) / [ADR-0022](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0022-model-catalog-curation.md)
+- CER 実測とその限界: [perf/baseline.md](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/perf/baseline.md)
+- 未完の領域: [ADR-0013](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0013-system-audio-loopback-and-source-unification.md)（システム音 Linux 経路）/ [ADR-0015](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0015-introspective-tags-and-cross-entry-discovery.md)（横断発見）
