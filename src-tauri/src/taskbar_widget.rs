@@ -9,7 +9,7 @@
 // 透過方式: クロマキー(LWA_COLORKEY)はアイコンのアンチエイリアス縁がキー色(マゼンタ)と
 // 混ざり「色付きの縁(赤い背景)」が残るため廃止。UpdateLayeredWindow による per-pixel alpha
 // (32bpp プリマルチプライド ARGB)で合成し、アイコン本来の透過をそのまま反映する＝縁の滲み無し。
-// どこで失敗するか切り分けるため、各ステップを診断ログ(ドキュメント/QuickScribe/taskbar-diag.log)へ出力する。
+// どこで失敗するか切り分けるため、各ステップを診断ログ(%LOCALAPPDATA%\QuickScribe\logs\taskbar-diag.log)へ出力する。
 
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicIsize, Ordering};
@@ -64,10 +64,13 @@ const TOOL_OPEN: usize = 2;
 const WIDTH: i32 = 60; // 2ボタン分
 const TIMER_ID: usize = 1;
 
-/// 診断ログを ドキュメント/QuickScribe/taskbar-diag.log に追記する。
+/// 診断ログを OS の Local データ領域へ追記する（Windows=%LOCALAPPDATA%\QuickScribe\logs、
+/// Linux=~/.local/share/QuickScribe/logs、macOS=~/Library/Application Support/QuickScribe/logs）。
+/// 内部診断ログはユーザーの出力先(ドキュメント)ではなく、ローミングしない Local 領域へ置くのが
+/// 各OSの慣行。旧実装は出力先(ドキュメント/QuickScribe)へ書いていた。
 fn diag(msg: &str) {
-    if let Some(doc) = dirs::document_dir() {
-        let dir = doc.join("QuickScribe");
+    if let Some(base) = dirs::data_local_dir() {
+        let dir = base.join("QuickScribe").join("logs");
         let _ = std::fs::create_dir_all(&dir);
         if let Ok(mut f) = std::fs::OpenOptions::new()
             .create(true)
