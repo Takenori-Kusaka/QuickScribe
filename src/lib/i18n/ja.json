@@ -104,7 +104,6 @@
     "tip_timestamps": "いつ何を話したかの時刻を残し、AIが話の流れを踏まえて整理します。",
     "tip_auto_pipeline": "録音を止めると、文字起こし→AI整形まで一気に実行します（整形プロバイダの鍵が必要）。",
     "tip_audio_format": "Opusは小容量でジャーナル向き。WAVは無圧縮で容量大ですが確実です。",
-    "provider_ollama": "ローカル (Ollama)",
     "ollama_note_1": "ローカル (Ollama) は鍵不要で端末内完結（思考の生データを外に出しません）。 事前に ",
     "ollama_note_2": " の起動とモデル取得（例: ",
     "ollama_note_3": "）が必要です。",
@@ -213,6 +212,95 @@
     "audio_files": "音声ファイル",
     "text_memo": "テキスト/メモ"
   },
+  "catalog": {
+    "providers": {
+      "gemini": "Gemini",
+      "anthropic": "Anthropic (Claude)",
+      "openai": "OpenAI",
+      "ollama": "ローカル (Ollama)",
+      "bedrock": "AWS Bedrock",
+      "claude-aws": "Claude Platform on AWS"
+    },
+    "key_ph": {
+      "gemini": "AIza...",
+      "anthropic": "sk-ant-...",
+      "openai": "sk-...",
+      "ollama": "（不要）",
+      "bedrock": "Bedrock APIキー(Bearer) ※SigV4時は不要",
+      "claude-aws": "Anthropic APIキー ※SigV4時は不要"
+    },
+    "stt": {
+      "local": "ローカル (whisper・端末内完結)",
+      "groq": "Groq (whisper-large-v3-turbo・高速・安価)",
+      "openai": "OpenAI (gpt-4o-transcribe)",
+      "deepgram": "Deepgram (nova-3)",
+      "azure": "Azure AI Speech (fast transcription)"
+    },
+    "stt_key_ph": {
+      "groq": "gsk_...",
+      "openai": "sk-...",
+      "deepgram": "Deepgram APIキー",
+      "azure": "Azure Speech リソースキー"
+    },
+    "stt_model_ph": {
+      "groq": "whisper-large-v3-turbo",
+      "openai": "gpt-4o-transcribe",
+      "deepgram": "nova-3",
+      "azure": "（不要）"
+    },
+    "styles": {
+      "structured": {
+        "label": "構造化",
+        "desc": "見出しと箇条書きで要点を整理。ニュアンスは残します（既定）。"
+      },
+      "verbatim": {
+        "label": "逐語",
+        "desc": "言い淀みや繰り返しも極力そのまま。最小限の読みやすさ調整のみ。"
+      },
+      "summary": {
+        "label": "要約",
+        "desc": "全体を短く要約し、重要な要点を3〜5個に絞ります。"
+      },
+      "brainstorm": {
+        "label": "発想ひろげ",
+        "desc": "内容から問い・観点・次の一歩を広げる“再整形”。対話ではなく一度きりの書き換えです。"
+      },
+      "custom": {
+        "label": "カスタム",
+        "desc": "ユーザー定義の整形指示。"
+      }
+    },
+    "whisper_models": {
+      "base": "標準 base（日本語と速度のバランス・約142MB / 既定・頑健）",
+      "kotoba-q5": "日本語特化 kotoba-whisper 量子化（日本語精度◎・約538MB・日本語推奨）",
+      "kotoba": "日本語特化 kotoba-whisper 高精度（約1.5GB・低速）",
+      "small": "多言語 small（英語向き・約466MB）",
+      "medium": "多言語 medium（英語向き・高精度・約1.5GB・低速）",
+      "tiny": "最速 tiny（英語・下書き向き / 日本語は低精度で非推奨・約75MB）"
+    }
+  },
+  "eta": {
+    "seconds": "残り 約{s}秒",
+    "minutes": "残り 約{m}分",
+    "min_sec": "残り 約{m}分{s}秒"
+  },
+  "tray": {
+    "record": "録音開始/停止",
+    "show": "ウィンドウを表示",
+    "quit": "終了",
+    "tooltip_recording": "QuickScribe — 録音中",
+    "tooltip_idle": "QuickScribe — 待機中"
+  },
+  "status": {
+    "rust": {
+      "S_MODEL_DOWNLOAD_PCT": "whisperモデルをダウンロード中… {detail}%",
+      "S_MODEL_DOWNLOAD_MB": "whisperモデルをダウンロード中… {detail} MB",
+      "S_TRANSCRIBING_CLOUD": "クラウドで文字起こし中…",
+      "S_TRANSCRIBING": "文字起こし中…",
+      "S_LOADING_AUDIO": "音声を読み込み中…",
+      "S_AUDIO_SAVE_FAILED": "音声保存に失敗: {detail}"
+    }
+  },
   "errors": {
     "journal_load": "ジャーナルの読み込みに失敗しました: {detail}",
     "entry_open": "エントリを開けませんでした: {detail}",
@@ -308,7 +396,23 @@
       "E_REFINE_AWS_NO_KEYS": "AWSアクセスキー/シークレットが未設定です。",
       "E_REFINE_AWS_NO_REGION": "AWSリージョンが未設定です。",
       "E_REFINE_MODELS_HTTP": "モデル一覧の取得に失敗しました: {detail}",
-      "E_REFINE_NO_SONNET": "Sonnet系モデルが見つかりませんでした。"
+      "E_REFINE_NO_SONNET": "Sonnet系モデルが見つかりませんでした。",
+      "E_NO_DOCUMENT_DIR": "ドキュメントフォルダが見つかりません。",
+      "E_FILE_TOO_LARGE": "ファイルが大きすぎます（{detail}）。録音を分割してお試しください。",
+      "E_UNSUPPORTED_AUDIO_EXT": "対応していない音声形式です。対応形式: {detail}",
+      "E_FILE_OPEN": "ファイルを開けませんでした（{detail}）。パスや権限をご確認ください。",
+      "E_NOT_RECORDING": "録音していません。",
+      "E_EMPTY_RECORDING": "録音データが空でした（録音が短すぎたか、選択した録音ソースに音声がありませんでした）。",
+      "E_NO_AUDIO_TRACK": "音声トラックがありません。",
+      "E_STT_MODEL_PATH": "モデルパスが不正です。",
+      "E_MODEL_SIZE_MISMATCH": "モデルのサイズが一致しません（破損の可能性）: {detail}",
+      "E_MODEL_SHA256_MISMATCH": "モデルのSHA256が一致しません（改ざん・破損の可能性）: {detail}",
+      "E_REFINE_OLLAMA_CONN": "ローカルOllamaへの接続に失敗しました（ollamaが起動し、モデルが取得済みか確認してください）: {detail}",
+      "E_REFINE_AWS_CONFIG": "AWSプロバイダの設定（リージョン/認証）が未指定です: {detail}",
+      "E_REFINE_NO_OLLAMA_MODEL": "インストール済みOllamaモデルが見つかりません。",
+      "E_REFINE_MODELS_PARSE": "モデル一覧応答が不正です: {detail}",
+      "E_REFINE_NO_OPENAI_MID": "適切なミドルレンジ(gpt-4o/4.1系)モデルが見つかりません。",
+      "E_REFINE_NO_FLASH": "flash系モデルが見つかりませんでした。"
     },
     "unknown": "原因不明のエラーが発生しました。"
   }

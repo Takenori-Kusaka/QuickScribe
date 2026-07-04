@@ -1,4 +1,5 @@
 // 録音メモに関する純粋ロジック。UI/Tauriから分離してテスト可能にする（S7.2）。
+import { type Translator } from "./errors";
 
 /**
  * 録音開始・停止のミリ秒から経過秒を求める（負値は0に丸める）。
@@ -32,14 +33,25 @@ export function estimateRemaining(elapsedSec: number, progressPct: number): numb
 
 /**
  * 残り秒数を「残り 約N分N秒」形式に整形する（進捗ETA表示用）。
+ * 文言は i18n カタログ(eta.*)から解決する（#401: 非日本語UIに日本語を露出させない）。
  * @param seconds 残り秒数。非有限・0以下は空文字を返す。
+ * @param t 翻訳関数（svelte-i18n の $_）。省略時は日本語既定で整形する。
  * @returns 整形済み ETA 文字列（例「残り 約2分30秒」）。
  */
-export function formatRemaining(seconds: number): string {
+export function formatRemaining(seconds: number, t?: Translator): string {
   if (!isFinite(seconds) || seconds <= 0) return "";
   const s = Math.round(seconds);
-  if (s < 60) return `残り 約${s}秒`;
+  const ja: Record<string, (v: Record<string, string>) => string> = {
+    "eta.seconds": (v) => `残り 約${v.s}秒`,
+    "eta.minutes": (v) => `残り 約${v.m}分`,
+    "eta.min_sec": (v) => `残り 約${v.m}分${v.s}秒`,
+  };
+  const tr = (key: string, values: Record<string, string>) =>
+    t ? t(key, { values }) : ja[key](values);
+  if (s < 60) return tr("eta.seconds", { s: String(s) });
   const m = Math.floor(s / 60);
   const rem = s % 60;
-  return rem === 0 ? `残り 約${m}分` : `残り 約${m}分${rem}秒`;
+  return rem === 0
+    ? tr("eta.minutes", { m: String(m) })
+    : tr("eta.min_sec", { m: String(m), s: String(rem) });
 }

@@ -2,8 +2,8 @@
 // App.svelte の validateSettings から純ロジックを抽出し、単体テスト可能にする。
 // 破損/未知の値は既定へクランプ（破損耐性）。未知キー自体は呼び出し側で保持（非破壊）。
 import {
-  PROVIDER_LABELS,
-  STT_LABELS,
+  ALL_PROVIDERS,
+  STT_PROVIDERS,
   REFINE_STYLES,
   type Provider,
   type SttProvider,
@@ -16,7 +16,7 @@ import {
  * @returns 既知のプロバイダならそのまま、未知は既定 "gemini"。
  */
 export function clampProvider(p: string): Provider {
-  return (p in PROVIDER_LABELS ? p : "gemini") as Provider;
+  return ((ALL_PROVIDERS as string[]).includes(p) ? p : "gemini") as Provider;
 }
 
 /**
@@ -25,7 +25,7 @@ export function clampProvider(p: string): Provider {
  * @returns 既知の STT プロバイダならそのまま、未知は既定 "local"。
  */
 export function clampSttProvider(p: string): SttProvider {
-  return (p in STT_LABELS ? p : "local") as SttProvider;
+  return ((STT_PROVIDERS as string[]).includes(p) ? p : "local") as SttProvider;
 }
 
 /**

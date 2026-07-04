@@ -42,4 +42,11 @@ describe("formatRemaining", () => {
   it("0以下は空", () => {
     expect(formatRemaining(0)).toBe("");
   });
+  it("翻訳関数を渡すと eta.* キーで解決する（#401）", () => {
+    const t = (key: string, opts?: { values?: Record<string, string> }) =>
+      `${key}:${JSON.stringify(opts?.values)}`;
+    expect(formatRemaining(45, t)).toBe('eta.seconds:{"s":"45"}');
+    expect(formatRemaining(120, t)).toBe('eta.minutes:{"m":"2"}');
+    expect(formatRemaining(125, t)).toBe('eta.min_sec:{"m":"2","s":"5"}');
+  });
 });

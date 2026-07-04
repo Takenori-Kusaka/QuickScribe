@@ -57,14 +57,11 @@ export const ALL_PROVIDERS: Provider[] = [
   "claude-aws",
 ];
 
-export const PROVIDER_LABELS: Record<Provider, string> = {
-  gemini: "Gemini",
-  anthropic: "Anthropic (Claude)",
-  openai: "OpenAI",
-  ollama: "ローカル (Ollama)",
-  bedrock: "AWS Bedrock",
-  "claude-aws": "Claude Platform on AWS",
-};
+// 表示文言は翻訳カタログ(ja/en/zh/es)に一本化し、ここではキー名のみを持つ(SSOT / #401)。
+// 使用側は $_(PROVIDER_LABEL_KEYS[p]) 等で解決する（ハードコード日本語をUIに露出させない）。
+export const PROVIDER_LABEL_KEYS: Record<Provider, string> = Object.fromEntries(
+  ALL_PROVIDERS.map((p) => [p, `catalog.providers.${p}`]),
+) as Record<Provider, string>;
 
 // 鍵不要のローカルプロバイダ（端末内完結＝差別化「ローカルプライバシー」/ S3.4）。
 export const LOCAL_PROVIDERS: Provider[] = ["ollama"];
@@ -84,66 +81,45 @@ export const FALLBACK_MODELS: Record<Provider, string> = {
   "claude-aws": "claude-sonnet-4-6",
 };
 
-export const KEY_PLACEHOLDERS: Record<Provider, string> = {
-  gemini: "AIza...",
-  anthropic: "sk-ant-...",
-  openai: "sk-...",
-  ollama: "",
-  bedrock: "Bedrock APIキー(Bearer) ※SigV4時は不要",
-  "claude-aws": "Anthropic APIキー ※SigV4時は不要",
-};
+// APIキー入力のプレースホルダ（i18nキー。ollamaは鍵不要のためUIには出ない）。
+export const KEY_PLACEHOLDER_KEYS: Record<Provider, string> = Object.fromEntries(
+  ALL_PROVIDERS.map((p) => [p, `catalog.key_ph.${p}`]),
+) as Record<Provider, string>;
 
 // ===== 文字起こし(STT)プロバイダ =====
 export type SttProvider = "local" | "groq" | "openai" | "deepgram" | "azure";
 
-export const STT_LABELS: Record<SttProvider, string> = {
-  local: "ローカル (whisper・端末内完結)",
-  groq: "Groq (whisper-large-v3-turbo・高速・安価)",
-  openai: "OpenAI (gpt-4o-transcribe)",
-  deepgram: "Deepgram (nova-3)",
-  azure: "Azure AI Speech (fast transcription)",
-};
+/** STTプロバイダの表示順(SSOT)。ラベルは catalog.stt.* で解決する。 */
+export const STT_PROVIDERS: SttProvider[] = ["local", "groq", "openai", "deepgram", "azure"];
+
+export const STT_LABEL_KEYS: Record<SttProvider, string> = Object.fromEntries(
+  STT_PROVIDERS.map((p) => [p, `catalog.stt.${p}`]),
+) as Record<SttProvider, string>;
 
 export const STT_CLOUD: SttProvider[] = ["groq", "openai", "deepgram", "azure"];
 
-export const STT_KEY_PLACEHOLDERS: Record<string, string> = {
-  groq: "gsk_...",
-  openai: "sk-...",
-  deepgram: "Deepgram APIキー",
-  azure: "Azure Speech リソースキー",
-};
+export const STT_KEY_PLACEHOLDER_KEYS: Record<string, string> = Object.fromEntries(
+  STT_CLOUD.map((p) => [p, `catalog.stt_key_ph.${p}`]),
+);
 
-export const STT_MODEL_PLACEHOLDERS: Record<string, string> = {
-  groq: "whisper-large-v3-turbo",
-  openai: "gpt-4o-transcribe",
-  deepgram: "nova-3",
-  azure: "（不要）",
-};
+export const STT_MODEL_PLACEHOLDER_KEYS: Record<string, string> = Object.fromEntries(
+  STT_CLOUD.map((p) => [p, `catalog.stt_model_ph.${p}`]),
+);
 
 // ===== 整形スタイル =====
-// desc は各モードの短い解説(設定のtips・処理画面のツールチップに使う。refine.rs の指示と一致)。
-export type RefineStyle = { value: string; label: string; desc: string };
+// label/desc は翻訳カタログ(catalog.styles.*)のキー。desc は各モードの短い解説
+// (設定のtips・処理画面のツールチップに使う。refine.rs の指示と一致)。
+export type RefineStyle = { value: string; labelKey: string; descKey: string };
 
-export const REFINE_STYLES: RefineStyle[] = [
-  {
-    value: "structured",
-    label: "構造化",
-    desc: "見出しと箇条書きで要点を整理。ニュアンスは残します（既定）。",
-  },
-  {
-    value: "verbatim",
-    label: "逐語",
-    desc: "言い淀みや繰り返しも極力そのまま。最小限の読みやすさ調整のみ。",
-  },
-  { value: "summary", label: "要約", desc: "全体を短く要約し、重要な要点を3〜5個に絞ります。" },
-  // ブレストは vision のコア価値「逐語⇄要約⇄ブレストを行き来」に含まれる整形スタイル。
-  // 対話型Q&A(ツールの役割外)ではなく「発想を広げる再整形」であることを desc で明確化する(#514)。
-  {
-    value: "brainstorm",
-    label: "発想ひろげ",
-    desc: "内容から問い・観点・次の一歩を広げる“再整形”。対話ではなく一度きりの書き換えです。",
-  },
-];
+// ブレストは vision のコア価値「逐語⇄要約⇄ブレストを行き来」に含まれる整形スタイル。
+// 対話型Q&A(ツールの役割外)ではなく「発想を広げる再整形」であることを desc で明確化する(#514)。
+export const REFINE_STYLES: RefineStyle[] = ["structured", "verbatim", "summary", "brainstorm"].map(
+  (value) => ({
+    value,
+    labelKey: `catalog.styles.${value}.label`,
+    descKey: `catalog.styles.${value}.desc`,
+  }),
+);
 
 // ユーザー定義のカスタム整形パターン（S3.3）。value は "custom:<id>"。
 export type CustomStyle = { id: string; label: string; instruction: string };

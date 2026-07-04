@@ -4,8 +4,9 @@
 // 設計(S3.1/S3.3):
 // - 整形「スタイル」(構造化/逐語/要約/ブレスト)を `RefineStyle` で切り替え可能にする(S3.3)。
 //   逐語⇄要約⇄ブレストを行き来できるのがコア価値(ADR-0004)。
-// - プロバイダ(Gemini/Anthropic/OpenAI)は `FormattingEngine` trait の実装として差し替え可能にする
-//   (S3.1: 戦略の差し替え=DIP 境界。将来のローカルLLM=Ollama 等もこの trait を実装すれば載る/S3.4)。
+// - プロバイダは `FormattingEngine` trait の実装として差し替え可能(S3.1: 戦略の差し替え=DIP境界)。
+//   実装済み6種: Gemini / Anthropic / OpenAI / ローカルOllama(S3.4) /
+//   AWS Bedrock / Claude Platform on AWS(ADR-0011)。
 // - 鍵はフロントの設定から渡す(コードに埋め込まない/ADR-0005)。
 
 use serde_json::json;
@@ -487,9 +488,7 @@ impl FormattingEngine for OllamaEngine {
         let mut resp = ureq::post(&url)
             .header("Content-Type", "application/json")
             .send_json(&body)
-            .map_err(|e| {
-                format!("ローカルOllamaへの接続に失敗しました（ollamaが起動し、モデルが取得済みか確認してください）: {e}")
-            })?;
+            .map_err(|e| crate::errcode::ec(crate::errcode::E_REFINE_OLLAMA_CONN, e))?;
         let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
 
         let out = v
@@ -556,7 +555,7 @@ impl FormattingEngine for BedrockEngine {
     fn refine(&self, req: &RefineRequest) -> Result<String, String> {
         let aws = req
             .aws
-            .ok_or("AWS Bedrock の設定(リージョン/認証)が未指定です")?;
+            .ok_or_else(|| crate::errcode::ec(crate::errcode::E_REFINE_AWS_CONFIG, "Bedrock"))?;
         if aws.region.trim().is_empty() {
             return Err(crate::errcode::E_REFINE_AWS_NO_REGION.into());
         }
@@ -604,9 +603,9 @@ impl FormattingEngine for BedrockEngine {
 /// 署名名は "aws-external-anthropic"。APIキー時は x-api-key。
 impl FormattingEngine for ClaudePlatformAwsEngine {
     fn refine(&self, req: &RefineRequest) -> Result<String, String> {
-        let aws = req
-            .aws
-            .ok_or("Claude Platform on AWS の設定(リージョン/認証)が未指定です")?;
+        let aws = req.aws.ok_or_else(|| {
+            crate::errcode::ec(crate::errcode::E_REFINE_AWS_CONFIG, "Claude Platform on AWS")
+        })?;
         if aws.region.trim().is_empty() {
             return Err(crate::errcode::E_REFINE_AWS_NO_REGION.into());
         }
@@ -643,9 +642,10 @@ impl FormattingEngine for ClaudePlatformAwsEngine {
         let out = anthropic_text(&v);
         let body = extract_tagged_body(&out);
         if body.is_empty() {
-            return Err(format!(
-                "整形結果が空でした（Claude Platform on AWS応答: {}）",
-                v
+            // 他エンジンと同じ安定コード(E_REFINE_EMPTY_RESULT)へ統一（#462）。
+            return Err(crate::errcode::ec(
+                crate::errcode::E_REFINE_EMPTY_RESULT,
+                format!("Claude Platform on AWS: {v}"),
             ));
         }
         Ok(body)
@@ -685,7 +685,7 @@ fn latest_ollama() -> Result<String, String> {
         .and_then(|m| m.get("name"))
         .and_then(|n| n.as_str())
         .map(|s| s.to_string())
-        .ok_or_else(|| "インストール済みOllamaモデルが見つかりません".into())
+        .ok_or_else(|| crate::errcode::E_REFINE_NO_OLLAMA_MODEL.into())
 }
 
 /// Anthropic: GET /v1/models（新しい順）から最新の Sonnet(=ミドルレンジ) を選ぶ。
@@ -702,7 +702,7 @@ fn latest_anthropic(api_key: &str) -> Result<String, String> {
     let data = v
         .get("data")
         .and_then(|d| d.as_array())
-        .ok_or("Anthropicのモデル一覧応答が不正です")?;
+        .ok_or_else(|| crate::errcode::ec(crate::errcode::E_REFINE_MODELS_PARSE, "Anthropic"))?;
     // data[] は作成日の新しい順。最初に見つかった sonnet が最新。
     for m in data {
         if let Some(id) = m.get("id").and_then(|i| i.as_str()) {
@@ -727,12 +727,12 @@ fn latest_openai(api_key: &str) -> Result<String, String> {
     let data = v
         .get("data")
         .and_then(|d| d.as_array())
-        .ok_or("OpenAIのモデル一覧応答が不正です")?;
+        .ok_or_else(|| crate::errcode::ec(crate::errcode::E_REFINE_MODELS_PARSE, "OpenAI"))?;
     let ids: Vec<&str> = data
         .iter()
         .filter_map(|m| m.get("id").and_then(|i| i.as_str()))
         .collect();
-    pick_openai_mid(&ids).ok_or_else(|| "適切なミドルレンジ(gpt-4o/4.1系)が見つかりません".into())
+    pick_openai_mid(&ids).ok_or_else(|| crate::errcode::E_REFINE_NO_OPENAI_MID.into())
 }
 
 /// OpenAIのモデルID群からミドルレンジ汎用チャットの最新を選ぶ（純粋関数・テスト対象）。
@@ -787,7 +787,7 @@ fn latest_gemini(api_key: &str) -> Result<String, String> {
     let models = v
         .get("models")
         .and_then(|m| m.as_array())
-        .ok_or("Geminiのモデル一覧応答が不正です")?;
+        .ok_or_else(|| crate::errcode::ec(crate::errcode::E_REFINE_MODELS_PARSE, "Gemini"))?;
 
     let mut alias: Option<String> = None;
     let mut best: Option<(f64, String)> = None;
@@ -818,7 +818,7 @@ fn latest_gemini(api_key: &str) -> Result<String, String> {
         return Ok(a);
     }
     best.map(|(_, id)| id)
-        .ok_or_else(|| "flash系モデルが見つかりませんでした".into())
+        .ok_or_else(|| crate::errcode::E_REFINE_NO_FLASH.into())
 }
 
 #[cfg(test)]

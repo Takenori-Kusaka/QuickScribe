@@ -145,7 +145,7 @@ fn resolve_save_dir(settings: &SaveSettings) -> Result<std::path::PathBuf, Strin
         return Ok(std::path::PathBuf::from(d));
     }
     Ok(dirs::document_dir()
-        .ok_or_else(|| "ドキュメントフォルダが見つかりません".to_string())?
+        .ok_or_else(|| errcode::E_NO_DOCUMENT_DIR.to_string())?
         .join("QuickScribe"))
 }
 
@@ -281,9 +281,12 @@ fn transcribe_blocking(
         let app_dl = app.clone();
         // 選択された whisper モデル（S2.2）。stt.model が空なら既定 base。
         model::ensure_model_id(&stt.model, move |done, total| {
+            // 進行状況は安定コード＋数値詳細で通知し、フロントがローカライズする（#462）。
             let msg = match total {
-                Some(t) if t > 0 => format!("whisperモデルをダウンロード中… {}%", done * 100 / t),
-                _ => format!("whisperモデルをダウンロード中… {} MB", done / 1_048_576),
+                Some(t) if t > 0 => {
+                    errcode::ec(errcode::S_MODEL_DOWNLOAD_PCT, done * 100 / t)
+                }
+                _ => errcode::ec(errcode::S_MODEL_DOWNLOAD_MB, done / 1_048_576),
             };
             let _ = app_dl.emit("status", msg);
         })?
@@ -292,9 +295,9 @@ fn transcribe_blocking(
     let _ = app.emit(
         "status",
         if is_cloud {
-            "クラウドで文字起こし中…"
+            errcode::S_TRANSCRIBING_CLOUD
         } else {
-            "文字起こし中…"
+            errcode::S_TRANSCRIBING
         },
     );
     let app_p = app.clone();
@@ -343,21 +346,21 @@ fn transcribe_blocking(
 /// 入力ファイルのサイズ上限（メモリ膨張・長時間ブロックの防止 / #397）。
 pub const MAX_INPUT_BYTES: u64 = 500 * 1024 * 1024; // 500 MB
 
-/// 入力サイズが上限内かを検証する。超過時はユーザー向けの理由（次の一手つき）を返す。
+/// 入力サイズが上限内かを検証する。超過時は安定コード＋詳細（実サイズ/上限）を返す（#462）。
 pub fn check_input_size(len: u64) -> Result<(), String> {
     if len > MAX_INPUT_BYTES {
         let mb = |b: u64| (b as f64) / (1024.0 * 1024.0);
-        return Err(format!(
-            "ファイルが大きすぎます（約{:.0}MB）。上限は{:.0}MBです。録音を分割してお試しください。",
-            mb(len),
-            mb(MAX_INPUT_BYTES),
+        return Err(errcode::ec(
+            errcode::E_FILE_TOO_LARGE,
+            format!("{:.0}MB > {:.0}MB", mb(len), mb(MAX_INPUT_BYTES)),
         ));
     }
     Ok(())
 }
 
-/// 対応する音声入力形式（フロント SUPPORTED_AUDIO_EXTS と一致させること / #18）。
-pub const SUPPORTED_AUDIO_EXTS: &[&str] = &["mp3", "wav", "m4a", "flac", "ogg", "aac"];
+/// 対応する音声入力形式（フロント src/lib/constants.ts の SUPPORTED_AUDIO_EXTS と一致させる
+/// こと / #18。契約テスト supported_audio_exts_match_frontend が両側の一致を機械検証する）。
+pub const SUPPORTED_AUDIO_EXTS: &[&str] = &["mp3", "wav", "m4a", "flac", "ogg", "opus", "aac"];
 
 /// 拡張子が対応形式かを検証する（純関数・テスト対象）。非対応は対応形式を添えて弾く。
 pub fn check_audio_extension(path: &std::path::Path) -> Result<(), String> {
@@ -367,9 +370,9 @@ pub fn check_audio_extension(path: &std::path::Path) -> Result<(), String> {
         .map(|e| e.to_ascii_lowercase());
     match ext {
         Some(e) if SUPPORTED_AUDIO_EXTS.contains(&e.as_str()) => Ok(()),
-        _ => Err(format!(
-            "対応していない音声形式です。対応形式: {}",
-            SUPPORTED_AUDIO_EXTS.join(" / ")
+        _ => Err(errcode::ec(
+            errcode::E_UNSUPPORTED_AUDIO_EXT,
+            SUPPORTED_AUDIO_EXTS.join(" / "),
         )),
     }
 }
@@ -387,11 +390,9 @@ async fn transcribe_file(
         // 対応形式かを先に検証（非対応は分かりやすく弾く / #18）。
         check_audio_extension(p)?;
         // 巨大ファイルは復号前にサイズで弾く。metadata失敗は無警告スキップせず明示エラーにする。
-        let meta = std::fs::metadata(p).map_err(|e| {
-            format!("ファイルを開けませんでした（{e}）。パスや権限をご確認ください。")
-        })?;
+        let meta = std::fs::metadata(p).map_err(|e| errcode::ec(errcode::E_FILE_OPEN, e))?;
         check_input_size(meta.len())?;
-        let _ = app.emit("status", "音声を読み込み中…");
+        let _ = app.emit("status", errcode::S_LOADING_AUDIO);
         let audio = stt::decode_to_16k_mono(p)?;
         transcribe_blocking(&app, &audio, timestamps)
     })
@@ -452,14 +453,11 @@ async fn stop_recording(
             .current
             .lock()
             .map_err(|_| errcode::E_LOCK_RECORD_STATE.to_string())?;
-        cur.take().ok_or_else(|| "録音していません".to_string())?
+        cur.take().ok_or_else(|| errcode::E_NOT_RECORDING.to_string())?
     };
     let recorded = recording.finish()?;
     if recorded.mono16k.is_empty() {
-        return Err(
-            "録音データが空でした（録音が短すぎたか、選択した録音ソースに音声がありませんでした）"
-                .into(),
-        );
+        return Err(errcode::E_EMPTY_RECORDING.into());
     }
     let raw = recorded.raw;
     let sample_rate = recorded.sample_rate;
@@ -490,7 +488,8 @@ async fn stop_recording(
                         audio_save::save_wav(&raw, sample_rate, channels, &dir, &stem)
                     };
                     if let Err(e) = r {
-                        let _ = app_blk.emit("status", format!("音声保存に失敗: {e}"));
+                        let _ =
+                            app_blk.emit("status", errcode::ec(errcode::S_AUDIO_SAVE_FAILED, e));
                     }
                 }
             }
@@ -657,15 +656,82 @@ fn read_text_file(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|e| errcode::ec(errcode::E_TEXT_READ, e))
 }
 
+/// トレイのメニュー/ツールチップ文言（UI言語で解決した文字列をフロントが送る / #462）。
+/// トレイメニューはRust側で文字列が必要なため、フロントが起動時とUI言語切替時に
+/// `set_tray_texts` で現在言語の文言を注入する。未注入時は日本語既定で表示する。
+struct TrayTexts {
+    inner: std::sync::Mutex<TrayTextValues>,
+}
+
+#[derive(Clone)]
+struct TrayTextValues {
+    tooltip_recording: String,
+    tooltip_idle: String,
+}
+
+impl Default for TrayTexts {
+    fn default() -> Self {
+        Self {
+            inner: std::sync::Mutex::new(TrayTextValues {
+                tooltip_recording: "QuickScribe — 録音中".into(),
+                tooltip_idle: "QuickScribe — 待機中".into(),
+            }),
+        }
+    }
+}
+
+/// トレイのメニュー項目・ツールチップ文言を現在のUI言語へ更新する（フロントから呼ぶ）。
+/// メニューは項目テキストを変えるため作り直して差し替える（メニュー操作はメインスレッドで行う）。
+#[tauri::command]
+fn set_tray_texts(
+    app: tauri::AppHandle,
+    record: String,
+    show: String,
+    quit: String,
+    tooltip_recording: String,
+    tooltip_idle: String,
+) {
+    if let Ok(mut g) = app.state::<TrayTexts>().inner.lock() {
+        g.tooltip_recording = tooltip_recording;
+        g.tooltip_idle = tooltip_idle.clone();
+    }
+    let app2 = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(tray) = app2.tray_by_id("main-tray") {
+            let items = (
+                MenuItem::with_id(&app2, "record", &record, true, None::<&str>),
+                MenuItem::with_id(&app2, "show", &show, true, None::<&str>),
+                MenuItem::with_id(&app2, "quit", &quit, true, None::<&str>),
+            );
+            if let (Ok(r), Ok(s), Ok(q)) = items {
+                if let Ok(menu) = Menu::with_items(&app2, &[&r, &s, &q]) {
+                    let _ = tray.set_menu(Some(menu));
+                }
+            }
+            // 録音状態はフロントが set_recording_overlay で管理するため、ここでは待機中表示へ更新。
+            let _ = tray.set_tooltip(Some(tooltip_idle.as_str()));
+        }
+    });
+}
+
 /// タスクバーボタンに録音中バッジ(オーバーレイ)を表示/解除する（Windowsのみ。状態の可視化）。
 #[tauri::command]
 fn set_recording_overlay(app: tauri::AppHandle, recording: bool) {
     // トレイのツールチップ＋アイコンで録音状態を表示（全プラットフォーム）。
     if let Some(tray) = app.tray_by_id("main-tray") {
+        let texts = app
+            .state::<TrayTexts>()
+            .inner
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_else(|_| TrayTextValues {
+                tooltip_recording: "QuickScribe — 録音中".into(),
+                tooltip_idle: "QuickScribe — 待機中".into(),
+            });
         let _ = tray.set_tooltip(Some(if recording {
-            "QuickScribe — 録音中"
+            texts.tooltip_recording.as_str()
         } else {
-            "QuickScribe — 待機中"
+            texts.tooltip_idle.as_str()
         }));
         if recording {
             let _ = tray.set_icon(Some(recording_tray_image()));
@@ -785,8 +851,16 @@ mod tests {
             check_audio_extension(Path::new("A.WAV")).is_ok(),
             "大文字も許容"
         );
+        assert!(
+            check_audio_extension(Path::new("a.opus")).is_ok(),
+            ".opus はデコード対応済(#560)のため受理する"
+        );
         let err = check_audio_extension(Path::new("a.txt")).unwrap_err();
-        assert!(err.contains("対応形式"), "対応形式を案内する: {err}");
+        assert!(
+            err.starts_with(errcode::E_UNSUPPORTED_AUDIO_EXT),
+            "安定コードを返す: {err}"
+        );
+        assert!(err.contains("mp3"), "対応形式一覧を detail に含む: {err}");
         assert!(
             check_audio_extension(Path::new("noext")).is_err(),
             "拡張子なしは弾く"
@@ -799,10 +873,32 @@ mod tests {
         assert!(check_input_size(MAX_INPUT_BYTES).is_ok());
         let err = check_input_size(MAX_INPUT_BYTES + 1).unwrap_err();
         assert!(
-            err.contains("大きすぎます"),
-            "ユーザー向け理由を含む: {err}"
+            err.starts_with(errcode::E_FILE_TOO_LARGE),
+            "安定コードを返す: {err}"
         );
-        assert!(err.contains("録音を分割"), "次の一手を含む: {err}");
+        assert!(err.contains("500MB"), "上限を detail に含む: {err}");
+    }
+
+    /// TS/Rust の対応音声形式リストの契約テスト（#18 / 監査項目: SUPPORTED_AUDIO_EXTS 乖離）。
+    /// フロント src/lib/constants.ts の SUPPORTED_AUDIO_EXTS と完全一致（順序含む）を検証する。
+    #[test]
+    fn supported_audio_exts_match_frontend() {
+        let ts = include_str!("../../src/lib/constants.ts");
+        let line = ts
+            .lines()
+            .find(|l| l.contains("SUPPORTED_AUDIO_EXTS") && l.contains('['))
+            .expect("constants.ts に SUPPORTED_AUDIO_EXTS の定義が見つからない");
+        let start = line.find('[').unwrap();
+        let end = line.rfind(']').unwrap();
+        let front: Vec<&str> = line[start + 1..end]
+            .split(',')
+            .map(|s| s.trim().trim_matches('"'))
+            .filter(|s| !s.is_empty())
+            .collect();
+        assert_eq!(
+            front, SUPPORTED_AUDIO_EXTS,
+            "フロント(constants.ts)とRust(lib.rs)の対応形式が乖離している"
+        );
     }
 
     #[test]
@@ -963,6 +1059,7 @@ pub fn run() {
         .manage(record::RecorderState::default())
         .manage(AppSettings::default())
         .manage(SttState::default())
+        .manage(TrayTexts::default())
         .invoke_handler(tauri::generate_handler![
             save_note,
             open_vault,
@@ -979,6 +1076,7 @@ pub fn run() {
             set_save_settings,
             set_stt_settings,
             set_recording_overlay,
+            set_tray_texts,
             set_taskbar_shortcut,
             set_taskbar_widget,
             set_secret,
@@ -1001,6 +1099,7 @@ pub fn run() {
             app.global_shortcut().register(toggle_shortcut.clone())?;
 
             // システムトレイ(右クリックメニュー)。タスクバー常駐の操作起点。
+            // 初期文言は日本語既定。フロントが起動直後に set_tray_texts で現在のUI言語へ更新する。
             let record_i = MenuItem::with_id(app, "record", "録音開始/停止", true, None::<&str>)?;
             let show_i = MenuItem::with_id(app, "show", "ウィンドウを表示", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "終了", true, None::<&str>)?;

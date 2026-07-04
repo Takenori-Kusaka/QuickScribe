@@ -19,6 +19,12 @@ pub fn ec(code: &str, detail: impl std::fmt::Display) -> String {
 
 // ---- lib.rs ----
 pub const E_LOCK_STT: &str = "E_LOCK_STT";
+pub const E_NO_DOCUMENT_DIR: &str = "E_NO_DOCUMENT_DIR";
+pub const E_FILE_TOO_LARGE: &str = "E_FILE_TOO_LARGE";
+pub const E_UNSUPPORTED_AUDIO_EXT: &str = "E_UNSUPPORTED_AUDIO_EXT";
+pub const E_FILE_OPEN: &str = "E_FILE_OPEN";
+pub const E_NOT_RECORDING: &str = "E_NOT_RECORDING";
+pub const E_EMPTY_RECORDING: &str = "E_EMPTY_RECORDING";
 pub const E_JOURNAL_DIR: &str = "E_JOURNAL_DIR";
 pub const E_FILE_MANAGER: &str = "E_FILE_MANAGER";
 pub const E_LOCK_SETTINGS: &str = "E_LOCK_SETTINGS";
@@ -68,9 +74,13 @@ pub const E_CLOUD_STT_HTTP: &str = "E_CLOUD_STT_HTTP";
 pub const E_CLOUD_STT_STATUS: &str = "E_CLOUD_STT_STATUS";
 pub const E_CLOUD_STT_PARSE: &str = "E_CLOUD_STT_PARSE";
 pub const E_AZURE_NO_RESOURCE: &str = "E_AZURE_NO_RESOURCE";
+pub const E_NO_AUDIO_TRACK: &str = "E_NO_AUDIO_TRACK";
+pub const E_STT_MODEL_PATH: &str = "E_STT_MODEL_PATH";
 
 // ---- model.rs ----
 pub const E_MODEL_DOWNLOAD: &str = "E_MODEL_DOWNLOAD";
+pub const E_MODEL_SIZE_MISMATCH: &str = "E_MODEL_SIZE_MISMATCH";
+pub const E_MODEL_SHA256_MISMATCH: &str = "E_MODEL_SHA256_MISMATCH";
 
 // ---- aws_sign.rs ----
 pub const E_SIGV4_PARAMS: &str = "E_SIGV4_PARAMS";
@@ -101,10 +111,41 @@ pub const E_REFINE_AWS_NO_KEYS: &str = "E_REFINE_AWS_NO_KEYS";
 pub const E_REFINE_AWS_NO_REGION: &str = "E_REFINE_AWS_NO_REGION";
 pub const E_REFINE_MODELS_HTTP: &str = "E_REFINE_MODELS_HTTP";
 pub const E_REFINE_NO_SONNET: &str = "E_REFINE_NO_SONNET";
+pub const E_REFINE_OLLAMA_CONN: &str = "E_REFINE_OLLAMA_CONN";
+pub const E_REFINE_AWS_CONFIG: &str = "E_REFINE_AWS_CONFIG";
+pub const E_REFINE_NO_OLLAMA_MODEL: &str = "E_REFINE_NO_OLLAMA_MODEL";
+pub const E_REFINE_MODELS_PARSE: &str = "E_REFINE_MODELS_PARSE";
+pub const E_REFINE_NO_OPENAI_MID: &str = "E_REFINE_NO_OPENAI_MID";
+pub const E_REFINE_NO_FLASH: &str = "E_REFINE_NO_FLASH";
+
+// ---- status イベント（エラーでない進行状況のUI文言。S_ プレフィックス）----
+// lib.rs が emit し、フロント（src/lib/status.ts）が status.rust.<CODE> で解決する。
+pub const S_MODEL_DOWNLOAD_PCT: &str = "S_MODEL_DOWNLOAD_PCT";
+pub const S_MODEL_DOWNLOAD_MB: &str = "S_MODEL_DOWNLOAD_MB";
+pub const S_TRANSCRIBING_CLOUD: &str = "S_TRANSCRIBING_CLOUD";
+pub const S_TRANSCRIBING: &str = "S_TRANSCRIBING";
+pub const S_LOADING_AUDIO: &str = "S_LOADING_AUDIO";
+pub const S_AUDIO_SAVE_FAILED: &str = "S_AUDIO_SAVE_FAILED";
+
+/// status コードの SSOT（一意性テストとフロント側パリティ検証の基準）。
+pub const ALL_STATUS: &[&str] = &[
+    S_MODEL_DOWNLOAD_PCT,
+    S_MODEL_DOWNLOAD_MB,
+    S_TRANSCRIBING_CLOUD,
+    S_TRANSCRIBING,
+    S_LOADING_AUDIO,
+    S_AUDIO_SAVE_FAILED,
+];
 
 /// 全コードの SSOT（一意性テストとフロント側パリティ検証の基準）。
 pub const ALL: &[&str] = &[
     E_LOCK_STT,
+    E_NO_DOCUMENT_DIR,
+    E_FILE_TOO_LARGE,
+    E_UNSUPPORTED_AUDIO_EXT,
+    E_FILE_OPEN,
+    E_NOT_RECORDING,
+    E_EMPTY_RECORDING,
     E_JOURNAL_DIR,
     E_FILE_MANAGER,
     E_LOCK_SETTINGS,
@@ -150,7 +191,11 @@ pub const ALL: &[&str] = &[
     E_CLOUD_STT_STATUS,
     E_CLOUD_STT_PARSE,
     E_AZURE_NO_RESOURCE,
+    E_NO_AUDIO_TRACK,
+    E_STT_MODEL_PATH,
     E_MODEL_DOWNLOAD,
+    E_MODEL_SIZE_MISMATCH,
+    E_MODEL_SHA256_MISMATCH,
     E_SIGV4_PARAMS,
     E_SIGV4_SIGNABLE,
     E_SIGV4_SIGN,
@@ -175,6 +220,12 @@ pub const ALL: &[&str] = &[
     E_REFINE_AWS_NO_REGION,
     E_REFINE_MODELS_HTTP,
     E_REFINE_NO_SONNET,
+    E_REFINE_OLLAMA_CONN,
+    E_REFINE_AWS_CONFIG,
+    E_REFINE_NO_OLLAMA_MODEL,
+    E_REFINE_MODELS_PARSE,
+    E_REFINE_NO_OPENAI_MID,
+    E_REFINE_NO_FLASH,
 ];
 
 #[cfg(test)]
@@ -186,12 +237,22 @@ mod tests {
     fn codes_are_unique() {
         let set: HashSet<&&str> = ALL.iter().collect();
         assert_eq!(set.len(), ALL.len(), "エラーコードに重複がある");
+        let sset: HashSet<&&str> = ALL_STATUS.iter().collect();
+        assert_eq!(sset.len(), ALL_STATUS.len(), "statusコードに重複がある");
     }
 
     #[test]
     fn codes_follow_naming_convention() {
         for c in ALL {
             assert!(c.starts_with("E_"), "{c} は E_ で始まっていない");
+            assert!(
+                c.chars().all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_'),
+                "{c} は大文字/数字/_ 以外を含む"
+            );
+            assert!(!c.contains(SEP), "{c} が区切り文字を含む");
+        }
+        for c in ALL_STATUS {
+            assert!(c.starts_with("S_"), "{c} は S_ で始まっていない");
             assert!(
                 c.chars().all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_'),
                 "{c} は大文字/数字/_ 以外を含む"

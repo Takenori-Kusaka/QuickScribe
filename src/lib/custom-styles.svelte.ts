@@ -26,12 +26,17 @@ export function createCustomStyles(deps: {
   let newCustomInstruction = $state<string>("");
 
   // 組み込み＋カスタムを1つの選択肢リストに統合（チップ・設定ドロップダウン・解説で共用）。
+  // 組み込みの label/desc は i18n キー(catalog.styles.*)を deps.t で解決する(#401)。
   const allStyles = $derived<StyleOption[]>([
-    ...REFINE_STYLES,
+    ...REFINE_STYLES.map((s) => ({
+      value: s.value,
+      label: deps.t(s.labelKey),
+      desc: deps.t(s.descKey),
+    })),
     ...customStyles.map((c) => ({
       value: `custom:${c.id}`,
-      label: c.label || "カスタム",
-      desc: c.instruction.trim() || "ユーザー定義の整形指示。",
+      label: c.label || deps.t("catalog.styles.custom.label"),
+      desc: c.instruction.trim() || deps.t("catalog.styles.custom.desc"),
     })),
   ]);
 

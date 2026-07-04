@@ -3,7 +3,6 @@
 // readSettings()/writeSettings() の2関数で扱う。秘密情報(API鍵/AWS鍵)は keyring 側(lib/secrets)。
 import {
   ALL_PROVIDERS,
-  PROVIDER_LABELS,
   LOCAL_PROVIDERS,
   DEFAULT_SHORTCUT,
   type Provider,
@@ -62,7 +61,7 @@ export function readSettings(localeDefault: string): AppSettings {
   // 整形プロバイダの既定はローカルファースト = ollama(#465/ADR-0021)。鍵不要でプライバシー既定。
   // 保存済みは優先。破損値も安全側でローカル(ollama)へ寄せる。
   let provider = (ls.getItem("provider") as Provider) || "ollama";
-  if (!(provider in PROVIDER_LABELS)) provider = "ollama";
+  if (!(ALL_PROVIDERS as string[]).includes(provider)) provider = "ollama";
 
   const resolvedModel = emptyModelMap();
   for (const p of ALL_PROVIDERS) resolvedModel[p] = ls.getItem(`resolvedModel:${p}`) ?? "";

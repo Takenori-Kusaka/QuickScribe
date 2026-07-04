@@ -104,7 +104,6 @@
     "tip_timestamps": "Keeps the time of what you said so the AI can organize with the flow in mind.",
     "tip_auto_pipeline": "When you stop recording, transcription runs straight through AI refine (a refine provider key is required).",
     "tip_audio_format": "Opus is compact and journal-friendly. WAV is uncompressed and reliable but large.",
-    "provider_ollama": "Local (Ollama)",
     "ollama_note_1": "Local (Ollama) needs no key and runs entirely on-device (your raw thoughts never leave). First start ",
     "ollama_note_2": " and pull a model (e.g. ",
     "ollama_note_3": ") beforehand.",
@@ -213,6 +212,95 @@
     "audio_files": "Audio files",
     "text_memo": "Text/memo"
   },
+  "catalog": {
+    "providers": {
+      "gemini": "Gemini",
+      "anthropic": "Anthropic (Claude)",
+      "openai": "OpenAI",
+      "ollama": "Local (Ollama)",
+      "bedrock": "AWS Bedrock",
+      "claude-aws": "Claude Platform on AWS"
+    },
+    "key_ph": {
+      "gemini": "AIza...",
+      "anthropic": "sk-ant-...",
+      "openai": "sk-...",
+      "ollama": "(not needed)",
+      "bedrock": "Bedrock API key (Bearer); not needed with SigV4",
+      "claude-aws": "Anthropic API key; not needed with SigV4"
+    },
+    "stt": {
+      "local": "Local (whisper, fully on-device)",
+      "groq": "Groq (whisper-large-v3-turbo, fast & affordable)",
+      "openai": "OpenAI (gpt-4o-transcribe)",
+      "deepgram": "Deepgram (nova-3)",
+      "azure": "Azure AI Speech (fast transcription)"
+    },
+    "stt_key_ph": {
+      "groq": "gsk_...",
+      "openai": "sk-...",
+      "deepgram": "Deepgram API key",
+      "azure": "Azure Speech resource key"
+    },
+    "stt_model_ph": {
+      "groq": "whisper-large-v3-turbo",
+      "openai": "gpt-4o-transcribe",
+      "deepgram": "nova-3",
+      "azure": "(not needed)"
+    },
+    "styles": {
+      "structured": {
+        "label": "Structured",
+        "desc": "Organizes the key points with headings and bullets while keeping the nuance (default)."
+      },
+      "verbatim": {
+        "label": "Verbatim",
+        "desc": "Keeps fillers and repetitions almost as-is; only minimal readability tweaks."
+      },
+      "summary": {
+        "label": "Summary",
+        "desc": "Summarizes the whole briefly, narrowing it down to 3–5 key points."
+      },
+      "brainstorm": {
+        "label": "Expand ideas",
+        "desc": "A one-shot re-refinement that expands questions, angles and next steps from the content — not a dialogue."
+      },
+      "custom": {
+        "label": "Custom",
+        "desc": "User-defined refine instructions."
+      }
+    },
+    "whisper_models": {
+      "base": "Standard base (balanced for Japanese & speed, ~142MB / default, robust)",
+      "kotoba-q5": "Japanese-specialized kotoba-whisper quantized (best Japanese accuracy, ~538MB, recommended for Japanese)",
+      "kotoba": "Japanese-specialized kotoba-whisper high accuracy (~1.5GB, slow)",
+      "small": "Multilingual small (good for English, ~466MB)",
+      "medium": "Multilingual medium (good for English, high accuracy, ~1.5GB, slow)",
+      "tiny": "Fastest tiny (English/drafts; low accuracy for Japanese, not recommended, ~75MB)"
+    }
+  },
+  "eta": {
+    "seconds": "~{s}s left",
+    "minutes": "~{m}m left",
+    "min_sec": "~{m}m {s}s left"
+  },
+  "tray": {
+    "record": "Start/stop recording",
+    "show": "Show window",
+    "quit": "Quit",
+    "tooltip_recording": "QuickScribe — recording",
+    "tooltip_idle": "QuickScribe — idle"
+  },
+  "status": {
+    "rust": {
+      "S_MODEL_DOWNLOAD_PCT": "Downloading the whisper model… {detail}%",
+      "S_MODEL_DOWNLOAD_MB": "Downloading the whisper model… {detail} MB",
+      "S_TRANSCRIBING_CLOUD": "Transcribing in the cloud…",
+      "S_TRANSCRIBING": "Transcribing…",
+      "S_LOADING_AUDIO": "Loading audio…",
+      "S_AUDIO_SAVE_FAILED": "Failed to save audio: {detail}"
+    }
+  },
   "errors": {
     "journal_load": "Failed to load journal: {detail}",
     "entry_open": "Could not open entry: {detail}",
@@ -308,7 +396,23 @@
       "E_REFINE_AWS_NO_KEYS": "The AWS access key/secret is not set.",
       "E_REFINE_AWS_NO_REGION": "The AWS region is not set.",
       "E_REFINE_MODELS_HTTP": "Failed to fetch the model list: {detail}",
-      "E_REFINE_NO_SONNET": "No Sonnet-family model was found."
+      "E_REFINE_NO_SONNET": "No Sonnet-family model was found.",
+      "E_NO_DOCUMENT_DIR": "The Documents folder was not found.",
+      "E_FILE_TOO_LARGE": "The file is too large ({detail}). Try splitting the recording.",
+      "E_UNSUPPORTED_AUDIO_EXT": "Unsupported audio format. Supported: {detail}",
+      "E_FILE_OPEN": "Could not open the file ({detail}). Check the path and permissions.",
+      "E_NOT_RECORDING": "Not recording.",
+      "E_EMPTY_RECORDING": "The recording was empty (too short, or the selected recording source had no audio).",
+      "E_NO_AUDIO_TRACK": "No audio track was found.",
+      "E_STT_MODEL_PATH": "The model path is invalid.",
+      "E_MODEL_SIZE_MISMATCH": "The model size does not match (possibly corrupted): {detail}",
+      "E_MODEL_SHA256_MISMATCH": "The model SHA256 does not match (possibly tampered or corrupted): {detail}",
+      "E_REFINE_OLLAMA_CONN": "Failed to connect to local Ollama (check that ollama is running and a model is pulled): {detail}",
+      "E_REFINE_AWS_CONFIG": "The AWS provider settings (region/authentication) are missing: {detail}",
+      "E_REFINE_NO_OLLAMA_MODEL": "No installed Ollama model was found.",
+      "E_REFINE_MODELS_PARSE": "The model list response is invalid: {detail}",
+      "E_REFINE_NO_OPENAI_MID": "No suitable mid-range (gpt-4o/4.1) model was found.",
+      "E_REFINE_NO_FLASH": "No flash-family model was found."
     },
     "unknown": "An unknown error occurred."
   }
