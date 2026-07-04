@@ -57,7 +57,7 @@
 ## E8. Release / Ops
 - **S8.1 release-please導入**: Cargo.toml+tauri.conf版同期、Release PRゲート。
 - **S8.2 リリースパイプライン**: tauri-action、updater latest.json(.sig)、provenance+SHA256SUMS。
-- **S8.3 Windowsコード署名**: ~~SSL.com eSigner~~ → **SignPath Foundation（無償OSS署名）**（[ADR-0008](adr/0008-licensing-and-distribution.md) で置換。費用ゼロ・申請審査制）。
+- **S8.3 Windowsコード署名**: ~~SSL.com eSigner~~ → **SignPath Foundation（無償OSS署名）**（[ADR-0008](../adr/0008-licensing-and-distribution.md) で置換。費用ゼロ・申請審査制）。
 - **S8.4 配布チャネル**: winget/AppImage/.deb（条件付きFlathub）。
 - **S8.5 バージョニング/チャネル**: 0.x維持、stable/nightly二系統、updater鍵分離・Runbook。
 - **S8.6 SECURITY.md/PVR/サポート**: 最新版のみ・ベストエフォート、coordinated disclosure。

@@ -8,12 +8,13 @@
 QuickScribe は Tauri 2 のデスクトップアプリ。**Rust バックエンド（ネイティブ機能・I/O・外部API）** と
 **Svelte 5 フロントエンド（WebView UI）** が Tauri の `invoke`（コマンド）と `event`（イベント）で通信する。
 プライバシー設計上、**録音とローカル文字起こしは端末内で完結**し、外部送信はユーザーが明示選択した場合のみ。
+習慣ナッジ（[ADR-0023](adr/0023-habit-nudge.md)）は `tauri-plugin-notification` による opt-in のローカル通知で、外部送信を伴わない。
 
 ```mermaid
 graph TD
   subgraph Frontend["フロントエンド (Svelte 5 / WebView)"]
     APP["App.svelte（画面・状態）"]
-    LIB["lib/ (note・corrections・constants・errors・a11y)"]
+    LIB["lib/ (note・corrections・constants・errors・a11y・streak/nudge)"]
     APP --- LIB
   end
 
@@ -24,9 +25,12 @@ graph TD
     MODEL["model.rs（whisperモデル取得）"]
     REF["refine.rs（FormattingEngine 抽象）"]
     VAULT["vault.rs（読み取り: 一覧/解析）"]
+    ENTRY["entry.rs（エントリ本文組立・命名の純粋関数）"]
+    ERR["errcode.rs（安定エラーコード SSOT）"]
     SAVE["audio_save.rs / aws_sign.rs"]
     TRAY["taskbar*.rs（トレイ/ウィジェット）"]
     CMD --- REC & STT & REF & VAULT & SAVE & TRAY
+    CMD --- ENTRY & ERR
     STT --- MODEL
   end
 

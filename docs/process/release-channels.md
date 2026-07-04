@@ -57,7 +57,7 @@ npm exec -- tauri signer generate -w ~/.tauri/quickscribe-nightly.key
 ## バージョニング（0.x）
 
 - 破壊的変更でも 0.x の間は minor を上げる（SemVer 0.x 慣行）。1.0 は [ADR-0009] のゲート充足後。
-- 版の単一ソースは `src-tauri/Cargo.toml` の `[package].version`（release.yml がタグから設定）。
+- 版の**決定**の単一ソースは release-please（`.release-please-manifest.json`、[versioning-and-channels](versioning-and-channels.md)）。配布物の版はタグ由来で `release.yml` が `src-tauri/Cargo.toml` に反映する（手動で版を散在管理しない）。
 - nightly は版に `-nightly.<日付/SHA>` を付さず、ローリング `nightly` タグで最新1つのみ提供（履歴を残さず軽量に）。
 
 ## 残（要ユーザー操作 / secret）

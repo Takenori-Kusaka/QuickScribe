@@ -20,8 +20,8 @@
 
 ## 3. リリースチャネル
 
-- **stable（既定・唯一）**: `v*` タグ = release-please のリリース。GitHub Releases + アプリ内 updater（`latest.json`）。
-- **nightly（現時点では非提供）**: 継続的な自動ビルド配信は保守コスト（別チャネルの鍵・updater分岐・混乱）に見合う需要が現状無いため **v1.0 では作らない**。要望が出れば Post-v1.0 で別 `latest-nightly.json` として検討する。
+- **stable（既定）**: `v*` タグ = release-please のリリース。GitHub Releases + アプリ内 updater（`latest.json`）。
+- **nightly（opt-in・#52 で導入）**: 早期検証・自己ドッグフード用のローリング `nightly` タグ（prerelease）。updater 鍵は stable と分離（`TAURI_SIGNING_PRIVATE_KEY_NIGHTLY`）。鍵 secret 未設定の間はワークフローがガードで no-op となり inert。運用手順は [release-channels](release-channels.md) を正とする。
 
 ## 4. 鍵の分離
 
@@ -33,4 +33,4 @@
 
 - 版は release-please が単一管理、配布はタグ駆動。0.x はプレ1.0。
 - 1.0 は「issue/PR 0＋品質ゲート＋コア価値の実機成立」で切る（未署名可）。
-- チャネルは stable のみ（nightly は需要ベースで Post-v1.0）。鍵は用途別に分離する。
+- チャネルは stable（既定）＋ nightly（opt-in・鍵セットアップ後に有効）。鍵は用途・チャネル別に分離する（[release-channels](release-channels.md)）。

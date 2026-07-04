@@ -8,14 +8,15 @@
 
 | 指標 | 目標（暫定） | 測定方法 | 状態 |
 |---|---|---|---|
-| 起動時間（プロセス起動→操作可能） | ≤ 2 秒（キャッシュ温時） | 起動計測スクリプト | 未計測（#403） |
+| 起動時間（プロセス起動→操作可能） | ≤ 2 秒（キャッシュ温時） | `perf.yml` の `startup-time` ジョブ（アプリ計装 `QS_PERF_STARTUP=1`） | 計測済（#554・`startup-report.md` アーティファクトが一次情報・[perf/baseline.md](perf/baseline.md)） |
 | ローカル文字起こし RTF（実時間比, tiny, x64 AVX2） | ≤ 1.0（実時間以内） | 固定音源で計測（`.github/workflows/perf.yml`） | 実測 **0.857**（2026-06-29・[perf/baseline.md](perf/baseline.md)・達成 ✅） |
-| アイドル時メモリ（RSS） | ≤ 300 MB 目安 | プロセス監視 | 未計測（#403） |
+| アイドル時メモリ（RSS） | ≤ 300 MB 目安 | `perf.yml` の `startup-time` ジョブ（配布バイナリ実体の RSS サンプリング） | 計測済（#554・`startup-report.md` が一次情報） |
+| 日本語精度（CER・相対/回帰指標） | ベースライン比 +5pt 以内（回帰ゲート） | `perf.yml` の「日本語精度 CER」ジョブ（本人音読PD3作品・`scripts/cer_ja.py`） | 実測確定（#26/#403: tiny 56.9% / base 44.0% / kotoba-q5 38.3%・[perf/baseline.md](perf/baseline.md)・[ADR-0022](adr/0022-model-catalog-curation.md)） |
 | 録音→停止→文字起こし開始の体感遅延 | 即時（非同期・UIブロックなし） | 実装で担保（バックグラウンド文字起こし） | 実装済 |
 
 - 文字起こしは別スレッド＋イベント通知で UI をブロックしない（`transcribe-done`/`progress`）。
 - whisper は決定的 AVX2 ベースライン（[ADR-0012](adr/0012-windows-multiarch-multisimd-distribution.md)）。AVX512最適化は将来の別ビルドで。
-- 日本語精度（WER/CER）ベンチは [#403](https://github.com/Takenori-Kusaka/QuickScribe/issues/403) で JSUT 等のサブセットを用い再現可能化する。
+- 日本語精度（CER）ベンチは再現可能化済み（#26/#403）。fixtures は本人音読のパブリックドメイン3作品（`src-tauri/tests/fixtures/ja-accuracy`）、回帰ゲート基準は `docs/perf/ja-cer-baseline.json`。
 
 ## 2. 可用性・信頼性 (Reliability)
 
@@ -34,7 +35,7 @@
 | 観点 | 方針 | 状態 |
 |---|---|---|
 | 秘密情報 | APIキー/AWS資格情報は OS keyring 保存。平文設定ファイルに置かない | 実装済 |
-| 権限最小化 | Tauri capabilities を必要最小（global-shortcut/dialog/updater/process/autostart）に限定 | 実装済 |
+| 権限最小化 | Tauri capabilities を必要最小（global-shortcut/dialog/updater/process/autostart/notification）に限定 | 実装済（notification は習慣ナッジ #58 / [ADR-0023](adr/0023-habit-nudge.md)） |
 | XSS/注入 | `{@html}` 等の DOM 注入シンクを使わない（lint で `no-at-html-tags`=error） | 実装済 |
 | 多層防御 | 制限的 CSP の設定 | 実装済（[#455](https://github.com/Takenori-Kusaka/QuickScribe/pull/455)・`tauri.conf.json`） |
 | 供給網 | Dependabot / Secret scanning / CodeQL / cargo-audit/deny / Private Vulnerability Reporting | 有効化済 |
@@ -52,8 +53,8 @@
 ## 5. アクセシビリティ (Usability / Accessibility)
 
 - 目標: **WCAG 2.1 レベル AA**（= JIS X 8341-3:2016 AA を包含・デジタル庁推奨）。詳細チェックリストと進捗は [#395](https://github.com/Takenori-Kusaka/QuickScribe/issues/395)。
-- 実装済: モーダルの dialog 化・フォーカストラップ・Esc 閉じ・本文コントラスト AA・`prefers-reduced-motion`。
-- 残: 入力ラベル網羅・axe/Lighthouse CI・NVDA 手動検証。
+- 実装済: モーダルの dialog 化・フォーカストラップ・Esc 閉じ・本文コントラスト AA・`prefers-reduced-motion`・入力ラベル網羅・axe CI（`e2e/a11y.spec.ts`、WCAG 2.0/2.1 A+AA を main の必須チェックとして常時実行）。
+- 残: NVDA/ナレーターによる手動スクリーンリーダー検証（実施記録を残す）。
 
 ## 6. 国際化 (i18n)
 
