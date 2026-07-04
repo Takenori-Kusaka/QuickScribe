@@ -79,6 +79,7 @@
     "output_format": "Formato de salida (transcripción en bruto)",
     "taskbar_widget": "Mostrar el widget de grabación en la barra de tareas",
     "autostart": "Iniciar al iniciar sesión en el sistema",
+    "nudge": "Recordatorio de hábito (notifícame para mantener mi racha de diario)",
     "reload": "Recargar",
     "mode_toggle": "Alternar (pulsa una vez para iniciar, otra para detener)",
     "mode_momentary": "Mantener para grabar (pulsar para hablar)",
@@ -139,6 +140,7 @@
     "tip_output_4": " (refinado).",
     "tip_taskbar": "Botones de grabar/detener y mostrar ventana en la barra de tareas (Windows). Desactívalo para ocultarlos.",
     "tip_autostart": "Inicia QuickScribe automáticamente al iniciar sesión en el SO y lo mantiene en la bandeja (no aparece ninguna ventana).",
+    "tip_nudge": "Al iniciar, envía una notificación suave al día solo cuando tienes una racha activa y aún no has escrito hoy. Sin servidor, totalmente local. Desactivado por defecto.",
     "shortcut_modifier_required": "Combínala con una tecla modificadora (Ctrl/Alt/Shift) y pulsa.",
     "group_about": "Acerca de",
     "about_license": "Licencia: MIT",
@@ -149,6 +151,10 @@
     "tip_refine_warn_1": "⚠ El refinado en la nube ",
     "tip_refine_warn_strong": "envía tu transcripción fuera de tu dispositivo (a {provider})",
     "tip_refine_warn_2": ". Cada proveedor declara que no usa la entrada de la API para entrenar de forma predeterminada, pero si la privacidad te importa usa «Local (Ollama)». Las claves se guardan en el almacenamiento seguro de este dispositivo."
+  },
+  "nudge": {
+    "title": "¿Hora del diario de hoy?",
+    "body": "Tómate un minuto para contar lo que piensas. Tu racha sigue activa."
   },
   "vault": {
     "back_to_list": "← Volver a la lista",

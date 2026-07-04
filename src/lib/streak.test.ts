@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeStreak } from "./streak";
+import { computeStreak, shouldNudge } from "./streak";
 
 describe("computeStreak（寛容ストリーク）", () => {
   it("記録なしは0", () => {
@@ -36,5 +36,33 @@ describe("computeStreak（寛容ストリーク）", () => {
     expect(
       computeStreak(["2026-07-01T23:10:00", "2026-07-02T08:00:00"], "2026-07-02T09:00:00"),
     ).toBe(2);
+  });
+});
+
+describe("shouldNudge（習慣ナッジの発火判定 #58）", () => {
+  it("今日すでに記録済みなら促さない", () => {
+    // 連続中でも今日ぶんが済んでいれば不要。
+    expect(shouldNudge(["2026-07-01", "2026-07-02"], "2026-07-02")).toBe(false);
+  });
+
+  it("継続中(昨日記録・今日未記録)なら促す＝ストリーク保全", () => {
+    expect(shouldNudge(["2026-07-01"], "2026-07-02")).toBe(true);
+  });
+
+  it("grace内(一昨日が最後・今日未記録)でも継続中なので促す", () => {
+    expect(shouldNudge(["2026-06-30"], "2026-07-02")).toBe(true);
+  });
+
+  it("記録なしなら促さない(新規ユーザーを急かさない)", () => {
+    expect(shouldNudge([], "2026-07-02")).toBe(false);
+  });
+
+  it("既に途切れている(grace超で古い)なら促さない(forgiving・罪悪感を煽らない)", () => {
+    expect(shouldNudge(["2026-06-20"], "2026-07-02")).toBe(false);
+  });
+
+  it("ISO日時でも今日の記録有無を日付で判定する", () => {
+    expect(shouldNudge(["2026-07-02T08:00:00"], "2026-07-02T21:00:00")).toBe(false);
+    expect(shouldNudge(["2026-07-01T08:00:00"], "2026-07-02T21:00:00")).toBe(true);
   });
 });

@@ -79,6 +79,7 @@
     "output_format": "输出格式（原始转写）",
     "taskbar_widget": "在任务栏显示录音小组件",
     "autostart": "系统登录时启动",
+    "nudge": "习惯提醒（通过通知鼓励我保持记录连续）",
     "reload": "重新加载",
     "mode_toggle": "切换（按一次开始，再按一次停止）",
     "mode_momentary": "按住录音（按下说话）",
@@ -139,6 +140,7 @@
     "tip_output_4": "（整理）。",
     "tip_taskbar": "任务栏上的录音/停止、显示窗口按钮（Windows）。关闭后将隐藏。",
     "tip_autostart": "登录操作系统时自动启动 QuickScribe 并常驻托盘（不会出现窗口）。",
+    "tip_nudge": "启动时，仅当你有连续记录且今天尚未记录时，每天温和地通知一次。无需服务器，完全本地。默认关闭。",
     "shortcut_modifier_required": "请与修饰键（Ctrl/Alt/Shift）组合后按下。",
     "group_about": "关于",
     "about_license": "许可证：MIT",
@@ -149,6 +151,10 @@
     "tip_refine_warn_1": "⚠ 云端整理会",
     "tip_refine_warn_strong": "将文字稿发送到设备之外（发往 {provider}）",
     "tip_refine_warn_2": "。各服务商均声明默认不会将 API 输入用于训练，但如重视隐私请使用「本地（Ollama）」。密钥保存在本设备的安全存储区。"
+  },
+  "nudge": {
+    "title": "今天的日记写了吗？",
+    "body": "花一分钟说说你的想法吧。你的连续记录还在继续。"
   },
   "vault": {
     "back_to_list": "← 返回列表",

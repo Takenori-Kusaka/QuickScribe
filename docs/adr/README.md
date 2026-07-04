@@ -26,3 +26,4 @@
 | [0020](0020-metrics-and-telemetry-stance.md) | 採用計測はサーバー側公開統計のみ・アプリ内テレメトリは持たない | Accepted |
 | [0021](0021-local-first-defaults.md) | ローカルファースト既定（整形=Ollama / 日本語STT=kotoba-whisper） | Accepted |
 | [0022](0022-model-catalog-curation.md) | whisperモデルカタログの精選（言語別ガイド） | Accepted |
+| [0023](0023-habit-nudge-local-notification.md) | 習慣ナッジ＝起動アンカーのopt-inローカル通知 | Accepted |

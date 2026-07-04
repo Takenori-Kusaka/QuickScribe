@@ -24,6 +24,8 @@ tauri-plugin-dialog = "2"
 # 自動アップデート（起動時チェック→バックグラウンドDL→再起動）。
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# 習慣ナッジのローカル通知（S9.4 #58 / opt-in・サーバー無し・アンカー=起動）。
+tauri-plugin-notification = "2"
 # OSログイン時の自動起動（S6.3 / 常駐アプリの基本挙動）。Win=レジストリ Run / mac=LaunchAgent / Linux=.desktop。
 tauri-plugin-autostart = "2"
 serde = { version = "1", features = ["derive"] }

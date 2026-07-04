@@ -44,6 +44,8 @@ export interface AppSettings {
   taskbarWidget: boolean;
   inputDevice: string;
   inputDeviceKind: string;
+  /** 習慣ナッジ(S9.4 #58): 起動時に継続中ストリークが未記録なら通知で促す。既定OFF(opt-in)。 */
+  nudgeEnabled: boolean;
 }
 
 function emptyModelMap(): Record<Provider, string> {
@@ -122,6 +124,8 @@ export function readSettings(localeDefault: string): AppSettings {
     taskbarWidget: ls.getItem("taskbarWidget") !== "false",
     inputDevice: ls.getItem("inputDevice") || "",
     inputDeviceKind: ls.getItem("inputDeviceKind") || "input",
+    // 習慣ナッジ(#58)は opt-in（既定OFF）。プライバシー/簡便さ優先で明示的にONにした人だけ促す。
+    nudgeEnabled: ls.getItem("nudgeEnabled") === "true",
   };
   // スキーマ版を記録（検証を通過した証跡 / ADR-0017）。
   ls.setItem("settingsVersion", String(SETTINGS_VERSION));
@@ -157,4 +161,5 @@ export function writeSettings(s: AppSettings): void {
   ls.setItem("recordMode", s.recordMode);
   ls.setItem("inputDevice", s.inputDevice);
   ls.setItem("inputDeviceKind", s.inputDeviceKind);
+  ls.setItem("nudgeEnabled", String(s.nudgeEnabled));
 }
