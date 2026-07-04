@@ -891,7 +891,31 @@ fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// プロセス起動時刻（run() 入口）。起動時間ベンチ(#403)用。
+static APP_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
+/// 起動時間ベンチ(#403 案A): フロントの ready(onMount)時に呼ばれ、run() 開始からの経過(ms)を
+/// ログへ書く。`QS_PERF_STARTUP` 設定時のみ動作し、通常運用ではオーバーヘッド無し（即return）。
+/// CI(perf.yml)が xvfb 起動後に `%LOCALAPPDATA%\QuickScribe\logs\perf-startup.txt` を読み取る。
+#[tauri::command]
+fn report_startup() {
+    if std::env::var("QS_PERF_STARTUP").is_err() {
+        return;
+    }
+    let Some(start) = APP_START.get() else {
+        return;
+    };
+    let ms = start.elapsed().as_millis();
+    if let Some(dir) = dirs::data_local_dir().map(|d| d.join("QuickScribe").join("logs")) {
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = std::fs::write(dir.join("perf-startup.txt"), format!("startup_ms={ms}\n"));
+    }
+    eprintln!("startup_ms={ms}");
+}
+
 pub fn run() {
+    // プロセス起動時刻を記録（起動時間ベンチ #403）。以降の ready で経過を測る。
+    let _ = APP_START.set(std::time::Instant::now());
     // 既定の開始/停止ホットキー: Ctrl/Cmd + Shift + R（設定で変更可能。set_record_shortcut）。
     let toggle_shortcut = Shortcut::new(Some(Modifiers::SHIFT | Modifiers::CONTROL), Code::KeyR);
 
@@ -957,7 +981,8 @@ pub fn run() {
             set_taskbar_widget,
             set_secret,
             get_secret,
-            delete_secret
+            delete_secret,
+            report_startup
         ])
         // ウィンドウを閉じてもアプリは終了せず、トレイに常駐する（タスクバー常駐の挙動）。
         // ただし E2E(QUICKSCRIBE_E2E=1)時はドライバが正常終了できるよう既定の閉じる挙動にする。
