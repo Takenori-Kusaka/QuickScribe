@@ -156,6 +156,106 @@ jobs:
           path: perf-report.md
           if-no-files-found: error
 
+  # 日本語精度ベンチ(#26 / #403): 実データ(本人音読のPD作品)に対する CER(文字誤り率)を、
+  # モデル別(tiny/base/kotoba-q5)に計測する。モデルカタログ精選(不要な選択肢を増やさない)と
+  # 精度回帰の検知が目的。ルビ混入により絶対値は悲観側＝相対/回帰指標として扱う(fixtures/README参照)。
+  ja-accuracy:
+    name: 日本語精度 CER (Linux)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Install build dependencies (whisper build)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
+            libxdo-dev build-essential file clang libclang-dev cmake \
+            libasound2-dev pkg-config
+
+      - name: Cache whisper models (ja-accuracy)
+        id: cache-ja-models
+        uses: actions/cache@v6
+        with:
+          path: models
+          key: ja-accuracy-models-tiny-base-kotobaq5-v1
+      - name: Download models (tiny / base / kotoba-q5)
+        if: steps.cache-ja-models.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p models
+          dl() { curl -L --fail --retry 5 --retry-delay 15 --retry-all-errors -o "$1" "$2"; }
+          dl models/ggml-tiny.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
+          dl models/ggml-base.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
+          dl models/ggml-kotoba-whisper-v2.0-q5_0.bin https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0-q5_0.bin
+
+      - name: Build test binary (compile excluded from run loop)
+        run: cargo test --manifest-path src-tauri/Cargo.toml --test transcribe_integration --no-run
+
+      - name: Measure CER per model x sample
+        run: |
+          FIX=src-tauri/tests/fixtures/ja-accuracy
+          SLUGS="gingatetsudo-no-yoru kumonoito wagahaiha-neko-dearu"
+          MODEL_IDS="tiny base kotoba-q5"
+          model_file() {
+            case "$1" in
+              tiny) echo models/ggml-tiny.bin;;
+              base) echo models/ggml-base.bin;;
+              kotoba-q5) echo models/ggml-kotoba-whisper-v2.0-q5_0.bin;;
+            esac
+          }
+          : > cer.tsv
+          for slug in $SLUGS; do
+            for mid in $MODEL_IDS; do
+              QS_LANG=ja \
+              QS_MODEL_PATH="$(model_file "$mid")" \
+              QS_AUDIO_PATH="$FIX/$slug/audio.opus" \
+              QS_TRANSCRIPT_OUT="hyp-$slug-$mid.txt" \
+                cargo test --manifest-path src-tauri/Cargo.toml \
+                  --test transcribe_integration -- --nocapture >/dev/null 2>&1
+              CER=$(python3 scripts/cer_ja.py "$FIX/$slug/reference.txt" "hyp-$slug-$mid.txt" | cut -f1)
+              printf "%s\t%s\t%s\n" "$slug" "$mid" "$CER" >> cer.tsv
+            done
+          done
+          python3 - <<'PY' | tee ja-accuracy-report.md
+          import collections
+          rows=collections.defaultdict(dict)
+          models=[]
+          for line in open("cer.tsv"):
+              slug,mid,cer=line.rstrip("\n").split("\t")
+              rows[slug][mid]=float(cer)
+              if mid not in models: models.append(mid)
+          print("# QuickScribe 日本語精度ベンチ (CER / Linux)")
+          print()
+          print("| サンプル | " + " | ".join(models) + " |")
+          print("|---|" + "---|"*len(models))
+          sums={m:0.0 for m in models}
+          for slug,vals in rows.items():
+              cells=[]
+              best=min(vals.values())
+              for m in models:
+                  v=vals[m]; sums[m]+=v
+                  cells.append(("**%.1f%%**" if v==best else "%.1f%%") % (v*100))
+              print(f"| {slug} | " + " | ".join(cells) + " |")
+          n=len(rows)
+          avg=[sums[m]/n for m in models]
+          bestavg=min(avg)
+          cells=[("**%.1f%%**" if a==bestavg else "%.1f%%") % (a*100) for a in avg]
+          print("| **平均** | " + " | ".join(cells) + " |")
+          print()
+          print("_注: 本人音読のPD作品3点。原文へのルビ混入で絶対CERは悲観側＝相対/回帰指標。太字=各行の最良。_")
+          PY
+          cat ja-accuracy-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload ja-accuracy report
+        uses: actions/upload-artifact@v7
+        with:
+          name: ja-accuracy-report
+          path: ja-accuracy-report.md
+          if-no-files-found: error
+
   # 起動時間ベンチ(#403 案A): run() 開始→フロント ready(onMount) の経過をアプリが記録し、
   # CI は xvfb でヘッドレス起動→ログ(perf-startup.txt)を回収する（外部計時器は不要＝突合方式）。
   startup-time:
