@@ -218,13 +218,16 @@ jobs:
           : > cer.tsv
           for slug in $SLUGS; do
             for mid in $MODEL_IDS; do
-              QS_LANG=ja \
-              QS_MODEL_PATH="$(model_file "$mid")" \
-              QS_AUDIO_PATH="$FIX/$slug/audio.opus" \
-              QS_TRANSCRIPT_OUT="hyp-$slug-$mid.txt" \
-                cargo test --manifest-path src-tauri/Cargo.toml \
-                  --test transcribe_integration -- --nocapture >/dev/null 2>&1
+              if ! QS_LANG=ja \
+                QS_MODEL_PATH="$(model_file "$mid")" \
+                QS_AUDIO_PATH="$FIX/$slug/audio.opus" \
+                QS_TRANSCRIPT_OUT="hyp-$slug-$mid.txt" \
+                  cargo test --manifest-path src-tauri/Cargo.toml \
+                    --test transcribe_integration -- --nocapture > "run-$slug-$mid.log" 2>&1; then
+                echo "::error::文字起こし失敗 $slug / $mid"; cat "run-$slug-$mid.log"; exit 1
+              fi
               CER=$(python3 scripts/cer_ja.py "$FIX/$slug/reference.txt" "hyp-$slug-$mid.txt" | cut -f1)
+              echo "measured $slug / $mid -> CER=$CER"
               printf "%s\t%s\t%s\n" "$slug" "$mid" "$CER" >> cer.tsv
             done
           done
