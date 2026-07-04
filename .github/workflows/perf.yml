@@ -78,6 +78,8 @@ jobs:
         env:
           QS_MODEL_PATH: ${{ github.workspace }}/models/ggml-tiny.bin
           QS_AUDIO_PATH: ${{ github.workspace }}/bench.wav
+          # 精度(CER)計算のため認識テキストをファイルへ出力させる(#403)。
+          QS_TRANSCRIPT_OUT: ${{ github.workspace }}/transcript.txt
         run: |
           /usr/bin/time -v cargo test --manifest-path src-tauri/Cargo.toml \
             --test transcribe_integration -- --nocapture 2> time.txt || { cat time.txt; exit 1; }
@@ -99,6 +101,52 @@ jobs:
             echo ""
             echo "_注: cargo test 実行のオーバーヘッドを含む概算。RTF<1.0 が実時間以内の目安。_"
           } | tee perf-report.md
+          cat perf-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      # 精度(CER)ベンチ(#403): 既知の英語発話に対する文字誤り率。espeak 生成の高品質英語音声を
+      # ggml-tiny で認識し、参照文との CER を測る。パイプライン回帰の検知が目的（実運用精度の
+      # 主張ではない。実データ(JSUT/CSJ)による日本語精度は #26 で別途）。
+      - name: Measure accuracy (CER, English)
+        env:
+          # espeak へ渡した参照文と一致させる（正規化して比較）。
+          REF_TEXT: >-
+            This is a performance benchmark for QuickScribe.
+            The quick brown fox jumps over the lazy dog.
+            Speech recognition latency is measured as a real time factor.
+            We repeat this paragraph to obtain a stable measurement window.
+            The quick brown fox jumps over the lazy dog again and again.
+        run: |
+          python3 - <<'PY' | tee -a perf-report.md
+          import os, re
+          def norm(s):
+              s = s.lower()
+              s = re.sub(r"[^a-z0-9\s]", " ", s)      # 記号除去
+              return re.sub(r"\s+", " ", s).strip()
+          def cer(ref, hyp):
+              # 文字レベル Levenshtein 距離 / 参照長。
+              r, h = list(ref), list(hyp)
+              dp = list(range(len(h) + 1))
+              for i in range(1, len(r) + 1):
+                  prev, dp[0] = dp[0], i
+                  for j in range(1, len(h) + 1):
+                      cur = dp[j]
+                      dp[j] = min(dp[j] + 1, dp[j-1] + 1, prev + (r[i-1] != h[j-1]))
+                      prev = cur
+              return dp[len(h)] / max(1, len(r))
+          ref = norm(os.environ["REF_TEXT"])
+          try:
+              hyp = norm(open("transcript.txt", encoding="utf-8").read())
+          except FileNotFoundError:
+              print("\n_精度: transcript 未出力のためスキップ_"); raise SystemExit(0)
+          rate = cer(ref, hyp)
+          print("")
+          print("| 精度指標 | 値 |")
+          print("|---|---|")
+          print(f"| 参照文字数(正規化) | {len(ref)} |")
+          print(f"| **CER (英語・文字誤り率)** | **{rate*100:.1f}%** |")
+          print("")
+          print("_注: espeak合成の英語音声に対する回帰指標。日本語精度は実データで #26 にて別途。_")
+          PY
           cat perf-report.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload perf report
