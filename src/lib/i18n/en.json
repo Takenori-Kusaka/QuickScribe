@@ -145,7 +145,10 @@
     "about_oss": "This app uses open source including whisper.cpp (MIT), libopus (BSD-3-Clause), Tauri (MIT/Apache-2.0) and Svelte (MIT). Third-party attributions are included in THIRD-PARTY-NOTICES with the distribution and in the repository.",
     "about_repo": "Repository / full license",
     "show_onboarding": "Show the intro again",
-    "tip_show_onboarding": "Shows the first-run guide (3 steps) again."
+    "tip_show_onboarding": "Shows the first-run guide (3 steps) again.",
+    "tip_refine_warn_1": "⚠ Cloud refinement ",
+    "tip_refine_warn_strong": "sends your transcript off your device (to {provider})",
+    "tip_refine_warn_2": ". Each provider states it does not use API input for training by default, but if privacy matters use “Local (Ollama)”. Keys are stored in this device’s secure storage."
   },
   "vault": {
     "back_to_list": "← Back to list",

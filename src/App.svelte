@@ -1510,6 +1510,16 @@
               <option value="claude-aws">Claude Platform on AWS</option>
             </select>
           </label>
+          {#if !LOCAL_PROVIDERS.includes(provider)}
+            <!-- クラウド整形の送信同意(#465): 何が端末外へ出るかを明示（#397 STT警告の整形版）。 -->
+            <p class="tip warn">
+              {$_("settings.tip_refine_warn_1")}<strong
+                >{$_("settings.tip_refine_warn_strong", {
+                  values: { provider: PROVIDER_LABELS[provider] },
+                })}</strong
+              >{$_("settings.tip_refine_warn_2")}
+            </p>
+          {/if}
           {#if LOCAL_PROVIDERS.includes(provider)}
             <p class="muted">
               {$_("settings.ollama_note_1")}<code>ollama serve</code>{$_(

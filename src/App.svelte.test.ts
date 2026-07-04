@@ -222,6 +222,19 @@ describe("App.svelte 設定操作", () => {
     expect(providerSelect.disabled).toBe(true);
   });
 
+  it("クラウド整形プロバイダ選択時に送信同意の警告を表示する(#465)", async () => {
+    localStorage.setItem("provider", "gemini");
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    await gotoTab("整形");
+    // クラウド(gemini)では「クラウド整形は…端末外へ送信」の警告が出る。
+    expect(await screen.findByText(/クラウド整形は/)).toBeInTheDocument();
+    // ローカル(ollama)へ切替えると警告は消える。
+    const providerSelect = (await screen.findByLabelText("整形プロバイダ")) as HTMLSelectElement;
+    await fireEvent.change(providerSelect, { target: { value: "ollama" } });
+    expect(screen.queryByText(/クラウド整形は/)).not.toBeInTheDocument();
+  });
+
   it("翻訳トグルをONにすると出力言語ピッカーが現れる", async () => {
     render(App);
     await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
