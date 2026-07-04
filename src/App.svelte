@@ -1337,6 +1337,12 @@
           {$_("privacy.offline_mode")}
         </label>
         <p class="tip">{$_("privacy.offline_mode_desc")}</p>
+        <!-- 一気通貫(停止→文字起こし→整形の自動実行)はアプリ全体の挙動＝一般タブに置く(#512改善)。 -->
+        <label class="check">
+          <input type="checkbox" bind:checked={autoPipeline} />
+          {$_("settings.auto_pipeline")}
+        </label>
+        <p class="tip">{$_("settings.tip_auto_pipeline")}</p>
       {/if}
 
       {#if settingsTab === "recording"}
@@ -1484,11 +1490,6 @@
             {$_("settings.include_timestamps")}
           </label>
           <p class="tip">{$_("settings.tip_timestamps")}</p>
-          <label class="check">
-            <input type="checkbox" bind:checked={autoPipeline} />
-            {$_("settings.auto_pipeline")}
-          </label>
-          <p class="tip">{$_("settings.tip_auto_pipeline")}</p>
         </details>
       {/if}
 
