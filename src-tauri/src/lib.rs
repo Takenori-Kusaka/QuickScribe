@@ -937,6 +937,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // 習慣ナッジ用のローカル通知（S9.4 #58 / opt-in・サーバー無し）。
+        .plugin(tauri_plugin_notification::init())
         // OSログイン時の自動起動（S6.3）。--minimized で起動し常駐（ウィンドウは出さない）。
         .plugin(
             tauri_plugin_autostart::Builder::new()

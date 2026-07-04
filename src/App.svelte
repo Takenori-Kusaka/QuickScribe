@@ -18,6 +18,7 @@
   import { parseRecordSource } from "./lib/record-source";
   import { validateRefineConfig, type RefineConfigError } from "./lib/provider-config";
   import { readSettings, writeSettings, type AppSettings } from "./lib/settings-persist";
+  import { maybeNudge, requestNudgePermission } from "./lib/nudge";
   import { buildRefineArgs } from "./lib/refine-args";
   import { isModelCacheFresh } from "./lib/model-cache";
   import { selectDiscoveryTargets, buildDiscoveryText } from "./lib/discovery";
@@ -184,6 +185,8 @@
     /win/i.test(`${navigator.userAgent} ${navigator.platform ?? ""}`);
   // タスクバー上のウィジェット表示（Windows）。既定ON。設定でON/OFF可能。
   let taskbarWidget = $state<boolean>(true);
+  // 習慣ナッジ（S9.4 #58）: 起動時に継続中ストリークが未記録なら通知で促す。既定OFF(opt-in)。
+  let nudgeEnabled = $state<boolean>(false);
 
   // OS/デバイス連携（自動起動・録音ソース列挙・whisperモデル一覧）は lib/device-status へ集約(#392)。
   const device = createDeviceStatus({ t: $_, onError: (m) => (error = m) });
@@ -307,6 +310,7 @@
     taskbarWidget = s.taskbarWidget;
     inputDevice = s.inputDevice;
     inputDeviceKind = s.inputDeviceKind;
+    nudgeEnabled = s.nudgeEnabled;
     // 秘密情報(API鍵/AWS鍵)は keyring から非同期で読む(S3.2)。
     void loadSecrets();
   }
@@ -341,7 +345,35 @@
       taskbarWidget,
       inputDevice,
       inputDeviceKind,
+      nudgeEnabled,
     };
+  }
+
+  // 習慣ナッジ（#58）: 起動時に記録日一覧を取り、継続中で今日未記録なら1回だけ通知で促す。
+  // 通知失敗やエラーは致命でない（静かに諦める）。
+  async function maybeNudgeOnStartup() {
+    if (!nudgeEnabled) return;
+    try {
+      const entries = await invoke<{ created: string }[]>("list_entries");
+      await maybeNudge({
+        enabled: nudgeEnabled,
+        dates: entries.map((e) => e.created),
+        today: new Date().toISOString(),
+        title: $_("nudge.title"),
+        body: $_("nudge.body"),
+      });
+    } catch {
+      /* 通知は補助機能。失敗しても本体機能に影響させない */
+    }
+  }
+
+  // 設定でナッジを ON にした瞬間に通知権限を要求する（拒否されたら OFF へ戻す）。
+  async function onToggleNudge() {
+    if (nudgeEnabled) {
+      const granted = await requestNudgePermission().catch(() => false);
+      if (!granted) nudgeEnabled = false;
+    }
+    saveSettings();
   }
 
   // 秘密情報ブリッジ(keyring / S3.2)は lib/secrets.ts へ抽出(#392)。App は鍵の反映のみ担う。
@@ -739,6 +771,8 @@
     void syncSaveSettings();
     void resolveCurrentModel();
     void updater.checkForUpdate();
+    // 習慣ナッジ（#58）: 起動をアンカーに、継続中ストリークが今日未記録なら1回だけ促す（opt-in）。
+    void maybeNudgeOnStartup();
     // トレイ/メニュー/CLI --toggle-record は常にトグル。
     const unToggle = listen("toggle-record", () => void toggle());
     // ホットキー押下/解放（録音モードで振り分け）。
@@ -1790,6 +1824,16 @@
             {$_("settings.autostart")}
           </label>
           <p class="tip">{$_("settings.tip_autostart")}</p>
+          <!-- 習慣ナッジ（#58）: opt-in。ONにした瞬間に通知権限を要求し、拒否ならOFFへ戻す。 -->
+          <label class="check">
+            <input
+              type="checkbox"
+              bind:checked={nudgeEnabled}
+              onchange={() => void onToggleNudge()}
+            />
+            {$_("settings.nudge")}
+          </label>
+          <p class="tip">{$_("settings.tip_nudge")}</p>
           <!-- オンボーディングを再表示する導線(#397)。一度閉じると出なくなるため、後から見返せるように。 -->
           <button
             type="button"

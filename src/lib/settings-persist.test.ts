@@ -24,6 +24,7 @@ describe("readSettings", () => {
     expect(s.awsAuthMode).toBe("sigv4");
     expect(s.taskbarWidget).toBe(true);
     expect(s.inputDeviceKind).toBe("input");
+    expect(s.nudgeEnabled).toBe(false); // 習慣ナッジは opt-in（既定OFF / #58）
     expect(s.customStyles).toEqual([]);
     // 出力言語の既定は引数（起動時UI言語）。
     expect(s.outputLang).toBe("en");
@@ -120,6 +121,7 @@ describe("writeSettings", () => {
     taskbarWidget: false,
     inputDevice: "dev",
     inputDeviceKind: "loopback",
+    nudgeEnabled: true,
   };
 
   it("フォーム項目を localStorage へ書き戻す", () => {
@@ -129,6 +131,7 @@ describe("writeSettings", () => {
     expect(localStorage.getItem("recordMode")).toBe("momentary");
     expect(localStorage.getItem("taskbarWidget")).toBe("false");
     expect(localStorage.getItem("outputLang")).toBe("es");
+    expect(localStorage.getItem("nudgeEnabled")).toBe("true");
   });
 
   it("write→read のラウンドトリップで主要値が保たれる", () => {
