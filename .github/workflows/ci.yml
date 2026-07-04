@@ -36,6 +36,8 @@ jobs:
         run: npm ci
       - name: ESLint
         run: npm run lint
+      - name: Stylelint (brand color tokens / 生hex禁止)
+        run: npm run lint:css
       - name: Prettier (format check)
         run: npm run format:check
       - name: TSDoc (typedoc, warnings as errors / #393)
