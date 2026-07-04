@@ -110,15 +110,13 @@ jobs:
           RUSTDOCFLAGS: "-D warnings"
         run: cargo doc --manifest-path src-tauri/Cargo.toml --no-deps --document-private-items
 
-  # Rust カバレッジ計測（#402/#392）。フロントは vitest で計測済み、Rust側の分母を可視化する。
-  # cargo-llvm-cov で instrument ビルド。段階導入: まずは可視化(continue-on-error)、
-  # 数値が安定したらゲート化(80%)する。lcov をアーティファクト保存。
-  # 注: continue-on-error はジョブレベルのみ（閾値ゲート化までの暫定）。計測ステップは
-  #     pipefail で失敗を可視化する（コンパイル失敗＝ステップ赤、閾値未達＝将来の別ステップで判定）。
+  # Rust カバレッジ計測（#402/#392）。フロントは vitest で計測済み、Rust側も lines 80% を
+  # ゲートとして強制する（監査項目12: 実測 86.9% に到達したため --fail-under-lines 80 で
+  # ゲート化し continue-on-error を撤去）。lcov をアーティファクト保存。
+  # 計測ステップは pipefail で失敗を可視化する（コンパイル失敗・閾値未達＝ジョブ赤）。
   rust-coverage:
     name: rust-coverage (llvm-cov)
     runs-on: ubuntu-22.04
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
@@ -158,6 +156,7 @@ jobs:
         run: |
           set -o pipefail
           cargo llvm-cov --manifest-path src-tauri/Cargo.toml --lib \
+            --fail-under-lines 80 \
             --lcov --output-path lcov-rust.info --summary-only | tee rust-coverage-summary.txt
       - name: Upload Rust coverage
         uses: actions/upload-artifact@v7
