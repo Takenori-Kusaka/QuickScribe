@@ -24,3 +24,5 @@
 | [0018](0018-output-language-translation.md) | 整形出力言語（翻訳）を専用の永続設定・1パスで提供（2パス撤回） | Accepted |
 | [0019](0019-privacy-indicator-and-offline-mode.md) | プライバシー状態の可視化と「オフラインにする」導線 | Accepted |
 | [0020](0020-metrics-and-telemetry-stance.md) | 採用計測はサーバー側公開統計のみ・アプリ内テレメトリは持たない | Accepted |
+| [0021](0021-local-first-defaults.md) | ローカルファースト既定（整形=Ollama / 日本語STT=kotoba-whisper） | Accepted |
+| [0022](0022-model-catalog-curation.md) | whisperモデルカタログの精選（言語別ガイド） | Accepted |

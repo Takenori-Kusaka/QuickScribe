@@ -1,0 +1,4 @@
+# 音源等のバイナリは EOL 変換・差分表示を無効化（fixtures の .opus 破損防止 / #26）。
+*.opus binary
+*.wav binary
+*.bin binary

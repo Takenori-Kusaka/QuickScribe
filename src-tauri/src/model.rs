@@ -26,42 +26,22 @@ pub struct WhisperModel {
 }
 
 /// モデルカタログ（既定 base を先頭に）。日本語特化 kotoba-whisper を含む。
+/// ラベルは日本語CERベンチ(#26 / tests/fixtures/ja-accuracy)の実測に基づき、言語別の適否を示す。
+/// 実測(base=44.5% / tiny=56.9% / kotoba-q5=40.2% 平均CER)より、tiny は日本語で base に完全劣位＝
+/// 日本語では非推奨と明示する。kotoba-q5 は日本語平均で最良だが素材により幻覚(反復)で悪化しうるため、
+/// base を頑健なフォールバックとして残す（ADR-0022・不要な選択肢は増やさないが、用途別の選択肢は残す）。
 pub const MODELS: &[WhisperModel] = &[
     WhisperModel {
         id: "base",
-        label: "標準 base（日本語と速度のバランス・約142MB / 既定）",
+        label: "標準 base（日本語と速度のバランス・約142MB / 既定・頑健）",
         filename: "ggml-base.bin",
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
         sha256: "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
         size: 147951465,
     },
     WhisperModel {
-        id: "tiny",
-        label: "最速 tiny（低精度・約75MB）",
-        filename: "ggml-tiny.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
-        sha256: "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
-        size: 77691713,
-    },
-    WhisperModel {
-        id: "small",
-        label: "高精度寄り small（約466MB）",
-        filename: "ggml-small.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
-        sha256: "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
-        size: 487601967,
-    },
-    WhisperModel {
-        id: "medium",
-        label: "高精度 medium（約1.5GB・低速）",
-        filename: "ggml-medium.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin",
-        sha256: "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208",
-        size: 1533763059,
-    },
-    WhisperModel {
         id: "kotoba-q5",
-        label: "日本語特化 kotoba-whisper 量子化（約538MB・推奨）",
+        label: "日本語特化 kotoba-whisper 量子化（日本語精度◎・約538MB・日本語推奨）",
         filename: "ggml-kotoba-whisper-v2.0-q5_0.bin",
         url: "https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0-q5_0.bin",
         sha256: "4a3b92192b5d3578ff854a5876213e2e27af0c2d357492c2d14271e82c303658",
@@ -69,11 +49,35 @@ pub const MODELS: &[WhisperModel] = &[
     },
     WhisperModel {
         id: "kotoba",
-        label: "日本語特化 kotoba-whisper 高精度（約1.5GB）",
+        label: "日本語特化 kotoba-whisper 高精度（約1.5GB・低速）",
         filename: "ggml-kotoba-whisper-v2.0.bin",
         url: "https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0.bin",
         sha256: "eff70a8a236e731abba774ba71e1f6d0fce53302137208c32207e694e0bf4546",
         size: 1519521155,
+    },
+    WhisperModel {
+        id: "small",
+        label: "多言語 small（英語向き・約466MB）",
+        filename: "ggml-small.bin",
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
+        sha256: "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
+        size: 487601967,
+    },
+    WhisperModel {
+        id: "medium",
+        label: "多言語 medium（英語向き・高精度・約1.5GB・低速）",
+        filename: "ggml-medium.bin",
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin",
+        sha256: "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208",
+        size: 1533763059,
+    },
+    WhisperModel {
+        id: "tiny",
+        label: "最速 tiny（英語・下書き向き / 日本語は低精度で非推奨・約75MB）",
+        filename: "ggml-tiny.bin",
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
+        sha256: "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
+        size: 77691713,
     },
 ];
 
@@ -237,6 +241,19 @@ mod tests {
         let l = list_models();
         assert_eq!(l[0].id, "base");
         assert!(l.iter().any(|m| m.id == "kotoba"));
+    }
+
+    #[test]
+    fn catalog_curation_orders_ja_first_and_guides_tiny() {
+        // ADR-0022: 日本語向きを上位に、tiny は末尾に降格する。
+        let ids: Vec<&str> = MODELS.iter().map(|m| m.id).collect();
+        let pos = |id: &str| ids.iter().position(|x| *x == id).unwrap();
+        assert_eq!(ids[0], "base", "既定 base は先頭");
+        assert!(pos("kotoba-q5") < pos("small"), "日本語推奨は英語向きより上位");
+        assert_eq!(*ids.last().unwrap(), "tiny", "tiny は末尾へ降格");
+        // ラベルで日本語の適否を明示（実測に基づくガイド）。
+        let tiny = MODELS.iter().find(|m| m.id == "tiny").unwrap();
+        assert!(tiny.label.contains("非推奨"), "tiny は日本語非推奨を明示");
     }
 
     #[test]

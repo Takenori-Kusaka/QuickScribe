@@ -1,0 +1,10 @@
+{
+  "_comment": "日本語CERの回帰ゲート基準(#26/#403)。perf.yml の日本語精度ジョブが平均CERをこれと比較し、margin超過で警告する。値はローカル実測(Windows/opus/ja)由来の初期基準。CI初回実行後に env/量子化差を踏まえ更新する。",
+  "metric": "mean_cer",
+  "margin": 0.05,
+  "baselines": {
+    "tiny": 0.569,
+    "base": 0.445,
+    "kotoba-q5": 0.402
+  }
+}

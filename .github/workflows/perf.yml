@@ -156,6 +156,120 @@ jobs:
           path: perf-report.md
           if-no-files-found: error
 
+  # 日本語精度ベンチ(#26 / #403): 実データ(本人音読のPD作品)に対する CER(文字誤り率)を、
+  # モデル別(tiny/base/kotoba-q5)に計測する。モデルカタログ精選(不要な選択肢を増やさない)と
+  # 精度回帰の検知が目的。ルビ混入により絶対値は悲観側＝相対/回帰指標として扱う(fixtures/README参照)。
+  ja-accuracy:
+    name: 日本語精度 CER (Linux)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Install build dependencies (whisper build)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
+            libxdo-dev build-essential file clang libclang-dev cmake \
+            libasound2-dev pkg-config
+
+      - name: Cache whisper models (ja-accuracy)
+        id: cache-ja-models
+        uses: actions/cache@v6
+        with:
+          path: models
+          key: ja-accuracy-models-tiny-base-kotobaq5-v1
+      - name: Download models (tiny / base / kotoba-q5)
+        if: steps.cache-ja-models.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p models
+          dl() { curl -L --fail --retry 5 --retry-delay 15 --retry-all-errors -o "$1" "$2"; }
+          dl models/ggml-tiny.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
+          dl models/ggml-base.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
+          dl models/ggml-kotoba-whisper-v2.0-q5_0.bin https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0-q5_0.bin
+
+      - name: Build test binary (compile excluded from run loop)
+        run: cargo test --manifest-path src-tauri/Cargo.toml --test transcribe_integration --no-run
+
+      - name: Measure CER per model x sample
+        run: |
+          FIX=src-tauri/tests/fixtures/ja-accuracy
+          SLUGS="gingatetsudo-no-yoru kumonoito wagahaiha-neko-dearu"
+          MODEL_IDS="tiny base kotoba-q5"
+          model_file() {
+            case "$1" in
+              tiny) echo models/ggml-tiny.bin;;
+              base) echo models/ggml-base.bin;;
+              kotoba-q5) echo models/ggml-kotoba-whisper-v2.0-q5_0.bin;;
+            esac
+          }
+          : > cer.tsv
+          for slug in $SLUGS; do
+            for mid in $MODEL_IDS; do
+              QS_LANG=ja \
+              QS_MODEL_PATH="$(model_file "$mid")" \
+              QS_AUDIO_PATH="$FIX/$slug/audio.opus" \
+              QS_TRANSCRIPT_OUT="hyp-$slug-$mid.txt" \
+                cargo test --manifest-path src-tauri/Cargo.toml \
+                  --test transcribe_integration -- --nocapture >/dev/null 2>&1
+              CER=$(python3 scripts/cer_ja.py "$FIX/$slug/reference.txt" "hyp-$slug-$mid.txt" | cut -f1)
+              printf "%s\t%s\t%s\n" "$slug" "$mid" "$CER" >> cer.tsv
+            done
+          done
+          python3 - <<'PY' | tee ja-accuracy-report.md
+          import collections, json, os
+          rows=collections.defaultdict(dict)
+          models=[]
+          for line in open("cer.tsv"):
+              slug,mid,cer=line.rstrip("\n").split("\t")
+              rows[slug][mid]=float(cer)
+              if mid not in models: models.append(mid)
+          print("# QuickScribe 日本語精度ベンチ (CER / Linux)")
+          print()
+          print("| サンプル | " + " | ".join(models) + " |")
+          print("|---|" + "---|"*len(models))
+          sums={m:0.0 for m in models}
+          for slug,vals in rows.items():
+              cells=[]
+              best=min(vals.values())
+              for m in models:
+                  v=vals[m]; sums[m]+=v
+                  cells.append(("**%.1f%%**" if v==best else "%.1f%%") % (v*100))
+              print(f"| {slug} | " + " | ".join(cells) + " |")
+          n=len(rows)
+          avg={m: sums[m]/n for m in models}
+          bestavg=min(avg.values())
+          cells=[("**%.1f%%**" if avg[m]==bestavg else "%.1f%%") % (avg[m]*100) for m in models]
+          print("| **平均** | " + " | ".join(cells) + " |")
+          print()
+          print("_注: 本人音読のPD作品3点。原文へのルビ混入で絶対CERは悲観側＝相対/回帰指標。太字=各行の最良。_")
+          # 回帰ゲート(#403): 平均CERが baseline+margin を超えたら警告する。
+          bl=json.load(open("docs/perf/ja-cer-baseline.json", encoding="utf-8"))
+          margin=bl["margin"]; base=bl["baselines"]; regressed=[]
+          print(); print("## 回帰チェック（平均CER vs baseline）"); print()
+          print("| モデル | 実測 | baseline | 上限(=+margin) | 判定 |"); print("|---|---|---|---|---|")
+          for m in models:
+              if m not in base: continue
+              cur=avg[m]; lim=base[m]+margin
+              ok = cur <= lim
+              if not ok: regressed.append((m,cur,lim))
+              print(f"| {m} | {cur*100:.1f}% | {base[m]*100:.1f}% | {lim*100:.1f}% | {'✅' if ok else '⚠️ 回帰'} |")
+          for m,cur,lim in regressed:
+              print(f"::warning title=日本語CER回帰::{m} の平均CER {cur*100:.1f}% が上限 {lim*100:.1f}% を超過")
+          print(); print(f"_margin={margin*100:.0f}pt。基準は docs/perf/ja-cer-baseline.json。_")
+          PY
+          cat ja-accuracy-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload ja-accuracy report
+        uses: actions/upload-artifact@v7
+        with:
+          name: ja-accuracy-report
+          path: ja-accuracy-report.md
+          if-no-files-found: error
+
   # 起動時間ベンチ(#403 案A): run() 開始→フロント ready(onMount) の経過をアプリが記録し、
   # CI は xvfb でヘッドレス起動→ログ(perf-startup.txt)を回収する（外部計時器は不要＝突合方式）。
   startup-time:
@@ -196,20 +310,32 @@ jobs:
           xvfb-run -a "$BIN" >/tmp/app.out 2>&1 &
           APP_PID=$!
           for _ in $(seq 1 40); do [ -f "$LOG" ] && break; sleep 1; done
-          kill "$APP_PID" 2>/dev/null || true
           if [ -f "$LOG" ]; then
             MS=$(sed -n 's/^startup_ms=//p' "$LOG")
+            # アイドル時メモリ(#403): ready 後にアプリ実プロセスの RSS を数回サンプルし最大値を採る。
+            # xvfb-run の子として動く実体(quickscribe)を名前で拾う（APP_PID は xvfb-run のラッパ）。
+            PEAK_RSS_KB=0
+            for _ in $(seq 1 5); do
+              RSS_KB=$(ps -C quickscribe -o rss= 2>/dev/null | sort -n | tail -1 | tr -d ' ')
+              [ -n "$RSS_KB" ] && [ "$RSS_KB" -gt "$PEAK_RSS_KB" ] && PEAK_RSS_KB=$RSS_KB
+              sleep 1
+            done
+            kill "$APP_PID" 2>/dev/null || true
+            pkill -x quickscribe 2>/dev/null || true
+            IDLE_RSS_MB=$(awk -v k="$PEAK_RSS_KB" 'BEGIN{ printf "%.1f", k/1024 }')
             {
-              echo "# QuickScribe 起動時間 (Linux x64 / xvfb)"
+              echo "# QuickScribe 起動時間・アイドルメモリ (Linux x64 / xvfb)"
               echo ""
               echo "| 指標 | 値 |"
               echo "|---|---|"
               echo "| **起動時間 (run()→UI ready)** | **${MS} ms** |"
+              echo "| **アイドル時メモリ (アプリ実体 RSS)** | **${IDLE_RSS_MB} MB** |"
               echo ""
-              echo "_注: プロセス起動(run 入口)からフロント onMount までの経過。ヘッドレス表示(xvfb)での計測。_"
+              echo "_注: 起動時間=run 入口→フロント onMount。アイドルRSS=ready 後のアプリ実プロセス(quickscribe)のピーク RSS。ヘッドレス表示(xvfb)。_"
             } | tee startup-report.md
             cat startup-report.md >> "$GITHUB_STEP_SUMMARY"
           else
+            kill "$APP_PID" 2>/dev/null || true
             echo "::warning::perf-startup.txt 未生成（表示/依存の問題の可能性）。ログ:"; cat /tmp/app.out || true
             exit 1
           fi
