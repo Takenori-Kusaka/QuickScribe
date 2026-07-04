@@ -28,6 +28,16 @@ updates:
       # ★解除条件: plist が quick-xml 要求を 0.40+ へ引き上げた新版を出したら、cargo update -p plist
       #   で追随し、この ignore と security.yml の --ignore を除去して #526 をクローズする。
       - dependency-name: "quick-xml"
+      # whisper-rs 0.15+ は API破壊的変更(full_n_segments/full_get_segment_text 等)に加え
+      # whisper-rs-sys ^0.15 を要求し、ADR-0012 の vendoring([patch.crates-io] →
+      # vendor/whisper-rs-sys-0.13.1)が版不一致で無効化される(Windows マルチSIMD 配布が
+      # サイレントに壊れる)。0.16 移行は API追随＋sys 再vendoring＋ADR更新を伴う計画作業
+      # として別issueで実施するため、それまで minor/major バンプPRを抑止する。
+      # ★解除条件: 移行issueの完了(stt.rs のAPI追随・vendor/whisper-rs-sys-0.15.x 再作成)。
+      - dependency-name: "whisper-rs"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
 
   # npm 依存（@tauri-apps/* / svelte / vite / vitest / wdio 等）
   - package-ecosystem: "npm"
