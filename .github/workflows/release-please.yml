@@ -1,9 +1,13 @@
 name: release-please
 
-# リリースノート自動化（#400）。main への Conventional Commits を集計し、
-# CHANGELOG.md と版を更新する「Release PR」を維持する。Release PR をマージすると
-# タグ vX.Y.Z を作成し、カテゴリ別ノート付きの GitHub Release を公開する。
-# そのタグ push が既存の release.yml（バイナリビルド/配布）を起動する。
+# リリースノート自動化（#400 / 完全自動化 #427）。main への Conventional Commits を集計し、
+# CHANGELOG.md と版を更新する「Release PR」を維持する。Release PR をマージするとタグ vX.Y.Z を
+# 作成し、カテゴリ別ノート付きの GitHub Release を公開する。
+#
+# #427: release-please のタグ/リリースは GITHUB_TOKEN 由来のため別ワークフロー(release.yml の
+# `on: push tags`)を起動できない（GitHub のループ防止）。そこで **PAT/App トークンを使わず**、
+# 同一ワークフロー内で release_created をゲートに release.yml を reusable(workflow_call)として呼び、
+# バイナリを添付する。これは新規トリガーでなく同一ランのため GITHUB_TOKEN で完結する。
 on:
   push:
     branches: [main]
@@ -15,8 +19,22 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@v5
+        id: rp
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  # Release PR マージで release_created=true のとき、同一ラン内でバイナリをビルドし
+  # release-please が作成したリリース(タグ)へ添付する（PAT 不要 / #427）。
+  build-release:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+    secrets: inherit
