@@ -82,6 +82,8 @@ pub const MODELS: &[WhisperModel] = &[
 ];
 
 /// 一覧表示用の最小情報（フロントへ渡す）。
+/// label は日本語既定のフォールバック。フロントは id を安定識別子として
+/// `catalog.whisper_models.<id>`（ja/en/zh/es）で表示名を解決し、未収載 id のみ label を使う(#462)。
 #[derive(Serialize)]
 pub struct ModelInfo {
     pub id: String,
@@ -203,13 +205,15 @@ fn verify_integrity(
     expected_sha256: &str,
 ) -> Result<(), String> {
     if expected_size != 0 && actual_size != expected_size {
-        return Err(format!(
-            "モデルのサイズが一致しません（破損の可能性）。期待 {expected_size} バイト / 実際 {actual_size} バイト"
+        return Err(crate::errcode::ec(
+            crate::errcode::E_MODEL_SIZE_MISMATCH,
+            format!("expected {expected_size} bytes / actual {actual_size} bytes"),
         ));
     }
     if !expected_sha256.is_empty() && !actual_sha256.eq_ignore_ascii_case(expected_sha256) {
-        return Err(format!(
-            "モデルのSHA256が一致しません（改ざん・破損の可能性）。期待 {expected_sha256} / 実際 {actual_sha256}"
+        return Err(crate::errcode::ec(
+            crate::errcode::E_MODEL_SHA256_MISMATCH,
+            format!("expected {expected_sha256} / actual {actual_sha256}"),
         ));
     }
     Ok(())

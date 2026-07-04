@@ -104,7 +104,6 @@
     "tip_timestamps": "Conserva la hora de lo que dijiste para que la IA organice teniendo en cuenta el hilo.",
     "tip_auto_pipeline": "Al detener la grabación, la transcripción pasa directamente por el refinado de IA (se necesita una clave del proveedor de refinado).",
     "tip_audio_format": "Opus es compacto e ideal para diarios. WAV no está comprimido y es fiable, pero ocupa más.",
-    "provider_ollama": "Local (Ollama)",
     "ollama_note_1": "Local (Ollama) no necesita clave y se ejecuta por completo en el dispositivo (tus pensamientos en bruto nunca salen). Primero inicia ",
     "ollama_note_2": " y descarga un modelo (p. ej. ",
     "ollama_note_3": ") de antemano.",
@@ -213,6 +212,95 @@
     "audio_files": "Archivos de audio",
     "text_memo": "Texto/nota"
   },
+  "catalog": {
+    "providers": {
+      "gemini": "Gemini",
+      "anthropic": "Anthropic (Claude)",
+      "openai": "OpenAI",
+      "ollama": "Local (Ollama)",
+      "bedrock": "AWS Bedrock",
+      "claude-aws": "Claude Platform on AWS"
+    },
+    "key_ph": {
+      "gemini": "AIza...",
+      "anthropic": "sk-ant-...",
+      "openai": "sk-...",
+      "ollama": "(no necesaria)",
+      "bedrock": "Clave API de Bedrock (Bearer); no necesaria con SigV4",
+      "claude-aws": "Clave API de Anthropic; no necesaria con SigV4"
+    },
+    "stt": {
+      "local": "Local (whisper, todo en el dispositivo)",
+      "groq": "Groq (whisper-large-v3-turbo, rápido y económico)",
+      "openai": "OpenAI (gpt-4o-transcribe)",
+      "deepgram": "Deepgram (nova-3)",
+      "azure": "Azure AI Speech (fast transcription)"
+    },
+    "stt_key_ph": {
+      "groq": "gsk_...",
+      "openai": "sk-...",
+      "deepgram": "Clave API de Deepgram",
+      "azure": "Clave del recurso de Azure Speech"
+    },
+    "stt_model_ph": {
+      "groq": "whisper-large-v3-turbo",
+      "openai": "gpt-4o-transcribe",
+      "deepgram": "nova-3",
+      "azure": "(no necesario)"
+    },
+    "styles": {
+      "structured": {
+        "label": "Estructurado",
+        "desc": "Organiza los puntos clave con encabezados y viñetas conservando los matices (predeterminado)."
+      },
+      "verbatim": {
+        "label": "Literal",
+        "desc": "Mantiene muletillas y repeticiones casi tal cual; solo ajustes mínimos de legibilidad."
+      },
+      "summary": {
+        "label": "Resumen",
+        "desc": "Resume brevemente el conjunto, acotándolo a 3–5 puntos clave."
+      },
+      "brainstorm": {
+        "label": "Ampliar ideas",
+        "desc": "Un «re-refinado» de una sola pasada que amplía preguntas, ángulos y próximos pasos a partir del contenido; no es un diálogo."
+      },
+      "custom": {
+        "label": "Personalizado",
+        "desc": "Instrucciones de refinado definidas por el usuario."
+      }
+    },
+    "whisper_models": {
+      "base": "base estándar (equilibrio entre japonés y velocidad, ~142MB / predeterminado, robusto)",
+      "kotoba-q5": "kotoba-whisper cuantizado especializado en japonés (máxima precisión en japonés, ~538MB, recomendado para japonés)",
+      "kotoba": "kotoba-whisper de alta precisión especializado en japonés (~1.5GB, lento)",
+      "small": "small multilingüe (bueno para inglés, ~466MB)",
+      "medium": "medium multilingüe (bueno para inglés, alta precisión, ~1.5GB, lento)",
+      "tiny": "tiny, el más rápido (inglés/borradores; baja precisión en japonés, no recomendado, ~75MB)"
+    }
+  },
+  "eta": {
+    "seconds": "quedan ~{s} s",
+    "minutes": "quedan ~{m} min",
+    "min_sec": "quedan ~{m} min {s} s"
+  },
+  "tray": {
+    "record": "Iniciar/detener grabación",
+    "show": "Mostrar ventana",
+    "quit": "Salir",
+    "tooltip_recording": "QuickScribe — grabando",
+    "tooltip_idle": "QuickScribe — en espera"
+  },
+  "status": {
+    "rust": {
+      "S_MODEL_DOWNLOAD_PCT": "Descargando el modelo whisper… {detail}%",
+      "S_MODEL_DOWNLOAD_MB": "Descargando el modelo whisper… {detail} MB",
+      "S_TRANSCRIBING_CLOUD": "Transcribiendo en la nube…",
+      "S_TRANSCRIBING": "Transcribiendo…",
+      "S_LOADING_AUDIO": "Cargando audio…",
+      "S_AUDIO_SAVE_FAILED": "No se pudo guardar el audio: {detail}"
+    }
+  },
   "errors": {
     "journal_load": "Error al cargar el diario: {detail}",
     "entry_open": "No se pudo abrir la entrada: {detail}",
@@ -308,7 +396,23 @@
       "E_REFINE_AWS_NO_KEYS": "La clave de acceso/secreta de AWS no está configurada.",
       "E_REFINE_AWS_NO_REGION": "La región de AWS no está configurada.",
       "E_REFINE_MODELS_HTTP": "No se pudo obtener la lista de modelos: {detail}",
-      "E_REFINE_NO_SONNET": "No se encontró ningún modelo de la familia Sonnet."
+      "E_REFINE_NO_SONNET": "No se encontró ningún modelo de la familia Sonnet.",
+      "E_NO_DOCUMENT_DIR": "No se encontró la carpeta Documentos.",
+      "E_FILE_TOO_LARGE": "El archivo es demasiado grande ({detail}). Prueba a dividir la grabación.",
+      "E_UNSUPPORTED_AUDIO_EXT": "Formato de audio no compatible. Compatibles: {detail}",
+      "E_FILE_OPEN": "No se pudo abrir el archivo ({detail}). Comprueba la ruta y los permisos.",
+      "E_NOT_RECORDING": "No se está grabando.",
+      "E_EMPTY_RECORDING": "La grabación estaba vacía (demasiado corta o la fuente seleccionada no tenía audio).",
+      "E_NO_AUDIO_TRACK": "No se encontró ninguna pista de audio.",
+      "E_STT_MODEL_PATH": "La ruta del modelo no es válida.",
+      "E_MODEL_SIZE_MISMATCH": "El tamaño del modelo no coincide (posible corrupción): {detail}",
+      "E_MODEL_SHA256_MISMATCH": "El SHA256 del modelo no coincide (posible manipulación o corrupción): {detail}",
+      "E_REFINE_OLLAMA_CONN": "No se pudo conectar con Ollama local (comprueba que ollama está en marcha y hay un modelo descargado): {detail}",
+      "E_REFINE_AWS_CONFIG": "Faltan los ajustes del proveedor de AWS (región/autenticación): {detail}",
+      "E_REFINE_NO_OLLAMA_MODEL": "No se encontró ningún modelo de Ollama instalado.",
+      "E_REFINE_MODELS_PARSE": "La respuesta de la lista de modelos no es válida: {detail}",
+      "E_REFINE_NO_OPENAI_MID": "No se encontró un modelo de gama media adecuado (gpt-4o/4.1).",
+      "E_REFINE_NO_FLASH": "No se encontró ningún modelo de la familia flash."
     },
     "unknown": "Se produjo un error desconocido."
   }

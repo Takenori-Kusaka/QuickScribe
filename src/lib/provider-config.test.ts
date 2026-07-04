@@ -16,10 +16,10 @@ describe("validateRefineConfig", () => {
     expect(validateRefineConfig({ ...base, provider: "ollama" })).toBeNull();
   });
 
-  it("クラウドは APIキー必須（コード＋provider params）", () => {
+  it("クラウドは APIキー必須（コード＋provider params は i18n キー）", () => {
     expect(validateRefineConfig({ ...base, provider: "openai", apiKey: "" })).toEqual({
       code: "errors.cfg_api_key",
-      params: { provider: "OpenAI" },
+      params: { provider: "catalog.providers.openai" },
     });
     expect(validateRefineConfig({ ...base, provider: "openai", apiKey: "sk-x" })).toBeNull();
   });
@@ -47,7 +47,7 @@ describe("validateRefineConfig", () => {
     expect(validateRefineConfig({ ...c, awsAccessKey: "AKIA", awsSecretKey: "secret" })).toBeNull();
   });
 
-  it("AWS Bearer は APIキー必須（コード＋provider params）", () => {
+  it("AWS Bearer は APIキー必須（コード＋provider params は i18n キー）", () => {
     const c: RefineConfig = {
       ...base,
       provider: "bedrock",
@@ -56,7 +56,7 @@ describe("validateRefineConfig", () => {
     };
     expect(validateRefineConfig(c)).toEqual({
       code: "errors.cfg_api_key_aws",
-      params: { provider: "AWS Bedrock" },
+      params: { provider: "catalog.providers.bedrock" },
     });
     expect(validateRefineConfig({ ...c, apiKey: "key" })).toBeNull();
   });

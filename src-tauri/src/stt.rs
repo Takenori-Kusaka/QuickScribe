@@ -49,7 +49,7 @@ pub fn decode_to_16k_mono(path: &Path) -> Result<Vec<f32>, String> {
 
     let track = format
         .default_track(TrackType::Audio)
-        .ok_or("音声トラックがありません")?;
+        .ok_or(crate::errcode::E_NO_AUDIO_TRACK)?;
     let track_id = track.id;
     // symphonia0.6: codec_params は Option<CodecParameters> の enum。Audio を取り出す。
     let audio_params = match &track.codec_params {
@@ -166,7 +166,7 @@ where
     P: FnMut(i32) + Send + 'static,
     S: FnMut(String) + Send + 'static,
 {
-    let model = model_path.to_str().ok_or("モデルパスが不正です")?;
+    let model = model_path.to_str().ok_or(crate::errcode::E_STT_MODEL_PATH)?;
     let ctx = WhisperContext::new_with_params(model, WhisperContextParameters::default())
         .map_err(|e| crate::errcode::ec(crate::errcode::E_STT_MODEL_LOAD, e))?;
     let mut state = ctx.create_state().map_err(|e| e.to_string())?;

@@ -104,7 +104,6 @@
     "tip_timestamps": "保留你说话的时间点，让 AI 在整理时考虑话语的脉络。",
     "tip_auto_pipeline": "停止录音后，转写会直接经过 AI 整理（需要整理服务商的密钥）。",
     "tip_audio_format": "Opus 体积小、适合日记。WAV 无压缩、可靠但体积大。",
-    "provider_ollama": "本地 (Ollama)",
     "ollama_note_1": "本地 (Ollama) 无需密钥、完全在设备内完成（你思考的原始数据不会离开）。请先启动 ",
     "ollama_note_2": " 并拉取模型（例如 ",
     "ollama_note_3": "）。",
@@ -213,6 +212,95 @@
     "audio_files": "音频文件",
     "text_memo": "文本/备忘"
   },
+  "catalog": {
+    "providers": {
+      "gemini": "Gemini",
+      "anthropic": "Anthropic (Claude)",
+      "openai": "OpenAI",
+      "ollama": "本地 (Ollama)",
+      "bedrock": "AWS Bedrock",
+      "claude-aws": "Claude Platform on AWS"
+    },
+    "key_ph": {
+      "gemini": "AIza...",
+      "anthropic": "sk-ant-...",
+      "openai": "sk-...",
+      "ollama": "（无需）",
+      "bedrock": "Bedrock API 密钥（Bearer）；SigV4 时无需",
+      "claude-aws": "Anthropic API 密钥；SigV4 时无需"
+    },
+    "stt": {
+      "local": "本地（whisper，完全在设备内）",
+      "groq": "Groq（whisper-large-v3-turbo，快速、低价）",
+      "openai": "OpenAI (gpt-4o-transcribe)",
+      "deepgram": "Deepgram (nova-3)",
+      "azure": "Azure AI Speech (fast transcription)"
+    },
+    "stt_key_ph": {
+      "groq": "gsk_...",
+      "openai": "sk-...",
+      "deepgram": "Deepgram API 密钥",
+      "azure": "Azure Speech 资源密钥"
+    },
+    "stt_model_ph": {
+      "groq": "whisper-large-v3-turbo",
+      "openai": "gpt-4o-transcribe",
+      "deepgram": "nova-3",
+      "azure": "（无需）"
+    },
+    "styles": {
+      "structured": {
+        "label": "结构化",
+        "desc": "用标题和要点整理重点，同时保留语气（默认）。"
+      },
+      "verbatim": {
+        "label": "逐字",
+        "desc": "尽量保留口头语和重复，只做最小限度的可读性调整。"
+      },
+      "summary": {
+        "label": "摘要",
+        "desc": "简短概括全文，浓缩为 3〜5 个要点。"
+      },
+      "brainstorm": {
+        "label": "拓展想法",
+        "desc": "从内容中拓展问题、视角和下一步的一次性“再整理”。不是对话，只改写一次。"
+      },
+      "custom": {
+        "label": "自定义",
+        "desc": "用户自定义的整理指示。"
+      }
+    },
+    "whisper_models": {
+      "base": "标准 base（兼顾日语与速度，约142MB / 默认、稳健）",
+      "kotoba-q5": "日语特化 kotoba-whisper 量化（日语精度◎，约538MB，日语推荐）",
+      "kotoba": "日语特化 kotoba-whisper 高精度（约1.5GB，较慢）",
+      "small": "多语言 small（适合英语，约466MB）",
+      "medium": "多语言 medium（适合英语，高精度，约1.5GB，较慢）",
+      "tiny": "最快 tiny（英语/草稿用；日语精度低不推荐，约75MB）"
+    }
+  },
+  "eta": {
+    "seconds": "剩余约 {s} 秒",
+    "minutes": "剩余约 {m} 分钟",
+    "min_sec": "剩余约 {m} 分 {s} 秒"
+  },
+  "tray": {
+    "record": "开始/停止录音",
+    "show": "显示窗口",
+    "quit": "退出",
+    "tooltip_recording": "QuickScribe — 录音中",
+    "tooltip_idle": "QuickScribe — 待机中"
+  },
+  "status": {
+    "rust": {
+      "S_MODEL_DOWNLOAD_PCT": "正在下载 whisper 模型… {detail}%",
+      "S_MODEL_DOWNLOAD_MB": "正在下载 whisper 模型… {detail} MB",
+      "S_TRANSCRIBING_CLOUD": "正在云端转写…",
+      "S_TRANSCRIBING": "正在转写…",
+      "S_LOADING_AUDIO": "正在读取音频…",
+      "S_AUDIO_SAVE_FAILED": "保存音频失败：{detail}"
+    }
+  },
   "errors": {
     "journal_load": "加载日记失败：{detail}",
     "entry_open": "无法打开条目：{detail}",
@@ -239,7 +327,7 @@
     "cfg_api_key": "整理需要 {provider} 的 API 密钥。",
     "rust": {
       "E_LOCK_STT": "锁定 STT 设置失败。",
-      "E_JOURNAL_DIR": "创建日志文件夹失败：{detail}",
+      "E_JOURNAL_DIR": "创建日记文件夹失败：{detail}",
       "E_FILE_MANAGER": "启动文件管理器失败：{detail}",
       "E_LOCK_SETTINGS": "锁定设置失败。",
       "E_LOCK_RECORD_STATE": "锁定录音状态失败。",
@@ -278,7 +366,7 @@
       "E_STT_MODEL_LOAD": "加载模型失败：{detail}",
       "E_WAV_BUILD": "生成 WAV 失败：{detail}",
       "E_WAV_WRITE": "写入 WAV 失败：{detail}",
-      "E_WAV_FINALIZE": "确定 WAV 失败：{detail}",
+      "E_WAV_FINALIZE": "完成 WAV 失败：{detail}",
       "E_CLOUD_STT_NO_KEY": "未设置云端 STT 的 API 密钥（请在设置中输入）。",
       "E_CLOUD_STT_HTTP": "云端 STT 通信失败：{detail}",
       "E_CLOUD_STT_STATUS": "云端 STT 错误：{detail}",
@@ -305,10 +393,26 @@
       "E_REFINE_GEMINI_NO_KEY": "未设置 Gemini API 密钥（请在设置中输入）。",
       "E_REFINE_ANTHROPIC_NO_KEY": "未设置 Anthropic API 密钥（请在设置中输入）。",
       "E_REFINE_OPENAI_NO_KEY": "未设置 OpenAI API 密钥（请在设置中输入）。",
-      "E_REFINE_AWS_NO_KEYS": "未设置 AWS 访问密钥/密钥。",
+      "E_REFINE_AWS_NO_KEYS": "未设置 AWS 访问密钥/秘密密钥。",
       "E_REFINE_AWS_NO_REGION": "未设置 AWS 区域。",
       "E_REFINE_MODELS_HTTP": "获取模型列表失败：{detail}",
-      "E_REFINE_NO_SONNET": "未找到 Sonnet 系列模型。"
+      "E_REFINE_NO_SONNET": "未找到 Sonnet 系列模型。",
+      "E_NO_DOCUMENT_DIR": "未找到文档文件夹。",
+      "E_FILE_TOO_LARGE": "文件过大（{detail}）。请尝试拆分录音。",
+      "E_UNSUPPORTED_AUDIO_EXT": "不支持的音频格式。支持的格式：{detail}",
+      "E_FILE_OPEN": "无法打开文件（{detail}）。请检查路径和权限。",
+      "E_NOT_RECORDING": "当前没有在录音。",
+      "E_EMPTY_RECORDING": "录音数据为空（录音太短，或所选录音来源没有声音）。",
+      "E_NO_AUDIO_TRACK": "没有音频轨道。",
+      "E_STT_MODEL_PATH": "模型路径无效。",
+      "E_MODEL_SIZE_MISMATCH": "模型大小不一致（可能已损坏）：{detail}",
+      "E_MODEL_SHA256_MISMATCH": "模型 SHA256 不一致（可能被篡改或损坏）：{detail}",
+      "E_REFINE_OLLAMA_CONN": "连接本地 Ollama 失败（请确认 ollama 已启动且已拉取模型）：{detail}",
+      "E_REFINE_AWS_CONFIG": "缺少 AWS 服务商设置（区域/认证）：{detail}",
+      "E_REFINE_NO_OLLAMA_MODEL": "未找到已安装的 Ollama 模型。",
+      "E_REFINE_MODELS_PARSE": "模型列表响应无效：{detail}",
+      "E_REFINE_NO_OPENAI_MID": "未找到合适的中端（gpt-4o/4.1 系列）模型。",
+      "E_REFINE_NO_FLASH": "未找到 flash 系列模型。"
     },
     "unknown": "发生了未知错误。"
   }

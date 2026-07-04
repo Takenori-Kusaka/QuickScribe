@@ -24,19 +24,21 @@
   import { selectDiscoveryTargets, buildDiscoveryText } from "./lib/discovery";
   import { _, locale } from "svelte-i18n";
   import { LOCALE_STORAGE_KEY } from "./lib/i18n";
+  import { statusText } from "./lib/status";
   import {
     type Provider,
     type SttProvider,
     ALL_PROVIDERS,
-    PROVIDER_LABELS,
+    PROVIDER_LABEL_KEYS,
     LOCAL_PROVIDERS,
     AWS_PROVIDERS,
     FALLBACK_MODELS,
-    KEY_PLACEHOLDERS,
-    STT_LABELS,
+    KEY_PLACEHOLDER_KEYS,
+    STT_PROVIDERS,
+    STT_LABEL_KEYS,
     STT_CLOUD,
-    STT_KEY_PLACEHOLDERS,
-    STT_MODEL_PLACEHOLDERS,
+    STT_KEY_PLACEHOLDER_KEYS,
+    STT_MODEL_PLACEHOLDER_KEYS,
     MODEL_TTL_MS,
     DISCOVERY_MAX,
     MAX_INPUT_MB,
@@ -488,6 +490,30 @@
   // 自動アップデート（状態と操作は lib/update.svelte.ts へ集約 / #392）。
   const updater = createUpdater($_);
 
+  // ローカル whisper モデルの表示名。カタログ(catalog.whisper_models.<id>)を優先し、
+  // 未収載の id はバックエンドのラベルへフォールバックする（新モデル追加時も壊れない）。
+  function whisperModelLabel(m: { id: string; label: string }): string {
+    const key = `catalog.whisper_models.${m.id}`;
+    const v = $_(key);
+    return v === key ? m.label : v;
+  }
+
+  // トレイのメニュー/ツールチップ文言をバックエンドへ反映する（#462: Rust側の日本語固定を排除）。
+  // トレイ文字列は Rust 側で必要なため、フロントが現在のUI言語で解決して渡す。
+  async function syncTrayTexts() {
+    try {
+      await invoke("set_tray_texts", {
+        record: $_("tray.record"),
+        show: $_("tray.show"),
+        quit: $_("tray.quit"),
+        tooltipRecording: $_("tray.tooltip_recording"),
+        tooltipIdle: $_("tray.tooltip_idle"),
+      });
+    } catch (e) {
+      console.error("set_tray_texts failed", e);
+    }
+  }
+
   // 音声ファイル(mp3等)を選んで文字起こし→保存する(S1.6)。非同期で実行しUIを固めない。
   async function transcribeFromFile() {
     error = null;
@@ -549,7 +575,11 @@
   function openSettingsForConfig(err: RefineConfigError) {
     showSettings = true;
     settingsTab = "refine"; // 整形の鍵/AWS設定は整形タブにあるため、そのタブへ切替えて誘導。
-    settingsError = $_(err.code, { values: err.params });
+    // params.provider は表示ラベルの i18n キー(catalog.providers.*) → 先に翻訳して補間する。
+    const values = err.params?.provider
+      ? { ...err.params, provider: $_(err.params.provider) }
+      : err.params;
+    settingsError = $_(err.code, { values });
     const id = configFieldId(err.code);
     if (id) {
       queueMicrotask(() => {
@@ -769,6 +799,7 @@
     void device.loadAudioSources();
     void device.loadWhisperModels();
     void syncSaveSettings();
+    void syncTrayTexts();
     void resolveCurrentModel();
     void updater.checkForUpdate();
     // 習慣ナッジ（#58）: 起動をアンカーに、継続中ストリークが今日未記録なら1回だけ促す（opt-in）。
@@ -785,13 +816,14 @@
     const unStopRec = listen("stop-record", () => {
       if (recording) void toggle();
     });
-    const unStatus = listen<string>("status", (e) => (status = e.payload));
+    // status は Rust から安定コード(S_XXX)で届く → カタログでローカライズ(#462)。
+    const unStatus = listen<string>("status", (e) => (status = statusText(e.payload, $_)));
     const unProgress = listen<number>("progress", (e) => {
       progress = e.payload;
       if (progress > 0 && transcribeStartMs === null) transcribeStartMs = Date.now();
       if (transcribeStartMs && progress > 0 && progress < 100) {
         const elapsed = (Date.now() - transcribeStartMs) / 1000;
-        eta = formatRemaining(estimateRemaining(elapsed, progress));
+        eta = formatRemaining(estimateRemaining(elapsed, progress), $_);
       } else {
         eta = "";
       }
@@ -816,7 +848,8 @@
     const unErr = listen<string>("transcribe-error", (e) => {
       transcribing = false;
       status = "";
-      error = e.payload;
+      // 安定エラーコード(E_XXX)をローカライズして表示（生コードを露出させない / #462）。
+      error = errorText(e.payload, $_);
     });
     return () => {
       clearMomentaryTimer();
@@ -1460,18 +1493,20 @@
               aria-label={$_("settings.group_stt")}
               disabled={privacy.offlineMode}
             >
-              {#each Object.keys(STT_LABELS) as p}
-                <option value={p}>{STT_LABELS[p as SttProvider]}</option>
+              {#each STT_PROVIDERS as p (p)}
+                <option value={p}>{$_(STT_LABEL_KEYS[p])}</option>
               {/each}
             </select>
           </div>
           {#if STT_CLOUD.includes(sttProvider)}
             <label>
-              {$_("settings.stt_api_key", { values: { provider: STT_LABELS[sttProvider] } })}
+              {$_("settings.stt_api_key", {
+                values: { provider: $_(STT_LABEL_KEYS[sttProvider]) },
+              })}
               <input
                 type="password"
                 bind:value={sttKeys[sttProvider]}
-                placeholder={STT_KEY_PLACEHOLDERS[sttProvider]}
+                placeholder={$_(STT_KEY_PLACEHOLDER_KEYS[sttProvider])}
               />
             </label>
             {#if sttProvider === "azure"}
@@ -1490,14 +1525,14 @@
                 <input
                   type="text"
                   bind:value={sttModel}
-                  placeholder={STT_MODEL_PLACEHOLDERS[sttProvider]}
+                  placeholder={$_(STT_MODEL_PLACEHOLDER_KEYS[sttProvider])}
                 />
               </label>
             {/if}
             <p class="tip warn">
               {$_("settings.tip_stt_warn_1")}<strong
                 >{$_("settings.tip_stt_warn_strong", {
-                  values: { provider: STT_LABELS[sttProvider] },
+                  values: { provider: $_(STT_LABEL_KEYS[sttProvider]) },
                 })}</strong
               >{$_("settings.tip_stt_warn_2")}
             </p>
@@ -1506,7 +1541,7 @@
               {$_("settings.stt_model")}
               <select bind:value={whisperModel}>
                 {#each device.whisperModels as m}
-                  <option value={m.id}>{m.label}</option>
+                  <option value={m.id}>{whisperModelLabel(m)}</option>
                 {/each}
               </select>
             </label>
@@ -1539,12 +1574,9 @@
               onchange={() => resolveCurrentModel()}
               disabled={privacy.offlineMode}
             >
-              <option value="gemini">Gemini</option>
-              <option value="anthropic">Anthropic (Claude)</option>
-              <option value="openai">OpenAI</option>
-              <option value="ollama">{$_("settings.provider_ollama")}</option>
-              <option value="bedrock">AWS Bedrock</option>
-              <option value="claude-aws">Claude Platform on AWS</option>
+              {#each ALL_PROVIDERS as p (p)}
+                <option value={p}>{$_(PROVIDER_LABEL_KEYS[p])}</option>
+              {/each}
             </select>
           </label>
           {#if !LOCAL_PROVIDERS.includes(provider)}
@@ -1552,7 +1584,7 @@
             <p class="tip warn">
               {$_("settings.tip_refine_warn_1")}<strong
                 >{$_("settings.tip_refine_warn_strong", {
-                  values: { provider: PROVIDER_LABELS[provider] },
+                  values: { provider: $_(PROVIDER_LABEL_KEYS[provider]) },
                 })}</strong
               >{$_("settings.tip_refine_warn_2")}
             </p>
@@ -1636,11 +1668,13 @@
               </label>
             {:else}
               <label>
-                {$_("settings.api_key_save", { values: { provider: PROVIDER_LABELS[provider] } })}
+                {$_("settings.api_key_save", {
+                  values: { provider: $_(PROVIDER_LABEL_KEYS[provider]) },
+                })}
                 <input
                   type="password"
                   bind:value={apiKeys[provider]}
-                  placeholder={KEY_PLACEHOLDERS[provider]}
+                  placeholder={$_(KEY_PLACEHOLDER_KEYS[provider])}
                   autocomplete="off"
                 />
               </label>
@@ -1648,12 +1682,14 @@
             <p class="muted">{$_("settings.secret_local_note")}</p>
           {:else}
             <label>
-              {$_("settings.api_key_refine", { values: { provider: PROVIDER_LABELS[provider] } })}
+              {$_("settings.api_key_refine", {
+                values: { provider: $_(PROVIDER_LABEL_KEYS[provider]) },
+              })}
               <input
                 id="cfg-api-key"
                 type="password"
                 bind:value={apiKeys[provider]}
-                placeholder={KEY_PLACEHOLDERS[provider]}
+                placeholder={$_(KEY_PLACEHOLDER_KEYS[provider])}
                 autocomplete="off"
               />
             </label>
@@ -1801,6 +1837,8 @@
               onchange={(e) => {
                 locale.set(e.currentTarget.value);
                 localStorage.setItem(LOCALE_STORAGE_KEY, e.currentTarget.value);
+                // トレイ文言はRust側保持のため、言語切替時に再送する。
+                setTimeout(() => void syncTrayTexts(), 0);
               }}
             >
               {#each LANGUAGES.filter((l) => l.ui) as l}

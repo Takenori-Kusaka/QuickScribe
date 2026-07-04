@@ -1,15 +1,16 @@
 import { describe, it, expect } from "vitest";
 import {
   ALL_PROVIDERS,
-  PROVIDER_LABELS,
+  PROVIDER_LABEL_KEYS,
   LOCAL_PROVIDERS,
   AWS_PROVIDERS,
   FALLBACK_MODELS,
-  KEY_PLACEHOLDERS,
-  STT_LABELS,
+  KEY_PLACEHOLDER_KEYS,
+  STT_PROVIDERS,
+  STT_LABEL_KEYS,
   STT_CLOUD,
-  STT_KEY_PLACEHOLDERS,
-  STT_MODEL_PLACEHOLDERS,
+  STT_KEY_PLACEHOLDER_KEYS,
+  STT_MODEL_PLACEHOLDER_KEYS,
   REFINE_STYLES,
   MODEL_TTL_MS,
   DISCOVERY_MAX,
@@ -20,9 +21,16 @@ describe("整形プロバイダ定義の整合(SSOT)", () => {
   it("ALL_PROVIDERS が各マップを過不足なく覆う", () => {
     const keys = (o: object) => Object.keys(o).sort();
     const all = [...ALL_PROVIDERS].sort();
-    expect(keys(PROVIDER_LABELS)).toEqual(all);
+    expect(keys(PROVIDER_LABEL_KEYS)).toEqual(all);
     expect(keys(FALLBACK_MODELS)).toEqual(all);
-    expect(keys(KEY_PLACEHOLDERS)).toEqual(all);
+    expect(keys(KEY_PLACEHOLDER_KEYS)).toEqual(all);
+  });
+
+  it("ラベル/プレースホルダは i18n キー(catalog.*)を指す（ハードコード文言を持たない）", () => {
+    for (const p of ALL_PROVIDERS) {
+      expect(PROVIDER_LABEL_KEYS[p]).toBe(`catalog.providers.${p}`);
+      expect(KEY_PLACEHOLDER_KEYS[p]).toBe(`catalog.key_ph.${p}`);
+    }
   });
 
   it("LOCAL/AWS は ALL_PROVIDERS の部分集合かつ互いに素", () => {
@@ -34,15 +42,20 @@ describe("整形プロバイダ定義の整合(SSOT)", () => {
 });
 
 describe("STTプロバイダ定義の整合(SSOT)", () => {
-  it("STT_CLOUD は STT_LABELS に存在し local を含まない", () => {
-    for (const p of STT_CLOUD) expect(STT_LABELS[p]).toBeTruthy();
+  it("STT_CLOUD は STT_PROVIDERS に存在し local を含まない", () => {
+    for (const p of STT_CLOUD) expect(STT_PROVIDERS).toContain(p);
     expect(STT_CLOUD).not.toContain("local");
   });
 
-  it("クラウドSTTの鍵/モデルのプレースホルダが STT_CLOUD を覆う", () => {
+  it("ラベルは i18n キー(catalog.stt.*)を指す", () => {
+    expect(Object.keys(STT_LABEL_KEYS).sort()).toEqual([...STT_PROVIDERS].sort());
+    for (const p of STT_PROVIDERS) expect(STT_LABEL_KEYS[p]).toBe(`catalog.stt.${p}`);
+  });
+
+  it("クラウドSTTの鍵/モデルのプレースホルダキーが STT_CLOUD を覆う", () => {
     const cloud = [...STT_CLOUD].sort();
-    expect(Object.keys(STT_KEY_PLACEHOLDERS).sort()).toEqual(cloud);
-    expect(Object.keys(STT_MODEL_PLACEHOLDERS).sort()).toEqual(cloud);
+    expect(Object.keys(STT_KEY_PLACEHOLDER_KEYS).sort()).toEqual(cloud);
+    expect(Object.keys(STT_MODEL_PLACEHOLDER_KEYS).sort()).toEqual(cloud);
   });
 });
 
@@ -53,7 +66,10 @@ describe("整形スタイルと定数", () => {
     expect(values).toEqual(
       expect.arrayContaining(["structured", "verbatim", "summary", "brainstorm"]),
     );
-    for (const s of REFINE_STYLES) expect(s.desc.length).toBeGreaterThan(0);
+    for (const s of REFINE_STYLES) {
+      expect(s.labelKey).toBe(`catalog.styles.${s.value}.label`);
+      expect(s.descKey).toBe(`catalog.styles.${s.value}.desc`);
+    }
   });
 
   it("定数が妥当", () => {

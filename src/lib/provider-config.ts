@@ -1,6 +1,6 @@
 // 整形プロバイダの設定検証（鍵/AWS資格情報の充足チェック）の純粋関数（#402）。
 // App.svelte の refineConfigError から抽出してユニットテスト可能化。
-import { LOCAL_PROVIDERS, AWS_PROVIDERS, PROVIDER_LABELS, type Provider } from "./constants";
+import { LOCAL_PROVIDERS, AWS_PROVIDERS, PROVIDER_LABEL_KEYS, type Provider } from "./constants";
 
 export interface RefineConfig {
   provider: Provider;
@@ -18,6 +18,8 @@ export interface RefineConfig {
  * 検証エラー（i18n対応 / #401 Phase2）。`code` は errors.* カタログのキー、
  * `params` は ICU 補間値。呼び出し側で `$_(code, { values: params })` で翻訳する。
  * これにより lib は言語に依存せず、多言語(ja/en/zh/es)で表示できる。
+ * 注意: `params.provider` は表示ラベルの i18n キー(catalog.providers.*)。呼び出し側で
+ * 先に `$_(params.provider)` で解決してから code に補間する（日本語ラベルの露出防止）。
  */
 export interface RefineConfigError {
   code: string;
@@ -42,11 +44,14 @@ export function validateRefineConfig(c: RefineConfig): RefineConfigError | null 
     if (c.awsAuthMode === "sigv4") {
       if (!c.awsAccessKey.trim() || !c.awsSecretKey.trim()) return { code: "errors.cfg_aws_keys" };
     } else if (!c.apiKey.trim()) {
-      return { code: "errors.cfg_api_key_aws", params: { provider: PROVIDER_LABELS[c.provider] } };
+      return {
+        code: "errors.cfg_api_key_aws",
+        params: { provider: PROVIDER_LABEL_KEYS[c.provider] },
+      };
     }
     return null;
   }
   return c.apiKey.trim()
     ? null
-    : { code: "errors.cfg_api_key", params: { provider: PROVIDER_LABELS[c.provider] } };
+    : { code: "errors.cfg_api_key", params: { provider: PROVIDER_LABEL_KEYS[c.provider] } };
 }

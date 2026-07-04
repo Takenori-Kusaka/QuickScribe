@@ -12,13 +12,6 @@ function toDayNumber(iso: string): number | null {
 }
 
 /**
- * 寛容ストリーク(継続中の連続記録日数)を返す。
- * @param dates 記録日(重複可, ISO日付/日時)。
- * @param today 基準日("YYYY-MM-DD"等)。
- * @param graceDays 何日サボりを許すか(既定1=1日まで飛ばしてOK)。
- * @returns 継続中のストリーク日数。最新記録が今日から grace を超えて古ければ 0。
- */
-/**
  * 習慣ナッジ（S9.4 #58）を発火すべきかを返す純粋関数。
  * 「継続中のストリークがあり、かつ今日まだ記録していない」ときだけ true。
  * forgiving 方針: すでに途切れている（grace超）ユーザーや新規ユーザーは急かさない
@@ -35,6 +28,13 @@ export function shouldNudge(dates: string[], today: string, graceDays = 1): bool
   return computeStreak(dates, today, graceDays) > 0;
 }
 
+/**
+ * 寛容ストリーク(継続中の連続記録日数)を返す。
+ * @param dates 記録日(重複可, ISO日付/日時)。
+ * @param today 基準日("YYYY-MM-DD"等)。
+ * @param graceDays 何日サボりを許すか(既定1=1日まで飛ばしてOK)。
+ * @returns 継続中のストリーク日数。最新記録が今日から grace を超えて古ければ 0。
+ */
 export function computeStreak(dates: string[], today: string, graceDays = 1): number {
   const todayNum = toDayNumber(today);
   if (todayNum === null) return 0;
