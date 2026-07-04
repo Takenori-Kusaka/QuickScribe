@@ -5,6 +5,57 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [1.0.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v0.10.0...v1.0.0) (2026-07-04)
+
+
+### ✨ 新機能 / Features
+
+* **design:** ブランドカラーのトークン化とstylelintによる生hex禁止 ([#567](https://github.com/Takenori-Kusaka/QuickScribe/issues/567)) ([8579473](https://github.com/Takenori-Kusaka/QuickScribe/commit/8579473f5869a3a3145029db8c71853e55617783))
+* **i18n:** refine.rs のユーザー向けエラーも安定コード化 ([#462](https://github.com/Takenori-Kusaka/QuickScribe/issues/462)) ([#538](https://github.com/Takenori-Kusaka/QuickScribe/issues/538)) ([67c4e11](https://github.com/Takenori-Kusaka/QuickScribe/commit/67c4e112eb312cb0cc020b7eb806d9dfa3dda74f))
+* **i18n:** Rustバックエンドのエラー文字列を安定コード化 ([#462](https://github.com/Takenori-Kusaka/QuickScribe/issues/462)) ([#537](https://github.com/Takenori-Kusaka/QuickScribe/issues/537)) ([4b2cb7e](https://github.com/Takenori-Kusaka/QuickScribe/commit/4b2cb7e1597067202537bba0333ac173776be22b))
+* **installer:** アンインストール時に DL済み whisper モデルを掃除（NSIS フック） ([#511](https://github.com/Takenori-Kusaka/QuickScribe/issues/511)) ([#549](https://github.com/Takenori-Kusaka/QuickScribe/issues/549)) ([d162f90](https://github.com/Takenori-Kusaka/QuickScribe/commit/d162f9092a087adb3b527cf5630e923433c7467c))
+* **nudge:** 習慣ナッジ＝起動アンカーのopt-inローカル通知 ([#58](https://github.com/Takenori-Kusaka/QuickScribe/issues/58)) ([#563](https://github.com/Takenori-Kusaka/QuickScribe/issues/563)) ([7dae8b5](https://github.com/Takenori-Kusaka/QuickScribe/commit/7dae8b5b4499f16d5d2d21626e533c96a1f35c74))
+* **perf:** 日本語精度CERベンチ([#26](https://github.com/Takenori-Kusaka/QuickScribe/issues/26))＋モデルカタログ精選(ADR-0022) ([#561](https://github.com/Takenori-Kusaka/QuickScribe/issues/561)) ([2249087](https://github.com/Takenori-Kusaka/QuickScribe/commit/22490874ae7a8f2db1516ec9c6794eb959c1c8b3))
+* **perf:** 起動時間ベンチを追加（run()→UI ready をアプリ計装＋xvfbでCI計測） ([#403](https://github.com/Takenori-Kusaka/QuickScribe/issues/403)) ([#554](https://github.com/Takenori-Kusaka/QuickScribe/issues/554)) ([1a6159e](https://github.com/Takenori-Kusaka/QuickScribe/commit/1a6159e20146872d92c63989009fe64c822f3b59))
+* **perf:** 非機能ベンチに英語CER(精度指標)を追加 ([#403](https://github.com/Takenori-Kusaka/QuickScribe/issues/403)) ([#550](https://github.com/Takenori-Kusaka/QuickScribe/issues/550)) ([37ab293](https://github.com/Takenori-Kusaka/QuickScribe/commit/37ab2931392cdb175fea5283b4e0922d3c57a563))
+* **privacy:** クラウド整形プロバイダ選択時に送信同意の警告を表示 ([#465](https://github.com/Takenori-Kusaka/QuickScribe/issues/465)) ([#547](https://github.com/Takenori-Kusaka/QuickScribe/issues/547)) ([196de28](https://github.com/Takenori-Kusaka/QuickScribe/commit/196de284de434969c89d4cc9025f92d52a54a39e))
+* **privacy:** ローカルファースト既定へ変更（整形=Ollama / 日本語STT=kotoba）+ ADR-0021 ([#465](https://github.com/Takenori-Kusaka/QuickScribe/issues/465) [#511](https://github.com/Takenori-Kusaka/QuickScribe/issues/511)) ([#546](https://github.com/Takenori-Kusaka/QuickScribe/issues/546)) ([d030601](https://github.com/Takenori-Kusaka/QuickScribe/commit/d030601e94e4182e97c2e9cedb99e136dec6a6b3))
+* **release:** nightlyチャネルとupdater鍵分離Runbook ([#52](https://github.com/Takenori-Kusaka/QuickScribe/issues/52)) ([#564](https://github.com/Takenori-Kusaka/QuickScribe/issues/564)) ([61b88d8](https://github.com/Takenori-Kusaka/QuickScribe/commit/61b88d8887f6221d2689f6bc51fd62f4fb385d3f))
+
+
+### 🐛 修正 / Bug Fixes
+
+* **ci:** カバレッジ監査是正 — rust-coverageジョブ修復とFE branches 80%ゲート化 ([#566](https://github.com/Takenori-Kusaka/QuickScribe/issues/566)) ([0c4adcf](https://github.com/Takenori-Kusaka/QuickScribe/commit/0c4adcfedc3d824bda1ab06c535366beeef3762b))
+* **i18n:** TS/Rust文言のSSOT是正とカタログ一本化（監査項目8/11/17/22） ([#570](https://github.com/Takenori-Kusaka/QuickScribe/issues/570)) ([58da8ad](https://github.com/Takenori-Kusaka/QuickScribe/commit/58da8ad7b1d5d9961c1b61bb94ef4b1beed751ce))
+* **logging:** タスクバー診断ログを出力先(ドキュメント)からOSのLocalデータ領域へ移す ([#552](https://github.com/Takenori-Kusaka/QuickScribe/issues/552)) ([e821add](https://github.com/Takenori-Kusaka/QuickScribe/commit/e821add43f82321eb3836c36d57d85db9ee5e885))
+* **perf:** 日本語精度ジョブにアイコン生成を追加 ([#562](https://github.com/Takenori-Kusaka/QuickScribe/issues/562)) ([1964bd4](https://github.com/Takenori-Kusaka/QuickScribe/commit/1964bd459e1c14f57687764970d97846d8dc8660))
+* **stt:** 自分で保存した .opus 録音を再文字起こし可能にする ([#560](https://github.com/Takenori-Kusaka/QuickScribe/issues/560)) ([3f5da61](https://github.com/Takenori-Kusaka/QuickScribe/commit/3f5da61b06c648e7ac47cd5b367d3303507dd84f))
+
+
+### ♻️ リファクタ / Refactor
+
+* **app:** App.svelte を &lt;800 行に分割（shortcut/device/custom-styles/privacy 抽出） ([#392](https://github.com/Takenori-Kusaka/QuickScribe/issues/392)) ([#544](https://github.com/Takenori-Kusaka/QuickScribe/issues/544)) ([325db7a](https://github.com/Takenori-Kusaka/QuickScribe/commit/325db7abeaaead3ff1e1cf5837bed91da41caeab))
+* **app:** 保管庫閲覧を vault-view.svelte.ts へ抽出 ([#392](https://github.com/Takenori-Kusaka/QuickScribe/issues/392)) ([#539](https://github.com/Takenori-Kusaka/QuickScribe/issues/539)) ([cd527d3](https://github.com/Takenori-Kusaka/QuickScribe/commit/cd527d31eae3f56eead7ffb75ae5e55613935311))
+* **app:** 秘密情報ブリッジを lib/secrets.ts へ抽出 ([#392](https://github.com/Takenori-Kusaka/QuickScribe/issues/392)) ([#540](https://github.com/Takenori-Kusaka/QuickScribe/issues/540)) ([6843671](https://github.com/Takenori-Kusaka/QuickScribe/commit/6843671594eb763c1fefc0a51545fcf1f6333df5))
+* **app:** 自動アップデートを lib/update.svelte.ts へ抽出 ([#392](https://github.com/Takenori-Kusaka/QuickScribe/issues/392)) ([#542](https://github.com/Takenori-Kusaka/QuickScribe/issues/542)) ([519e366](https://github.com/Takenori-Kusaka/QuickScribe/commit/519e366d4a8e0e494c4ba114e34d8e31bf2f0471))
+* **app:** 設定永続化を lib/settings-persist.ts へ抽出 ([#392](https://github.com/Takenori-Kusaka/QuickScribe/issues/392)) ([#541](https://github.com/Takenori-Kusaka/QuickScribe/issues/541)) ([8ecf365](https://github.com/Takenori-Kusaka/QuickScribe/commit/8ecf3652cb3dae9f9843f243267eb4ebf330db05))
+* **entry:** 保管庫ドキュメントドメインを entry.rs へ抽出 ([#392](https://github.com/Takenori-Kusaka/QuickScribe/issues/392)) ([#535](https://github.com/Takenori-Kusaka/QuickScribe/issues/535)) ([79081f7](https://github.com/Takenori-Kusaka/QuickScribe/commit/79081f75c39c644e25766182b2e1a934cff9c8a1))
+* **refine:** refine_text の16引数を RefineTextParams 構造体へ集約 ([#392](https://github.com/Takenori-Kusaka/QuickScribe/issues/392)) ([#545](https://github.com/Takenori-Kusaka/QuickScribe/issues/545)) ([ada4d6f](https://github.com/Takenori-Kusaka/QuickScribe/commit/ada4d6fcf424333af8666dfe37b7a0a6ecd9bd56))
+* **refine:** RefineProvider enum で provider マッチを単一ソース化 ([#392](https://github.com/Takenori-Kusaka/QuickScribe/issues/392)) ([#536](https://github.com/Takenori-Kusaka/QuickScribe/issues/536)) ([9e55d4b](https://github.com/Takenori-Kusaka/QuickScribe/commit/9e55d4bd4abce6c55630f0d02cb2521e16171afe))
+* **refine:** 整形エンジンのHTTP重複を共通ヘルパへ集約 ([#392](https://github.com/Takenori-Kusaka/QuickScribe/issues/392)) ([#533](https://github.com/Takenori-Kusaka/QuickScribe/issues/533)) ([2588fb6](https://github.com/Takenori-Kusaka/QuickScribe/commit/2588fb6f4e3a3e0f814d6c7a53ebb7e12c1e6708))
+
+
+### 📝 ドキュメント / Docs
+
+* **lib:** TSDoc(@param/[@returns](https://github.com/returns))整備＋typedoc検証をCIに追加 ([#393](https://github.com/Takenori-Kusaka/QuickScribe/issues/393)) ([#543](https://github.com/Takenori-Kusaka/QuickScribe/issues/543)) ([eee0e2e](https://github.com/Takenori-Kusaka/QuickScribe/commit/eee0e2e094ce1e02f0344fd409e054c2b83a4fd9))
+* **perf:** 日本語CERベースラインをCI実測値に確定（[#403](https://github.com/Takenori-Kusaka/QuickScribe/issues/403)） ([3925ee1](https://github.com/Takenori-Kusaka/QuickScribe/commit/3925ee13cf2df9d4e9a8e4ad49abdf28aa1bcf48))
+* v1.0.0最終監査の是正（チャネル文書の矛盾解消・NFR実測同期・docs目次新設） ([b089f99](https://github.com/Takenori-Kusaka/QuickScribe/commit/b089f99e520042d71b7bf1638811b6cbb120466d)), closes [#481](https://github.com/Takenori-Kusaka/QuickScribe/issues/481)
+
+
+### 🔧 雑務 / Chore
+
+* v1.0.0 リリース（最終監査完了・Readiness達成） ([1682c28](https://github.com/Takenori-Kusaka/QuickScribe/commit/1682c28698167dccf30a84c953375d78deb22b37))
+
 ## [0.10.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v0.9.0...v0.10.0) (2026-07-02)
 
 
