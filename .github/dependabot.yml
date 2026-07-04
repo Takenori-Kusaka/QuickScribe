@@ -19,6 +19,15 @@ updates:
         patterns:
           - "whisper-rs"
           - "symphonia*"
+    ignore:
+      # quick-xml は plist(macOS bundler=ビルド系・実行時に未信頼XMLを解析しない=攻撃経路外)
+      # 経由の推移依存。plist 1.9.0 が `quick-xml ^0.39.2`(<0.40) を固定するため、patched の
+      # 0.40+ (RUSTSEC-2026-0194/0195 修正版)へは到達できない(#526)。cargo audit は当該2件を
+      # security.yml で --ignore 済み。単体の quick-xml bump PR は plist 制約で成立しないため、
+      # Dependabot の security 更新PRを根拠を持って無視する。
+      # ★解除条件: plist が quick-xml 要求を 0.40+ へ引き上げた新版を出したら、cargo update -p plist
+      #   で追随し、この ignore と security.yml の --ignore を除去して #526 をクローズする。
+      - dependency-name: "quick-xml"
 
   # npm 依存（@tauri-apps/* / svelte / vite / vitest / wdio 等）
   - package-ecosystem: "npm"
