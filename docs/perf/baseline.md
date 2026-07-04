@@ -36,15 +36,16 @@
 - **方法**: 本人音読のパブリックドメイン作品3点（`src-tauri/tests/fixtures/ja-accuracy`）を `QS_LANG=ja` で認識し、`scripts/cer_ja.py`（NFKC・約物空白除去・文字単位 Levenshtein / 参照長）で CER を算出。`perf.yml` の「日本語精度 CER」ジョブが計測。
 - **注**: 原文へのルビ混入で絶対CERは悲観側。N=3。**相対/回帰指標**として扱う（絶対精度の主張には使わない）。
 
-### 初期ベースライン（平均CER・ローカル実測 Windows/opus/ja）
+### ベースライン（平均CER・CI実測 ubuntu-22.04 / opus / ja）
 
 | モデル | 平均CER | 位置づけ |
 |---|---|---|
 | ggml-tiny | 56.9% | 日本語で base に完全劣位（[ADR-0022]） |
-| ggml-base | 44.5% | 頑健な既定 |
-| kotoba-whisper v2.0 q5 | **40.2%** | 日本語推奨（素材により幻覚で悪化しうる） |
+| ggml-base | 44.0% | 頑健な既定 |
+| kotoba-whisper v2.0 q5 | **38.3%** | 日本語推奨（素材により幻覚で悪化しうる。蜘蛛の糸で base 超過） |
 
-- 回帰ゲートの基準値は `docs/perf/ja-cer-baseline.json`（margin=5pt）。CI 初回実行後に環境差を踏まえ更新する。
+- サンプル別（CI / run 28699724095）: 銀河鉄道 tiny45.1/base38.0/**kotoba26.1** ・ 蜘蛛の糸 tiny58.6/**base47.9**/kotoba57.1 ・ 吾輩 tiny67.1/base46.1/**kotoba31.6**（%）。
+- 回帰ゲートの基準値は `docs/perf/ja-cer-baseline.json`（margin=5pt）。上表はCI実測で確定済み。
 
 ## 残（#403 後続 / 小粒）
 - **録音時**メモリ（ヘッドレスで録音を駆動する必要があり別途）。アイドル時RSSは計測済み。
