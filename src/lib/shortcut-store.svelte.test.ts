@@ -80,4 +80,32 @@ describe("createShortcut", () => {
     expect(typeof s.display()).toBe("string");
     expect(s.display().length).toBeGreaterThan(0);
   });
+
+  it("onCaptureKeydown: キャプチャ中でなければ何もしない", () => {
+    const s = createShortcut(t);
+    s.onCaptureKeydown(new KeyboardEvent("keydown", { key: "R", ctrlKey: true }));
+    flushSync();
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(s.recordShortcut).toBe("CommandOrControl+Shift+R");
+  });
+
+  it("onCaptureKeydown: 修飾キー単体は確定せず待機継続", () => {
+    const s = createShortcut(t);
+    s.startCapture();
+    s.onCaptureKeydown(new KeyboardEvent("keydown", { key: "Shift", shiftKey: true }));
+    flushSync();
+    expect(s.capturing).toBe(true);
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(s.shortcutMsg).toBe("");
+  });
+
+  it("navigator.platform が無い環境でも UA から Mac を判定する", () => {
+    vi.stubGlobal("navigator", { userAgent: "Macintosh" }); // platform 未定義 → ?? "" 側。
+    try {
+      const s = createShortcut(t);
+      expect(s.isMac).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

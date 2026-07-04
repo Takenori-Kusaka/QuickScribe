@@ -59,6 +59,32 @@ describe("createUpdater", () => {
     expect(u.updateState).toBe("ready");
   });
 
+  it("contentLength 不明・未知イベントでも進捗 0% のまま ready になる", async () => {
+    const update = {
+      version: "2.0.0",
+      downloadAndInstall: async (cb: (e: unknown) => void) => {
+        cb({ event: "Started", data: {} }); // contentLength なし → total 0
+        cb({ event: "Progress", data: { chunkLength: 10 } }); // total 0 → pct 0
+        cb({ event: "Finished" }); // Started/Progress 以外は無視
+      },
+    };
+    checkMock.mockResolvedValueOnce(update);
+    const u = createUpdater(t);
+    await u.checkForUpdate();
+    flushSync();
+    expect(u.updatePct).toBe(0);
+    expect(u.updateState).toBe("ready");
+  });
+
+  it("失敗(自動)はメッセージを出さない", async () => {
+    checkMock.mockRejectedValueOnce(new Error("net"));
+    const u = createUpdater(t);
+    await u.checkForUpdate(false);
+    flushSync();
+    expect(u.updateMsg).toBe("");
+    expect(u.updateState).toBe("idle");
+  });
+
   it("失敗(manual)は check_failed を出す", async () => {
     checkMock.mockRejectedValueOnce(new Error("net"));
     const u = createUpdater(t);
