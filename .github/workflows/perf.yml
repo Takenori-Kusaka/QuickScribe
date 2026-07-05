@@ -362,3 +362,87 @@ jobs:
           name: startup-report
           path: startup-report.md
           if-no-files-found: warn
+
+  # 日本語CER(公開コーパス / ADR-0024・#578): Common Voice ja(CC0)を CI 実行時に取得し(**非同梱**)、
+  # kotoba-whisper で文字起こし→正規化CER＋ブートストラップ95%CIを算出する。手動 dispatch 限定
+  # (リリースを重くしない)。既存の ja-accuracy(自前録音)は smoke として別途残す。
+  ja-cer-corpus:
+    name: 日本語CER 公開コーパス (Common Voice / Linux)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Install build dependencies (whisper build)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
+            libxdo-dev build-essential file clang libclang-dev cmake \
+            libasound2-dev pkg-config
+      - name: Cache whisper model (kotoba-q5)
+        id: cache-corpus-model
+        uses: actions/cache@v6
+        with:
+          path: models
+          key: ja-corpus-model-kotobaq5-v1
+      - name: Download model (kotoba-q5)
+        if: steps.cache-corpus-model.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p models
+          curl -L --fail --retry 5 --retry-delay 15 --retry-all-errors \
+            -o models/ggml-kotoba-whisper-v2.0-q5_0.bin \
+            https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0-q5_0.bin
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Generate icons (tauri generate_context にアイコンが必要)
+        run: npm run icons
+      - name: Build test binary (compile excluded from run loop)
+        run: cargo test --manifest-path src-tauri/Cargo.toml --test transcribe_integration --no-run
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install eval deps (CI専用・datasets + neologdn)
+        run: pip install -r scripts/asr_eval/requirements.txt datasets
+      - name: Fetch Common Voice ja (CC0・非同梱・streaming)
+        run: |
+          python scripts/asr_eval/fetch_common_voice_ja.py \
+            --out-dir "$GITHUB_WORKSPACE/cv_ja" --num 50
+      - name: Transcribe each sample (kotoba-q5)
+        run: |
+          MODEL="$GITHUB_WORKSPACE/models/ggml-kotoba-whisper-v2.0-q5_0.bin"
+          CVD="$GITHUB_WORKSPACE/cv_ja"
+          HYP="$GITHUB_WORKSPACE/hyp"; mkdir -p "$HYP"
+          n=0
+          while IFS=$'\t' read -r fn ref; do
+            [ -z "$fn" ] && continue
+            if ! QS_LANG=ja QS_MODEL_PATH="$MODEL" \
+                 QS_AUDIO_PATH="$CVD/$fn" QS_TRANSCRIPT_OUT="$HYP/$fn.txt" \
+                 cargo test --manifest-path src-tauri/Cargo.toml \
+                   --test transcribe_integration -- --nocapture > /dev/null 2>&1; then
+              echo "::warning::transcribe failed for $fn"
+            fi
+            n=$((n + 1))
+          done < "$CVD/manifest.tsv"
+          echo "transcribed $n samples"
+      - name: Compute CER + bootstrap 95% CI
+        run: |
+          cd scripts/asr_eval
+          python report_cer.py \
+            --manifest "$GITHUB_WORKSPACE/cv_ja/manifest.tsv" \
+            --hyp-dir "$GITHUB_WORKSPACE/hyp" \
+            --label "Common Voice ja (kotoba-q5)" \
+            --report "$GITHUB_WORKSPACE/ja-cer-corpus-report.md"
+          cat "$GITHUB_WORKSPACE/ja-cer-corpus-report.md" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload report
+        uses: actions/upload-artifact@v7
+        with:
+          name: ja-cer-corpus-report
+          path: ja-cer-corpus-report.md
+          if-no-files-found: warn
