@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Render Mermaid diagrams embedded in Markdown sources to committed SVG files
 // so that technical articles can reference them by ABSOLUTE raw.githubusercontent URL
-// (relative paths break when the article is cross-posted to Qiita). See
+// (Zenn cannot resolve repo-relative image paths). See
 // docs/process/article-publishing-policy.md.
 //
 // Usage:
@@ -31,7 +31,7 @@ const SOURCES = [{ input: join(repoRoot, "docs", "design.md"), name: "design" }]
 // make CI flaky. Freshness is instead kept by the auto-render-on-main workflow.
 const check = process.argv.includes("--check");
 
-// PNG is referenced by the articles (universally embeddable on Zenn/Qiita);
+// PNG is referenced by the articles (reliably embeddable on Zenn);
 // SVG is kept as a crisp, diff-friendly source of truth.
 const FORMATS = ["png", "svg"];
 
