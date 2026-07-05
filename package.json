@@ -14,6 +14,8 @@
     "lint:text": "textlint \"articles/**/*.md\"",
     "diagrams": "node scripts/render-diagrams.mjs",
     "diagrams:check": "node scripts/render-diagrams.mjs --check",
+    "structurizr": "node scripts/render-structurizr.mjs",
+    "structurizr:check": "node scripts/render-structurizr.mjs --check",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "docs:check": "npx -y typedoc@0.28.5",

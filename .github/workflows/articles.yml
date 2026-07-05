@@ -12,8 +12,11 @@ on:
     paths:
       - "articles/**"
       - "docs/design.md"
+      - "docs/architecture/**"
       - "docs/assets/diagrams/**"
       - "scripts/render-diagrams.mjs"
+      - "scripts/render-structurizr.mjs"
+      - "scripts/structurizr-mermaid-config.json"
       - ".textlintrc.json"
       - ".github/workflows/articles.yml"
   push:
@@ -21,7 +24,10 @@ on:
     paths:
       - "articles/**"
       - "docs/design.md"
+      - "docs/architecture/**"
       - "scripts/render-diagrams.mjs"
+      - "scripts/render-structurizr.mjs"
+      - "scripts/structurizr-mermaid-config.json"
       - ".github/workflows/articles.yml"
   workflow_dispatch:
 
@@ -70,4 +76,71 @@ jobs:
             git add docs/assets/diagrams/
             git commit -m "docs(diagrams): regenerate mermaid diagrams [skip ci]"
             git push
+          fi
+
+  structurizr:
+    name: structurizr (dsl -> mermaid -> svg/png)
+    runs-on: ubuntu-22.04
+    # CI is the ONLY place these render (Structurizr CLI needs Java; authors' machines
+    # usually lack Java/Docker). So CI generates the images and commits them for you:
+    # on a PR it renders and commits back to the PR branch, on main it regenerates.
+    # The build fails only when a .dsl does not render (e.g. a DSL syntax error).
+    permissions:
+      contents: write
+    env:
+      STRUCTURIZR_CLI_VERSION: v2025.11.09
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Check out the PR branch itself (not the detached merge ref) so we can push
+          # regenerated images back to it. On main pushes this resolves to main.
+          ref: ${{ github.head_ref || github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install npm dependencies
+        run: npm ci
+      - name: Install Chromium deps for mermaid-cli
+        run: npx --yes puppeteer browsers install chrome
+      - name: Download Structurizr CLI
+        run: |
+          curl -fsSL -o /tmp/structurizr-cli.zip \
+            "https://github.com/structurizr/cli/releases/download/${STRUCTURIZR_CLI_VERSION}/structurizr-cli.zip"
+          mkdir -p /tmp/structurizr-cli
+          unzip -q -o /tmp/structurizr-cli.zip -d /tmp/structurizr-cli
+          echo "STRUCTURIZR_CLI=/tmp/structurizr-cli/structurizr.sh" >> "$GITHUB_ENV"
+      - name: Render DSL and auto-commit images (PR and main)
+        run: |
+          # Only (re)render when the DSL source / render script / render config actually
+          # changed in the tip commit. Rationale: mmdc PNG rasterization is
+          # non-deterministic (byte-different every run), so an unconditional render +
+          # commit would push a fresh commit on EVERY CI run (churn) and, with [skip ci],
+          # leave HEAD without status checks. Gating on the tip-commit source delta means
+          # the bot's image-only commit re-triggers CI, that run sees no source change,
+          # skips rendering, and the checks go green on HEAD (loop terminates in one pass).
+          if git diff --name-only HEAD~1 HEAD -- \
+               docs/architecture \
+               scripts/render-structurizr.mjs \
+               scripts/structurizr-mermaid-config.json | grep -q .; then
+            # A DSL syntax error makes this step exit non-zero -> the check goes red.
+            npm run structurizr
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            # Stage first, then test the staged diff: `git diff --quiet` alone ignores
+            # brand-new (untracked) images, so a first-time diagram would never commit.
+            git add docs/assets/diagrams/
+            if ! git diff --cached --quiet; then
+              # No [skip ci]: this image commit re-triggers CI, whose tip delta has no
+              # source change, so it skips rendering and reports green checks on HEAD.
+              git commit -m "docs(diagrams): regenerate structurizr diagrams"
+              git push
+            fi
+          else
+            echo "No DSL/script/config change in tip commit; skipping structurizr render."
           fi

@@ -49,7 +49,34 @@
 - 記事・本は既定で `published: false`（Zenn 下書き）。
 - **実公開はメンテナが front-matter を切り替えて判断する**。CI は自動で `published: true` にしない。
 
-## 6. 将来検討（記録）
+## 6. C4 アーキ図は Structurizr DSL（実装済み）
 
-- 図の重厚化（C4 / Structurizr DSL）は将来検討。現状は Mermaid→SVG/PNG の軽量経路で
-  「CI 生成・所定配置・絶対パス」の要件を満たす（[design.md](../design.md) の図がソース）。
+C4 モデルの構成図（System Context / Container / Component 等）は **Structurizr DSL を単一ソース**にし、
+Mermaid と同じ思想（CI 生成・所定配置・絶対URL参照・自動コミット）で画像化する。
+
+- **経路**: Structurizr CLI `export -format mermaid` で DSL を Mermaid 定義に変換し、既存の
+  `@mermaid-js/mermaid-cli`（mmdc）で PNG/SVG にラスタライズする。レンダラを Mermaid に一本化でき、
+  保守が軽い（PlantUML/graphviz を別途持ち込まない）。スクリプトは
+  [`scripts/render-structurizr.mjs`](../../scripts/render-structurizr.mjs)。
+- **DSL ソース**: `docs/architecture/*.dsl`（1 workspace = 1 ファイル。1 ファイルに複数ビュー可）。
+- **出力**: `docs/assets/diagrams/<dslのbasename>-<viewキー>.png|svg`。
+  例: `docs/architecture/engine-abstraction.dsl` のビュー `components`
+  → `docs/assets/diagrams/engine-abstraction-components.png|svg`。ビューキーは DSL のビュー宣言で明示する
+  （例 `container quickscribe "containers" { ... }` の `"containers"`）。記事は PNG を絶対URLで参照する。
+- **CI 挙動（重要 — Mermaid とは検証方式が異なる）**: Structurizr のレンダリングには **Java（または Docker）** が要り、
+  多くの執筆環境ではローカル生成できない。よって「画像がコミット済みか」は**必須ゲートにしない**。
+  代わりに CI が画像を作ってコミットする:
+  - **PR**: `.dsl` を実レンダリングし、生成画像を**当該 PR ブランチへ自動コミット**する。
+    赤くなるのは **DSL がレンダリングできない時だけ**（構文エラー等）。執筆者は `.dsl` を書くだけでよい。
+  - **main push**: 再生成して差分があれば自動コミットする（Mermaid と同じ）。
+  - `npm run structurizr:check`（コミット済み画像の存在チェック）はローカル任意。CI 判定には使わない。
+  - 実体は [articles.yml](../../.github/workflows/articles.yml) の `structurizr` ジョブ。
+- **記事側の使い方**: ① `docs/architecture/<name>.dsl` を置く（ビューにキーを付ける）→ ② PR を出す →
+  ③ CI が `docs/assets/diagrams/<name>-<viewキー>.png` を生成・コミット →
+  ④ 記事から `https://raw.githubusercontent.com/Takenori-Kusaka/QuickScribe/main/docs/assets/diagrams/<name>-<viewキー>.png` を参照。
+
+### クラス図・ER 図は Mermaid を併用
+
+Structurizr は C4（システム/コンテナ/コンポーネント）専用で、**クラス図・ER 図は守備範囲外**。
+これらは従来どおり **Mermaid の `classDiagram` / `erDiagram`**（§2 の Mermaid 経路）で描く。
+「C4 構成図 = Structurizr DSL、クラス/ER 図 = Mermaid」を使い分ける。
