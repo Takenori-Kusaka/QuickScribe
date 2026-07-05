@@ -1,6 +1,6 @@
 # ADR-0013: システム音声ループバックと「録音ソース」抽象の統一（S1.3）
 
-- Status: Proposed（段階実装。Phase 0 未着手）
+- Status: Proposed（段階実装。Windows ループバックは実装済み／Linux の PipeWire monitor 経路は未着手）
 - Date: 2026-06-24
 - Deciders: Takenori Kusaka
 - 関連: [ADR-0006 スコープ規律], [ADR-0007 調査規律], [ADR-0008 ライセンス/配布], [ADR-0012 Windows配布]
