@@ -512,49 +512,92 @@ pub struct SttConfig {
     pub model_path: std::path::PathBuf,
 }
 
-/// STT設定からエンジンを解決する（S2.3抽象 / S2.4でクラウド追加 / ADR-0016）。
-/// 空/未知/"local"/"whisper" はローカル whisper にフォールバック（プライバシー既定）。
-pub fn engine_for(cfg: SttConfig) -> Box<dyn TranscriptionEngine> {
-    let model = |default: &str| {
-        if cfg.model.trim().is_empty() {
-            default.to_string()
-        } else {
-            cfg.model.clone()
+/// 文字起こしプロバイダ（S2.3/S2.4）。別名解釈・クラウド判定・既定モデル・エンジン生成を
+/// 単一ソースに集約する（refine.rs の `RefineProvider` と対称 / #392 の横展開 = #581）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SttProvider {
+    /// ローカル whisper（既定・フォールバック先）。
+    Local,
+    Groq,
+    OpenAi,
+    Deepgram,
+    Azure,
+}
+
+impl SttProvider {
+    /// フロントから渡る文字列を解釈する。空/未知/"local"/"whisper" は Local（プライバシー既定）。
+    pub fn parse(provider: &str) -> Self {
+        match provider.trim().to_ascii_lowercase().as_str() {
+            "groq" => Self::Groq,
+            "openai" => Self::OpenAi,
+            "deepgram" => Self::Deepgram,
+            "azure" => Self::Azure,
+            _ => Self::Local,
         }
-    };
-    match cfg.provider.trim().to_ascii_lowercase().as_str() {
-        "groq" => Box::new(OpenAiCompatibleSttEngine {
-            base_url: "https://api.groq.com/openai/v1".into(),
-            model: model("whisper-large-v3-turbo"),
-            api_key: cfg.api_key,
-        }),
-        "openai" => Box::new(OpenAiCompatibleSttEngine {
-            base_url: "https://api.openai.com/v1".into(),
-            model: model("gpt-4o-transcribe"),
-            api_key: cfg.api_key,
-        }),
-        "deepgram" => Box::new(DeepgramSttEngine {
-            model: model("nova-3"),
-            api_key: cfg.api_key,
-        }),
-        "azure" => Box::new(AzureSttEngine {
-            resource: cfg.azure_resource,
-            api_key: cfg.api_key,
-            locale: "ja-JP".into(),
-        }),
-        _ => Box::new(LocalWhisperEngine {
-            model_path: cfg.model_path,
-        }),
+    }
+
+    /// クラウド（端末外送信）か。Local だけが false。
+    pub fn is_cloud(self) -> bool {
+        !matches!(self, Self::Local)
+    }
+
+    /// クラウドの既定モデルID（未指定時のフォールバック）。Azure はロケール指定・Local はローカル
+    /// モデルパスを使い、いずれもモデルIDを使わないため空。
+    pub fn default_model(self) -> &'static str {
+        match self {
+            Self::Groq => "whisper-large-v3-turbo",
+            Self::OpenAi => "gpt-4o-transcribe",
+            Self::Deepgram => "nova-3",
+            Self::Azure | Self::Local => "",
+        }
+    }
+
+    /// 設定から対応する文字起こしエンジンを生成する（Strategy の差し替え = DIP 境界）。
+    pub fn make_engine(self, cfg: SttConfig) -> Box<dyn TranscriptionEngine> {
+        // クラウドのモデルは未指定なら既定へフォールバックする。
+        let model = |default: &str| {
+            if cfg.model.trim().is_empty() {
+                default.to_string()
+            } else {
+                cfg.model.clone()
+            }
+        };
+        match self {
+            Self::Groq => Box::new(OpenAiCompatibleSttEngine {
+                base_url: "https://api.groq.com/openai/v1".into(),
+                model: model(self.default_model()),
+                api_key: cfg.api_key,
+            }),
+            Self::OpenAi => Box::new(OpenAiCompatibleSttEngine {
+                base_url: "https://api.openai.com/v1".into(),
+                model: model(self.default_model()),
+                api_key: cfg.api_key,
+            }),
+            Self::Deepgram => Box::new(DeepgramSttEngine {
+                model: model(self.default_model()),
+                api_key: cfg.api_key,
+            }),
+            Self::Azure => Box::new(AzureSttEngine {
+                resource: cfg.azure_resource,
+                api_key: cfg.api_key,
+                locale: "ja-JP".into(),
+            }),
+            Self::Local => Box::new(LocalWhisperEngine {
+                model_path: cfg.model_path,
+            }),
+        }
     }
 }
 
+/// STT設定からエンジンを解決する（S2.3抽象 / S2.4でクラウド追加 / ADR-0016）。
+/// 空/未知/"local"/"whisper" はローカル whisper にフォールバック（プライバシー既定）。
+pub fn engine_for(cfg: SttConfig) -> Box<dyn TranscriptionEngine> {
+    SttProvider::parse(&cfg.provider).make_engine(cfg)
+}
+
 /// プロバイダがクラウド（端末外送信）かを返す。lib側でモデルDL要否やUX分岐に使う。
-/// engine_for が実装済みのものだけを列挙する（未実装はローカルへフォールバックさせる）。
 pub fn is_cloud_provider(provider: &str) -> bool {
-    matches!(
-        provider.trim().to_ascii_lowercase().as_str(),
-        "groq" | "openai" | "deepgram" | "azure"
-    )
+    SttProvider::parse(provider).is_cloud()
 }
 
 #[cfg(test)]
@@ -627,6 +670,41 @@ mod tests {
         assert!(is_cloud_provider("azure"));
         assert!(!is_cloud_provider("local"));
         assert!(!is_cloud_provider(""));
+    }
+
+    #[test]
+    fn stt_provider_parses_aliases_and_defaults_local() {
+        assert_eq!(SttProvider::parse("groq"), SttProvider::Groq);
+        assert_eq!(SttProvider::parse("OpenAI"), SttProvider::OpenAi);
+        assert_eq!(SttProvider::parse("deepgram"), SttProvider::Deepgram);
+        assert_eq!(SttProvider::parse("azure"), SttProvider::Azure);
+        // 空/未知/local/whisper はローカル（プライバシー既定）へフォールバック。
+        assert_eq!(SttProvider::parse(""), SttProvider::Local);
+        assert_eq!(SttProvider::parse("local"), SttProvider::Local);
+        assert_eq!(SttProvider::parse("whisper"), SttProvider::Local);
+        assert_eq!(SttProvider::parse("unknown"), SttProvider::Local);
+    }
+
+    #[test]
+    fn stt_provider_is_cloud_true_except_local() {
+        assert!(!SttProvider::Local.is_cloud());
+        for p in [
+            SttProvider::Groq,
+            SttProvider::OpenAi,
+            SttProvider::Deepgram,
+            SttProvider::Azure,
+        ] {
+            assert!(p.is_cloud());
+        }
+    }
+
+    #[test]
+    fn stt_provider_default_models() {
+        assert_eq!(SttProvider::Groq.default_model(), "whisper-large-v3-turbo");
+        assert_eq!(SttProvider::OpenAi.default_model(), "gpt-4o-transcribe");
+        assert_eq!(SttProvider::Deepgram.default_model(), "nova-3");
+        assert_eq!(SttProvider::Azure.default_model(), "");
+        assert_eq!(SttProvider::Local.default_model(), "");
     }
 
     #[test]
