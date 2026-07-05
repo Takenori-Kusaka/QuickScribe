@@ -1,0 +1,7 @@
+{
+  "securityLevel": "loose",
+  "theme": "neutral",
+  "flowchart": {
+    "useMaxWidth": false
+  }
+}
