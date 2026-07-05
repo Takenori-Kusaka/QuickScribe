@@ -49,6 +49,21 @@ jobs:
           git diff --exit-code THIRD-PARTY-NOTICES-frontend.md \
             || { echo "::error::THIRD-PARTY-NOTICES-frontend.md が古いです。'npm run licenses' を実行してコミットしてください。"; exit 1; }
 
+  # 日本語ASR評価コアの単体テスト（ADR-0024 / #578）。正規化・CER・ブートストラップCIの回帰ゲート。
+  # 標準ライブラリのみで数秒。重い評価依存(datasets/soundfile等)は dispatch の perf.yml 側で使う。
+  eval-core:
+    name: eval-core (Python unit)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: ASR eval core unit tests
+        run: |
+          cd scripts/asr_eval
+          python test_asr_eval.py
+
   # アクセシビリティ回帰ゲート（#395 / WCAG2.1 AA）。Vite(モック)+Playwrightで主要画面を
   # axe-core(vendored)走査し serious/critical 違反ゼロを検証。Rust/マイク不要でubuntu完結。
   a11y:
