@@ -117,14 +117,30 @@ jobs:
           echo "STRUCTURIZR_CLI=/tmp/structurizr-cli/structurizr.sh" >> "$GITHUB_ENV"
       - name: Render DSL and auto-commit images (PR and main)
         run: |
-          # A DSL syntax error makes this step exit non-zero -> the check goes red.
-          npm run structurizr
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Stage first, then test the staged diff: `git diff --quiet` alone ignores
-          # brand-new (untracked) images, so a first-time diagram would never commit.
-          git add docs/assets/diagrams/
-          if ! git diff --cached --quiet; then
-            git commit -m "docs(diagrams): regenerate structurizr diagrams [skip ci]"
-            git push
+          # Only (re)render when the DSL source / render script / render config actually
+          # changed in the tip commit. Rationale: mmdc PNG rasterization is
+          # non-deterministic (byte-different every run), so an unconditional render +
+          # commit would push a fresh commit on EVERY CI run (churn) and, with [skip ci],
+          # leave HEAD without status checks. Gating on the tip-commit source delta means
+          # the bot's image-only commit re-triggers CI, that run sees no source change,
+          # skips rendering, and the checks go green on HEAD (loop terminates in one pass).
+          if git diff --name-only HEAD~1 HEAD -- \
+               docs/architecture \
+               scripts/render-structurizr.mjs \
+               scripts/structurizr-mermaid-config.json | grep -q .; then
+            # A DSL syntax error makes this step exit non-zero -> the check goes red.
+            npm run structurizr
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            # Stage first, then test the staged diff: `git diff --quiet` alone ignores
+            # brand-new (untracked) images, so a first-time diagram would never commit.
+            git add docs/assets/diagrams/
+            if ! git diff --cached --quiet; then
+              # No [skip ci]: this image commit re-triggers CI, whose tip delta has no
+              # source change, so it skips rendering and reports green checks on HEAD.
+              git commit -m "docs(diagrams): regenerate structurizr diagrams"
+              git push
+            fi
+          else
+            echo "No DSL/script/config change in tip commit; skipping structurizr render."
           fi
