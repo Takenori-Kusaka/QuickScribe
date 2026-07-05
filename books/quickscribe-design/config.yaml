@@ -6,3 +6,4 @@ price: 0
 chapters:
   - introduction
   - engine-abstraction
+  - formatting-intelligence
