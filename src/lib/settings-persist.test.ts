@@ -117,6 +117,7 @@ describe("writeSettings", () => {
     refineStyle: "verbatim",
     translateOutput: true,
     outputLang: "es",
+    openaiBaseUrl: "http://localhost:4000",
     sttProvider: "openai",
     offlineMode: false,
     sttModel: "m",
@@ -140,6 +141,7 @@ describe("writeSettings", () => {
     expect(localStorage.getItem("recordMode")).toBe("momentary");
     expect(localStorage.getItem("taskbarWidget")).toBe("false");
     expect(localStorage.getItem("outputLang")).toBe("es");
+    expect(localStorage.getItem("openaiBaseUrl")).toBe("http://localhost:4000");
     expect(localStorage.getItem("nudgeEnabled")).toBe("true");
   });
 

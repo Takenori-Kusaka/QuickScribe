@@ -30,6 +30,8 @@ export interface AppSettings {
   refineStyle: string;
   translateOutput: boolean;
   outputLang: string;
+  /** OpenAI互換エンドポイントの接続先(base_url / #593)。既定は空＝公式 api.openai.com。 */
+  openaiBaseUrl: string;
   sttProvider: SttProvider;
   offlineMode: boolean;
   sttModel: string;
@@ -104,6 +106,7 @@ export function readSettings(localeDefault: string): AppSettings {
     refineStyle,
     translateOutput: ls.getItem("translateOutput") === "true",
     outputLang: ls.getItem("outputLang") || localeDefault,
+    openaiBaseUrl: ls.getItem("openaiBaseUrl") || "",
     sttProvider: clampSttProvider(sttProvider),
     offlineMode,
     sttModel: ls.getItem("sttModel") || "",
@@ -148,6 +151,7 @@ export function writeSettings(s: AppSettings): void {
   ls.setItem("refineStyle", s.refineStyle);
   ls.setItem("translateOutput", String(s.translateOutput));
   ls.setItem("outputLang", s.outputLang);
+  ls.setItem("openaiBaseUrl", s.openaiBaseUrl);
   ls.setItem("sttProvider", s.sttProvider);
   ls.setItem("sttModel", s.sttModel);
   ls.setItem("sttAzureResource", s.sttAzureResource);

@@ -18,6 +18,7 @@ const base: RefineArgsInput = {
   awsSessionToken: "",
   translateOutput: false,
   outputLang: "ja",
+  openaiBaseUrl: "",
 };
 
 describe("buildRefineArgs", () => {
@@ -78,6 +79,23 @@ describe("buildRefineArgs", () => {
     ).toBeUndefined();
     expect(
       buildRefineArgs({ ...base, translateOutput: true, outputLang: "zzz" }).outputLang,
+    ).toBeUndefined();
+  });
+
+  it("OpenAI互換 base_url: OpenAIプロバイダで非空のときだけ baseUrl を渡す（#593）", () => {
+    // OpenAI かつ非空 → trim して baseUrl を送る。
+    expect(
+      buildRefineArgs({ ...base, provider: "openai", openaiBaseUrl: " http://localhost:4000 " })
+        .baseUrl,
+    ).toBe("http://localhost:4000");
+    // OpenAI でも空/空白なら送らない（既定=公式）。
+    expect(
+      buildRefineArgs({ ...base, provider: "openai", openaiBaseUrl: "  " }).baseUrl,
+    ).toBeUndefined();
+    // OpenAI 以外は base_url を無視する（値があっても送らない）。
+    expect(
+      buildRefineArgs({ ...base, provider: "gemini", openaiBaseUrl: "http://localhost:4000" })
+        .baseUrl,
     ).toBeUndefined();
   });
 

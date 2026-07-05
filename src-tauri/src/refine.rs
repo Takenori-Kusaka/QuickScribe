@@ -122,6 +122,10 @@ pub struct RefineRequest<'a> {
     /// 整形出力言語(翻訳 / #453)。Some(英語名 例 "Vietnamese")なら、話者/原文の言語に
     /// 関わらず指定言語で出力するようシステム指示に追記する(1パス)。原語の文字起こしは別途保持。
     pub output_lang: Option<&'a str>,
+    /// OpenAI互換エンドポイントの接続先(base_url / #593)。Some かつ非空なら、公式 api.openai.com の
+    /// 代わりにこの URL へ送る(LiteLLM 等のゲートウェイ・self-host のローカルLLMを対象にできる)。
+    /// OpenAI プロバイダのときのみ意味を持つ。空/未指定は従来どおり公式エンドポイント。
+    pub base_url: Option<&'a str>,
 }
 
 impl RefineRequest<'_> {
@@ -215,6 +219,17 @@ pub fn engine_for(provider: &str) -> Box<dyn FormattingEngine> {
     RefineProvider::parse(provider).make_engine()
 }
 
+/// OpenAI互換の接続先(base_url)を解決する(#593)。req 側で非空指定があればそれを
+/// (末尾スラッシュを除去して)使い、LiteLLM 等のゲートウェイや self-host のローカルLLMへ
+/// 送れるようにする。空/未指定は従来どおり公式 api.openai.com(テスト時のみ
+/// QS_TEST_OPENAI_BASE で差し替え可)。純粋関数=接続先解決の分岐をテストで固定する。
+fn openai_base_url(req_base: Option<&str>) -> String {
+    match req_base {
+        Some(b) if !b.trim().is_empty() => b.trim().trim_end_matches('/').to_string(),
+        _ => crate::api_base("https://api.openai.com", "QS_TEST_OPENAI_BASE"),
+    }
+}
+
 /// Ollama の既定エンドポイント(ローカル)。環境変数 OLLAMA_HOST があれば優先。
 fn ollama_base() -> String {
     std::env::var("OLLAMA_HOST")
@@ -238,6 +253,7 @@ pub fn refine(
     aws: Option<AwsConfig>,
     custom_instruction: Option<String>,
     output_lang: Option<String>,
+    base_url: Option<String>,
 ) -> Result<String, String> {
     // 空・空白のみの入力はAPIを呼ばずに弾く(無駄なコスト・無意味な整形を防ぐ / #18)。
     if transcript.trim().is_empty() {
@@ -251,6 +267,7 @@ pub fn refine(
         aws: aws.as_ref(),
         custom_instruction: custom_instruction.as_deref(),
         output_lang: output_lang.as_deref(),
+        base_url: base_url.as_deref(),
     };
     engine_for(provider).refine(&req)
 }
@@ -449,10 +466,7 @@ impl FormattingEngine for OpenAiEngine {
         });
 
         let bearer = format!("Bearer {}", req.api_key);
-        let url = format!(
-            "{}/v1/chat/completions",
-            crate::api_base("https://api.openai.com", "QS_TEST_OPENAI_BASE")
-        );
+        let url = format!("{}/v1/chat/completions", openai_base_url(req.base_url));
         let v = post_json_refine(
             &url,
             &[("Authorization", &bearer)],
@@ -919,7 +933,25 @@ mod tests {
             aws: None,
             custom_instruction: custom,
             output_lang: None,
+            base_url: None,
         }
+    }
+
+    #[test]
+    fn openai_base_url_prefers_custom_then_defaults() {
+        // 非空指定はそのまま(末尾スラッシュ除去)。空/未指定は公式エンドポイントへフォールバック。
+        assert_eq!(
+            openai_base_url(Some("http://localhost:4000")),
+            "http://localhost:4000"
+        );
+        assert_eq!(
+            openai_base_url(Some("https://gw.example.com/")),
+            "https://gw.example.com"
+        );
+        // 空白のみ/未指定は同じ既定へフォールバックする(env非依存で等価性を確認)。
+        let fallback = openai_base_url(None);
+        assert_eq!(openai_base_url(Some("   ")), fallback);
+        assert!(!fallback.is_empty());
     }
 
     #[test]
@@ -936,7 +968,7 @@ mod tests {
     #[test]
     fn refine_rejects_empty_input_without_calling_provider() {
         // 空・空白のみは HTTP を呼ばず即エラー（無駄コスト防止 / #18）。
-        let err = refine("gemini", "k", "m", "structured", "   \n", None, None, None).unwrap_err();
+        let err = refine("gemini", "k", "m", "structured", "   \n", None, None, None, None).unwrap_err();
         assert_eq!(err, crate::errcode::E_REFINE_EMPTY_INPUT, "空入力は安定コードを返す: {err}");
     }
 
@@ -1042,7 +1074,7 @@ mod tests {
 
     /// 標準の refine 呼び出し（スタイル固定・AWSなし）。
     fn call(provider: &str, key: &str) -> Result<String, String> {
-        refine(provider, key, "test-model", "structured", "本文X", None, None, None)
+        refine(provider, key, "test-model", "structured", "本文X", None, None, None, None)
     }
 
     #[test]
@@ -1181,7 +1213,7 @@ mod tests {
         {
             let _g = set_envs(&[("OLLAMA_HOST", &hostport)]);
             // model 空は既定 llama3.1 を送る。
-            let out = refine("ollama", "", "", "structured", "本文", None, None, None).unwrap();
+            let out = refine("ollama", "", "", "structured", "本文", None, None, None, None).unwrap();
             assert_eq!(out, "L本文");
             assert!(seen.lock().unwrap()[0].contains("llama3.1"), "既定モデルを送信");
             // インストール済み一覧の先頭を最新として返す。
@@ -1199,7 +1231,7 @@ mod tests {
         // 接続不能（未起動）は E_REFINE_OLLAMA_CONN / E_REFINE_MODELS_HTTP。
         {
             let _g = set_envs(&[("OLLAMA_HOST", "http://127.0.0.1:9")]);
-            let err = refine("ollama", "", "m", "structured", "x", None, None, None).unwrap_err();
+            let err = refine("ollama", "", "m", "structured", "x", None, None, None, None).unwrap_err();
             assert!(err.starts_with(crate::errcode::E_REFINE_OLLAMA_CONN), "{err}");
             let err = resolve_latest_model("ollama", "").unwrap_err();
             assert!(err.starts_with(crate::errcode::E_REFINE_MODELS_HTTP), "{err}");
@@ -1315,7 +1347,7 @@ mod tests {
         // region 空はエラー。
         let mut cfg = aws_cfg(AwsAuth::ApiKey);
         cfg.region = " ".into();
-        let err = refine("bedrock", "k", "", "structured", "x", Some(cfg), None, None).unwrap_err();
+        let err = refine("bedrock", "k", "", "structured", "x", Some(cfg), None, None, None).unwrap_err();
         assert_eq!(err, crate::errcode::E_REFINE_AWS_NO_REGION);
         // 成功（APIキー=Bearer / model 空は既定IDへ）。
         let (base, seen) = serve(vec![Route::json(
@@ -1327,7 +1359,7 @@ mod tests {
             let _g = set_envs(&[("QS_TEST_BEDROCK_BASE", &base)]);
             let out = refine(
                 "bedrock", "bk", "", "structured", "x",
-                Some(aws_cfg(AwsAuth::ApiKey)), None, None,
+                Some(aws_cfg(AwsAuth::ApiKey)), None, None, None,
             )
             .unwrap();
             assert_eq!(out, "B本文");
@@ -1340,7 +1372,7 @@ mod tests {
                 secret_key: "secret".into(),
                 session_token: None,
             });
-            let out = refine("aws-bedrock", "", "m1", "structured", "x", Some(sig), None, None).unwrap();
+            let out = refine("aws-bedrock", "", "m1", "structured", "x", Some(sig), None, None, None).unwrap();
             assert_eq!(out, "B本文");
         }
         // 空応答。
@@ -1349,7 +1381,7 @@ mod tests {
             let _g = set_envs(&[("QS_TEST_BEDROCK_BASE", &base2)]);
             let err = refine(
                 "bedrock", "bk", "", "structured", "x",
-                Some(aws_cfg(AwsAuth::ApiKey)), None, None,
+                Some(aws_cfg(AwsAuth::ApiKey)), None, None, None,
             )
             .unwrap_err();
             assert!(err.starts_with(crate::errcode::E_REFINE_EMPTY_RESULT), "{err}");
@@ -1364,7 +1396,7 @@ mod tests {
         // region 空はエラー。
         let mut cfg = aws_cfg(AwsAuth::ApiKey);
         cfg.region = "".into();
-        let err = refine("claude-aws", "k", "m", "structured", "x", Some(cfg), None, None).unwrap_err();
+        let err = refine("claude-aws", "k", "m", "structured", "x", Some(cfg), None, None, None).unwrap_err();
         assert_eq!(err, crate::errcode::E_REFINE_AWS_NO_REGION);
         // 成功（x-api-key + anthropic-workspace-id）。
         let (base, seen) = serve(vec![Route::json(
@@ -1376,7 +1408,7 @@ mod tests {
             let _g = set_envs(&[("QS_TEST_CLAUDE_AWS_BASE", &base)]);
             let out = refine(
                 "claude-platform-aws", "pk", "m", "structured", "x",
-                Some(aws_cfg(AwsAuth::ApiKey)), None, None,
+                Some(aws_cfg(AwsAuth::ApiKey)), None, None, None,
             )
             .unwrap();
             assert_eq!(out, "C本文");
@@ -1390,7 +1422,7 @@ mod tests {
             let _g = set_envs(&[("QS_TEST_CLAUDE_AWS_BASE", &base2)]);
             let err = refine(
                 "anthropic-aws", "pk", "m", "structured", "x",
-                Some(aws_cfg(AwsAuth::ApiKey)), None, None,
+                Some(aws_cfg(AwsAuth::ApiKey)), None, None, None,
             )
             .unwrap_err();
             assert!(err.starts_with(crate::errcode::E_REFINE_EMPTY_RESULT), "{err}");

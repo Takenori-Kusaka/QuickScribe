@@ -24,6 +24,8 @@ export interface RefineArgsInput {
   translateOutput: boolean;
   /** 出力言語コード(LANGUAGES)。translateOutput 有効時に英語名へ解決して送る。 */
   outputLang: string;
+  /** OpenAI互換エンドポイントの接続先(base_url / #593)。OpenAIプロバイダで非空のときだけ送る。 */
+  openaiBaseUrl: string;
 }
 
 /**
@@ -39,6 +41,11 @@ export function buildRefineArgs(i: RefineArgsInput): Record<string, unknown> {
     model: i.provider === "bedrock" ? i.bedrockModel : i.resolvedModel,
     style: i.style,
   };
+  // OpenAI互換の接続先(base_url / #593)。OpenAIプロバイダで非空のときだけ渡す(既定=公式)。
+  // ゲートウェイ(LiteLLM等)や self-host ローカルLLM を対象にできる上級者向けオプション。
+  if (i.provider === "openai" && i.openaiBaseUrl.trim()) {
+    base.baseUrl = i.openaiBaseUrl.trim();
+  }
   // カスタムパターン選択時は指示文をバックエンドへ渡す（style既定指示の代わりに使われる）。
   if (i.style.startsWith("custom:")) {
     const cs = i.customStyles.find((c) => `custom:${c.id}` === i.style);
