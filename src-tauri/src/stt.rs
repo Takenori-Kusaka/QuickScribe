@@ -181,6 +181,13 @@ where
     params.set_print_progress(false);
     params.set_print_special(false);
     params.set_print_realtime(false);
+    // ハルシネーション/反復ループ抑制(#600)。既定(no_context=false)は直前の文字起こしを
+    // 初期プロンプトに使うため、末尾の無音等で一度反復("I I I I"…)に陥ると文脈がループを固定し、
+    // タイムスタンプが進まず末尾の音声が失われる(実録音11:40が11:21で凍結する事象を確認)。
+    // 前文脈を使わないことでループの固定を防ぐ。継続性はわずかに犠牲になるが、ジャーナル用途では
+    // 末尾欠落の害の方が大きい。温度フォールバック(temperature_inc=0.2)・entropy/logprob 閾値は
+    // whisper.cpp 既定でループ回復機構が有効。効果は日本語CERベンチ(ADR-0024)で回帰監視する。
+    params.set_no_context(true);
 
     // 進捗(0-100)と確定セグメントの逐次通知。
     params.set_progress_callback_safe(on_progress);
