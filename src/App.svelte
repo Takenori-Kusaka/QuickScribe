@@ -685,12 +685,28 @@
     }
   }
   // 選択された候補を文字起こしに適用（全置換）し、確認パネルを閉じる。
-  function applyCorrectionsToTranscript() {
+  async function applyCorrectionsToTranscript() {
     if (!corrections || !transcript) return;
     const { text, applied } = applyCorrections(transcript, corrections);
     transcript = text;
     corrections = null;
-    status = applied > 0 ? $_("corrections.replaced", { values: { n: applied } }) : "";
+    if (applied <= 0) {
+      status = "";
+      return;
+    }
+    // 補正済みの文字起こしを別ファイルで残す(#599)。原本は書き換えない=非破壊(ADR-0017)。
+    // テキスト保存を切っている(keepText=false)人の意思は尊重し、その場合は保存しない。
+    if (keepText) {
+      try {
+        await invoke("save_note", { content: text, kind: "transcript" });
+        status = $_("corrections.replaced_saved", { values: { n: applied } });
+      } catch (e) {
+        status = $_("corrections.replaced", { values: { n: applied } });
+        error = $_("errors.save_corrected_failed", { values: { detail: errorText(e, $_) } });
+      }
+    } else {
+      status = $_("corrections.replaced", { values: { n: applied } });
+    }
   }
 
   // 整形結果をクリップボードへコピー(S3.5・最小操作の利便)。
