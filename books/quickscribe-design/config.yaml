@@ -1,0 +1,8 @@
+title: "ローカル完結ボイスジャーナルの設計 ― QuickScribe を Tauri + Rust + Svelte でつくる"
+summary: "話した言葉を、要約せずニュアンスを残したまま整えて残す。そんなローカル完結の音声ジャーナル「QuickScribe」を、Tauri + Rust + Svelte でどう設計したかをまとめた本です。エンジンを差し替え可能にする trait 設計、ローカル LLM での整形、中間ファイルを捨てない仕様、CI での品質ゲートやコード署名配布まで、実際の意思決定記録（ADR）と実装に紐づけて解説します。うまくいった判断だけでなく、トレードオフや未解決の課題も正直に書きます。"
+topics: ["tauri", "rust", "svelte", "whisper", "設計"]
+published: false
+price: 0
+chapters:
+  - introduction
+  - engine-abstraction
