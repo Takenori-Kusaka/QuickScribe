@@ -73,7 +73,7 @@ pub trait FormattingEngine {
 
 コマンド層（`lib.rs`）は、ファクトリ関数 `engine_for` を通してエンジンを1つ受け取り、trait 越しに呼びます。具体的なプロバイダ実装や外部サービスの存在は、コマンド層からは見えません。
 
-![エンジン抽象のコンポーネント構成](https://raw.githubusercontent.com/Takenori-Kusaka/QuickScribe/main/docs/assets/diagrams/engine-abstraction-components.png)
+![エンジン抽象のコンポーネント構成](/images/c4/engine-abstraction-components.png)
 
 境界の外（クラウド各社・ローカル whisper・ローカル Ollama）は、trait の裏側に隠れています。上位はプロバイダの数を知りません。
 
@@ -97,7 +97,7 @@ pub fn engine_for(cfg: SttConfig) -> Box<dyn TranscriptionEngine> {
 
 解決したエンジンがつながる先は、次の関係になります。既定はローカルに閉じ、クラウドは鍵を設定したときだけ外に出ます。
 
-![解決したエンジンがつながる先（既定はローカル、鍵設定時のみクラウド）](https://raw.githubusercontent.com/Takenori-Kusaka/QuickScribe/main/docs/assets/diagrams/engine-abstraction-context.png)
+![解決したエンジンがつながる先（既定はローカル、鍵設定時のみクラウド）](/images/c4/engine-abstraction-context.png)
 
 ## インターフェース設計コアポイント
 
