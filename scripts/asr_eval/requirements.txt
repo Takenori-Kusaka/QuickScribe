@@ -3,7 +3,8 @@
 neologdn>=0.5.4          # 日本語正規化（長音短縮/ダッシュ統一/繰り返し短縮/半角カナ）。C拡張。
 
 # --- 後続スライスで追加予定（コメントで先出し）---
-# datasets>=2.19.0       # Common Voice ja(CC0ミラー)等のコーパス取得（#578 第二スライス fetch）
+# datasets>=2.19,<3     # Common Voice ja(CC0ミラー)取得（#578）。fsicoliミラーはスクリプト方式で
+#                        # datasets 4.0+ は trust_remote_code 廃止のため 2.x にピン必須。
 # bert-score>=0.3.13     # 意味保持 BERTScore-ja（#577）
 # transformers>=4.40     # 日本語NLI entailment / BERTScore（#577）
 # torch>=2.2             # 上記モデルのCPU推論（TRANSFORMERS_OFFLINE=1でオフライン実行）
