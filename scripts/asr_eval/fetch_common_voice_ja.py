@@ -13,7 +13,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Fetch Common Voice ja (CC0) samples for CER eval.")
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--num", type=int, default=100, help="取得発話数")
-    ap.add_argument("--split", default="validated")
+    # このミラーの split は train/validation/test/other/invalidated（"validated" は無い）。
+    # 評価は held-out の test を既定にする。
+    ap.add_argument("--split", default="test")
     ap.add_argument("--dataset", default="fsicoli/common_voice_17_0", help="CC0再ホストのHFミラー")
     ap.add_argument("--config", default="ja")
     args = ap.parse_args()
