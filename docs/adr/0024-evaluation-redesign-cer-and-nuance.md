@@ -1,6 +1,6 @@
 # ADR-0024: 評価基盤の再設計（日本語CER刷新＋ニュアンス保持の客観計測）
 
-- Status: Proposed（設計スパイクの成果。Deciders 承認で Accepted → 実装へ）
+- Status: Accepted（設計スパイクの成果。Deciders 承認済み 2026-07-05。第一スライスから実装）
 - Date: 2026-07-05
 - Deciders: Takenori Kusaka
 - 関連: [ADR-0007 調査規律](0007-research-question-framing-method.md) / [ADR-0022 モデルカタログ精選](0022-model-catalog-curation.md) / [ADR-0004 コア価値]
