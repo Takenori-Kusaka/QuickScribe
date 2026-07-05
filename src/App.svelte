@@ -259,6 +259,9 @@
   // 既定言語は起動時のUI言語。UI言語に限らず任意言語(Vietnamese等)を選べる(constants LANGUAGES)。
   let translateOutput = $state<boolean>(false);
   let outputLang = $state<string>("ja");
+  // OpenAI互換の接続先(base_url / #593)。空=公式 api.openai.com。上級者が LiteLLM 等のゲートウェイや
+  // self-host のローカルLLM(loopbackなら端末内完結扱い)を指定できる。OpenAIプロバイダのときのみ有効。
+  let openaiBaseUrl = $state<string>("");
   // カスタム整形スタイル(#392): 状態・統合リスト(allStyles)・追加/削除は lib/custom-styles へ集約。
   // 選択値 refineStyle は設定 state に残すため、削除時のフォールバックはコールバックで委譲する。
   const customStyleStore = createCustomStyles({
@@ -279,6 +282,7 @@
     setProvider: (v) => (provider = v as Provider),
     getSttProvider: () => sttProvider,
     setSttProvider: (v) => (sttProvider = v as SttProvider),
+    getBaseUrl: () => openaiBaseUrl,
     syncStt: () => void syncSttSettings(),
   });
 
@@ -299,6 +303,7 @@
     refineStyle = s.refineStyle;
     translateOutput = s.translateOutput;
     outputLang = s.outputLang;
+    openaiBaseUrl = s.openaiBaseUrl;
     sttProvider = s.sttProvider;
     privacy.offlineMode = s.offlineMode;
     sttModel = s.sttModel;
@@ -334,6 +339,7 @@
       refineStyle,
       translateOutput,
       outputLang,
+      openaiBaseUrl,
       sttProvider,
       offlineMode: privacy.offlineMode,
       sttModel,
@@ -610,6 +616,7 @@
       awsSessionToken,
       translateOutput,
       outputLang,
+      openaiBaseUrl,
     });
   }
 
@@ -1693,6 +1700,19 @@
                 autocomplete="off"
               />
             </label>
+            {#if provider === "openai"}
+              <label>
+                {$_("settings.openai_base_url")}
+                <input
+                  id="cfg-openai-base-url"
+                  type="url"
+                  bind:value={openaiBaseUrl}
+                  placeholder={$_("settings.openai_base_url_placeholder")}
+                  autocomplete="off"
+                />
+              </label>
+              <p class="muted model-hint">{$_("settings.openai_base_url_hint")}</p>
+            {/if}
           {/if}
           <p class="muted model-hint">
             {#if provider === "bedrock"}

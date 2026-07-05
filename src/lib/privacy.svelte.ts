@@ -10,8 +10,38 @@ export interface PrivacyDeps {
   setProvider: (v: string) => void;
   getSttProvider: () => string;
   setSttProvider: (v: string) => void;
+  /** OpenAI互換の接続先(base_url / #593)。loopback を指すなら端末内完結扱い。 */
+  getBaseUrl: () => string;
   /** STT 設定をバックエンドへ反映する（ローカル切替後に呼ぶ）。 */
   syncStt: () => void;
+}
+
+/**
+ * URL のホストが loopback（端末内＝オンデバイス完結）かを判定する（#593）。
+ * localhost / 127.0.0.0/8 / ::1 / 0.0.0.0 のみ true。LAN・リモートは false。
+ * スキーム付きの正しい URL のみを loopback と認める。パース不能は false（安全側＝
+ * リモートを誤って「端末内」と表示しない）。判定は「通信の宛先」の事実に限る。
+ */
+export function isLoopbackUrl(url: string): boolean {
+  const s = url.trim();
+  if (!s) return false;
+  try {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- 使い捨てのURLパース(リアクティブ状態ではない)
+    const host = new URL(s).hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    return host === "localhost" || host === "::1" || host === "0.0.0.0" || /^127\./.test(host);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 整形の接続先が端末内で完結するか（#593）。ローカルプロバイダ(Ollama)は常に true、
+ * OpenAI互換は base_url が loopback を指すときだけ true（self-host ゲートウェイ/ローカルLLM）。
+ */
+function refineEndpointIsLocal(provider: string, baseUrl: string): boolean {
+  if ((LOCAL_PROVIDERS as readonly string[]).includes(provider)) return true;
+  if (provider === "openai") return isLoopbackUrl(baseUrl);
+  return false;
 }
 
 /**
@@ -23,9 +53,10 @@ export function createPrivacy(deps: PrivacyDeps) {
   // オフライン固定モード(#465): ONの間はクラウドプロバイダ選択を無効化し、常にローカルに固定する。
   let offlineMode = $state<boolean>(false);
 
-  // 「オンデバイス完結」か（整形=ローカル かつ STT=ローカル）。誇張なく現状を可視化する。
+  // 「オンデバイス完結」か（整形の宛先がローカル かつ STT=ローカル）。誇張なく現状を可視化する。
+  // 判定は provider 名だけでなく、OpenAI互換の base_url が loopback かも見る（#593）。
   const isFullyLocal = $derived(
-    (LOCAL_PROVIDERS as readonly string[]).includes(deps.getProvider()) &&
+    refineEndpointIsLocal(deps.getProvider(), deps.getBaseUrl()) &&
       deps.getSttProvider() === "local",
   );
 

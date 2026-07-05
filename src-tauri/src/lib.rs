@@ -586,6 +586,9 @@ pub struct RefineTextParams {
     pub aws_session_token: Option<String>,
     /// 整形出力言語(翻訳 / #453)。Some(英語名)時、指定言語で整形出力する。非指定は原語のまま。
     pub output_lang: Option<String>,
+    /// OpenAI互換エンドポイントの接続先(base_url / #593)。OpenAIプロバイダで Some かつ非空なら
+    /// 公式の代わりにこの URL へ送る(LiteLLM 等ゲートウェイ・self-host ローカルLLM対応)。上級者向け。
+    pub base_url: Option<String>,
 }
 
 /// 文字起こしテキストを整形(思考整理・要約)して保存し返す（E3 コアドメイン）。
@@ -613,6 +616,7 @@ async fn refine_text<R: tauri::Runtime>(
             aws_secret_key,
             aws_session_token,
             output_lang,
+            base_url,
         } = params;
         let m = if model.trim().is_empty() {
             default_model_for(&provider).to_string()
@@ -647,6 +651,7 @@ async fn refine_text<R: tauri::Runtime>(
             aws_cfg,
             custom_instruction,
             output_lang,
+            base_url,
         )?;
         // 整形結果（ジャーナルの成果物）は保存先へ書き出す（save=false の一時結果は保存しない）。
         let settings = current_settings(&app);
@@ -1268,6 +1273,7 @@ mod tests {
             aws_secret_key: None,
             aws_session_token: None,
             output_lang: None,
+            base_url: None,
         };
         let out =
             tauri::async_runtime::block_on(refine_text(app.handle().clone(), params)).unwrap();
@@ -1306,6 +1312,7 @@ mod tests {
             aws_secret_key: Some("secret".into()),
             aws_session_token: None,
             output_lang: None,
+            base_url: None,
         };
         let out =
             tauri::async_runtime::block_on(refine_text(app.handle().clone(), params)).unwrap();
