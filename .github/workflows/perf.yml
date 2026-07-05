@@ -409,7 +409,9 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install eval deps (CI専用・datasets + neologdn)
-        run: pip install -r scripts/asr_eval/requirements.txt datasets
+        # datasets は 2.x にピン。fsicoli ミラーはローディングスクリプト方式で、datasets 4.0+ は
+        # スクリプト対応(trust_remote_code)を廃止したため 5.x では読めない（#578 スパイクで判明）。
+        run: pip install -r scripts/asr_eval/requirements.txt "datasets>=2.19,<3"
       - name: Fetch Common Voice ja (CC0・非同梱・streaming)
         run: |
           python scripts/asr_eval/fetch_common_voice_ja.py \
