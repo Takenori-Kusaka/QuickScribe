@@ -1,47 +1,45 @@
 #!/usr/bin/env node
-// Render C4 architecture diagrams described in Structurizr DSL to committed PNG/SVG
-// so that technical articles can reference them by ABSOLUTE raw.githubusercontent URL
-// (Zenn cannot resolve repo-relative image paths). Mirrors scripts/render-diagrams.mjs
-// (the Mermaid pipeline) but for Structurizr DSL. See
-// docs/process/article-publishing-policy.md.
+// Render C4 architecture diagrams described in Structurizr DSL to DETERMINISTIC PNGs
+// so that technical articles (Zenn) can reference them by absolute path under /images/.
+// See docs/process/article-publishing-policy.md.
 //
-// Path: Structurizr CLI `export -format mermaid` -> reuse @mermaid-js/mermaid-cli (mmdc)
-// to rasterize. This reuses the existing Mermaid tooling and keeps a single renderer,
-// which is the most reliable / lowest-maintenance route (see PR body for rationale).
+// Proven, deterministic path (NOT mermaid-cli, whose PNG rasterization is byte-
+// nondeterministic and caused CI churn):
+//
+//   Structurizr CLI `export -format plantuml`  ->  structurizr-<viewKey>.puml
+//   plantuml -tpng <puml>                       ->  structurizr-<viewKey>.png  (Graphviz layout)
+//
+// The plain `plantuml` exporter is self-contained (no remote !includeurl) and lays out
+// via Graphviz, so identical DSL yields byte-identical PNGs => zero diff => no churn.
+// Structurizr CLI cannot emit PNG/SVG directly (official), hence the PlantUML hop.
+// Reference implementation: sebastienfi/structurizr-github-actions-demo and the
+// ghcr.io/sebastienfi/structurizr-cli-with-bonus image (structurizr-cli + plantuml + graphviz).
+//
+// We remap each exported view to the article-facing name:
+//   docs/architecture/<base>.dsl view "<key>"  ->  images/c4/<base>-<key>.png
+// e.g. engine-abstraction.dsl view "components" -> images/c4/engine-abstraction-components.png
 //
 // Usage:
-//   node scripts/render-structurizr.mjs           # render into docs/assets/diagrams/
-//   node scripts/render-structurizr.mjs --check    # verify committed images exist (info only)
+//   node scripts/render-structurizr.mjs           # render into images/c4/
+//   node scripts/render-structurizr.mjs --check    # info-only existence probe (NOT a CI gate)
 //
-// Rendering requires Java (Structurizr CLI). It CANNOT run on a machine without Java/Docker,
-// so this is designed to run in CI. Provide the CLI via one of:
-//   STRUCTURIZR_CLI=/path/to/structurizr.sh   (release zip; needs Java 17+)  [preferred in CI]
-//   STRUCTURIZR_DOCKER=1                       (use the `structurizr/cli` Docker image)
-//
-// Structurizr CLI names exported files `structurizr-<viewKey>.<ext>` (prefix is
-// `structurizr` when the DSL has no numeric workspace id). We remap each view to
-//   docs/assets/diagrams/<dslBasename>-<viewKey>.png|svg
-// e.g. docs/architecture/engine-abstraction.dsl view `components`
-//   -> docs/assets/diagrams/engine-abstraction-components.png|svg
+// Rendering needs Java + PlantUML + Graphviz, which authors usually lack locally; it is
+// designed to run in CI inside the container above. Resolve the CLI via, in order:
+//   STRUCTURIZR_CLI=/path/to/structurizr.sh   (explicit override)
+//   /usr/local/structurizr-cli/structurizr.sh (sebastienfi container default)
+//   structurizr.sh                            (on PATH)
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readdirSync, existsSync, rmSync, mkdtempSync, renameSync } from "node:fs";
+import { mkdirSync, readdirSync, existsSync, rmSync, mkdtempSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC_DIR = join(repoRoot, "docs", "architecture");
-const OUT_DIR = join(repoRoot, "docs", "assets", "diagrams");
-const PUPPETEER_CFG = join(repoRoot, "scripts", "puppeteer-config.json");
-const MERMAID_CFG = join(repoRoot, "scripts", "structurizr-mermaid-config.json");
-const MMDC_JS = join(repoRoot, "node_modules", "@mermaid-js", "mermaid-cli", "src", "cli.js");
+const OUT_DIR = join(repoRoot, "images", "c4");
 
 const check = process.argv.includes("--check");
-
-// PNG is referenced by the articles (reliably embeddable on Zenn);
-// SVG is kept as a crisp, diff-friendly source of truth.
-const FORMATS = ["png", "svg"];
 
 function dslSources() {
   if (!existsSync(SRC_DIR)) return [];
@@ -50,85 +48,53 @@ function dslSources() {
     .map((f) => ({ file: join(SRC_DIR, f), base: basename(f, ".dsl") }));
 }
 
-// Run the Structurizr CLI `export -format mermaid` for one DSL into outDir.
+// Locate the Structurizr CLI launcher (structurizr.sh).
+function structurizrCli() {
+  if (process.env.STRUCTURIZR_CLI) return process.env.STRUCTURIZR_CLI;
+  const bundled = "/usr/local/structurizr-cli/structurizr.sh";
+  if (existsSync(bundled)) return bundled;
+  return "structurizr.sh"; // rely on PATH
+}
+
+// Structurizr CLI `export -format plantuml` for one DSL into outDir.
 // A non-zero exit (e.g. a DSL syntax error) throws, which fails CI intentionally.
 function structurizrExport(dslFile, outDir) {
-  if (process.env.STRUCTURIZR_DOCKER === "1") {
-    // Mount the repo so both the DSL input and the output dir are visible to the container.
-    const image = process.env.STRUCTURIZR_IMAGE || "structurizr/cli:latest";
-    const rel = (p) =>
-      "/work/" +
-      p
-        .slice(repoRoot.length + 1)
-        .split("\\")
-        .join("/");
-    execFileSync(
-      "docker",
-      [
-        "run",
-        "--rm",
-        "-v",
-        `${repoRoot}:/work`,
-        image,
-        "export",
-        "-workspace",
-        rel(dslFile),
-        "-format",
-        "mermaid",
-        "-output",
-        rel(outDir),
-      ],
-      { stdio: "inherit" },
-    );
-    return;
-  }
-
-  const cli = process.env.STRUCTURIZR_CLI;
-  if (!cli) {
-    throw new Error(
-      "Structurizr CLI not found. Set STRUCTURIZR_CLI=/path/to/structurizr.sh " +
-        "(release zip, needs Java 17+) or STRUCTURIZR_DOCKER=1. Rendering cannot run " +
-        "without Java/Docker; this is expected to run in CI.",
-    );
-  }
   execFileSync(
     "bash",
-    [cli, "export", "-workspace", dslFile, "-format", "mermaid", "-output", outDir],
+    [structurizrCli(), "export", "-workspace", dslFile, "-format", "plantuml", "-output", outDir],
     { stdio: "inherit", cwd: repoRoot },
   );
 }
 
-// Map the CLI's `structurizr-<viewKey>.mmd` outputs to their view keys.
-// Skip legend files (`...-key.mmd`) which mmdc need not render on their own.
+// Exported .puml files map to view keys. Skip legend companions (`...-key.puml`).
 function exportedViews(exportDir) {
   const views = [];
   for (const f of readdirSync(exportDir)) {
-    const m = /^structurizr-(.+)\.mmd$/.exec(f);
+    const m = /^structurizr-(.+)\.puml$/.exec(f);
     if (!m) continue;
     const key = m[1];
     if (key.endsWith("-key")) continue; // legend companion file
-    views.push({ key, mmd: join(exportDir, f) });
+    views.push({ key, puml: join(exportDir, f) });
   }
   return views;
 }
 
-function mmdc(input, out, ext) {
-  const args = [MMDC_JS, "-i", input, "-o", out, "-e", ext, "-t", "neutral", "-b", "white"];
-  if (ext === "png") args.push("-s", "2");
-  if (existsSync(MERMAID_CFG)) args.push("-c", MERMAID_CFG);
-  if (existsSync(PUPPETEER_CFG)) args.push("-p", PUPPETEER_CFG);
-  execFileSync(process.execPath, args, { stdio: "inherit", cwd: repoRoot });
+// plantuml -tpng writes <name>.png next to each <name>.puml. Deterministic (Graphviz).
+function plantumlToPng(pumlFiles, cwd) {
+  const bin = process.env.PLANTUML || "plantuml";
+  execFileSync(bin, ["-tpng", ...pumlFiles], { stdio: "inherit", cwd });
 }
 
 const sources = dslSources();
 
+if (!sources.length) {
+  console.log("No .dsl sources under docs/architecture/. Nothing to do.");
+  process.exit(0);
+}
+
 if (check) {
-  // Info-only freshness probe (NOT a CI gate — local machines usually lack Java).
-  // Render into a scratch dir, then report any expected committed image that is missing.
-  if (!sources.length) {
-    console.log("No .dsl sources under docs/architecture/. Nothing to check.");
-    process.exit(0);
-  }
+  // Info-only freshness probe (NOT a CI gate — authors usually lack Java/PlantUML).
+  // Only checks that the expected committed PNGs exist for each declared view.
   const scratch = mkdtempSync(join(tmpdir(), "qs-structurizr-"));
   const missing = [];
   try {
@@ -137,10 +103,8 @@ if (check) {
       mkdirSync(exportDir, { recursive: true });
       structurizrExport(src.file, exportDir);
       for (const view of exportedViews(exportDir)) {
-        for (const ext of FORMATS) {
-          const name = `${src.base}-${view.key}.${ext}`;
-          if (!existsSync(join(OUT_DIR, name))) missing.push(name);
-        }
+        const name = `${src.base}-${view.key}.png`;
+        if (!existsSync(join(OUT_DIR, name))) missing.push(name);
       }
     }
   } finally {
@@ -148,17 +112,12 @@ if (check) {
   }
   if (missing.length) {
     console.error(
-      "Missing committed Structurizr diagrams (CI will regenerate & commit these):\n  - " +
+      "Missing committed Structurizr PNGs (CI regenerates & commits these):\n  - " +
         [...new Set(missing)].join("\n  - "),
     );
     process.exit(1);
   }
-  console.log("All expected Structurizr diagrams are committed.");
-  process.exit(0);
-}
-
-if (!sources.length) {
-  console.log("No .dsl sources under docs/architecture/. Nothing to render.");
+  console.log("All expected Structurizr PNGs are committed.");
   process.exit(0);
 }
 
@@ -174,17 +133,19 @@ try {
       console.warn(`  ! ${src.base}.dsl produced no views`);
       continue;
     }
+    // Rasterize only the real view .puml files (legends excluded) in one call.
+    plantumlToPng(
+      views.map((v) => v.puml),
+      exportDir,
+    );
     for (const view of views) {
-      for (const ext of FORMATS) {
-        const outPath = join(OUT_DIR, `${src.base}-${view.key}.${ext}`);
-        mmdc(view.mmd, outPath, ext);
-        // mmdc keeps the exact -o name for a single-diagram .mmd input; nothing to rename.
-        if (!existsSync(outPath)) {
-          // Defensive: if a future mmdc version suffixes -1, normalize it.
-          const suffixed = outPath.replace(new RegExp(`\\.${ext}$`), `-1.${ext}`);
-          if (existsSync(suffixed)) renameSync(suffixed, outPath);
-        }
+      const producedPng = join(exportDir, `structurizr-${view.key}.png`);
+      const outPath = join(OUT_DIR, `${src.base}-${view.key}.png`);
+      if (!existsSync(producedPng)) {
+        throw new Error(`plantuml did not produce ${producedPng} for view ${view.key}`);
       }
+      copyFileSync(producedPng, outPath);
+      console.log(`  ✓ ${src.base}-${view.key}.png`);
     }
   }
 } finally {
