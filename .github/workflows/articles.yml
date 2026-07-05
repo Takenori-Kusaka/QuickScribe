@@ -70,6 +70,15 @@ jobs:
           node-version: 20
       - name: Install npm dependencies
         run: npm ci
+      - name: Install CJK fonts for PlantUML
+        # PlantUML renders diagram text with Java2D. The base image ships a CJK font for
+        # regular weight only, so BOLD Japanese (C4 element/boundary titles) falls back to
+        # a non-CJK bold face and renders as tofu (□). Noto CJK ships a Bold weight, so
+        # installing it (and refreshing the font cache) fixes the bold Japanese titles.
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq fonts-noto-cjk
+          fc-cache -f
       - name: Render DSL to deterministic PNGs (structurizr -> plantuml)
         # A DSL syntax error makes this exit non-zero -> the check goes red.
         run: npm run structurizr
