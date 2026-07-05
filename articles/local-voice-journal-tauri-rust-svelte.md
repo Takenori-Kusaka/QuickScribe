@@ -7,9 +7,9 @@ published: false
 ---
 
 <!--
-この記事は articles/ 配下を単一ソースとして管理します（Zenn CLI/GitHub 連携の慣習）。
-Qiita 版は `npm run qiita:build` で public/ に機械変換します。画像は必ず絶対 URL で参照します
-（相対パスは Qiita 転載でリンク切れになるため）。詳細は docs/process/article-publishing-policy.md。
+この記事は articles/ 配下を単一ソースとして Zenn の GitHub 連携で管理します。
+画像は必ず絶対 URL で参照します（Zenn から参照するリポジトリ内の画像は相対パスでは解決できないため）。
+詳細は docs/process/article-publishing-policy.md。
 -->
 
 > 対象は QuickScribe v1.0.0（2026-07-04 公開）。個人開発のオープンソースです。
