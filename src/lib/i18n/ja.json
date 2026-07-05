@@ -202,6 +202,7 @@
     "apply": "選んだ用語を置換して更新",
     "close": "閉じる（置換しない）",
     "replaced": "用語を{n}件置換しました",
+    "replaced_saved": "用語を{n}件置換し、補正版を別ファイルで保存しました",
     "suggestion_label": "置換後の語"
   },
   "update": {
@@ -314,6 +315,7 @@
     "autostart_failed": "自動起動の設定に失敗しました: {detail}",
     "custom_need_both": "カスタムパターンには名前と指示の両方が必要です。",
     "open_output_failed": "出力先フォルダを開けませんでした: {detail}",
+    "save_corrected_failed": "補正版の保存に失敗しました: {detail}",
     "hotkey_set": "ホットキーを設定しました: {key}",
     "hotkey_failed": "ホットキーを設定できませんでした: {detail}",
     "transcribe_failed": "文字起こしに失敗しました: {detail}",

@@ -256,21 +256,26 @@ fn set_save_settings(
 }
 
 /// 整形結果など任意テキストを保存先へ書き出す（整形は常に保存）。tags は内省タグ(S4.3)。
+/// kind は保存物の種別（既定 "note"）。用語補正済みの文字起こしを別ファイルで残す場合は
+/// "transcript" を渡す(#599)。未知の kind は "note" 相当にフォールバックする(filename_prefix)。
+/// いずれも非破壊(一意名)＝原本は書き換えない(ADR-0017)。
 #[tauri::command]
 fn save_note<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     content: String,
     tags: Option<Vec<String>>,
+    kind: Option<String>,
 ) -> Result<String, String> {
     let settings = current_settings(&app);
     let dir = resolve_save_dir(&settings)?;
     let tags = tags.unwrap_or_default();
+    let kind = kind.unwrap_or_else(|| "note".to_string());
     save_document(
         &dir,
         &content,
         &settings.output_format,
         &DocMeta {
-            kind: "note",
+            kind: &kind,
             style: None,
             tags: &tags,
         },
@@ -1089,6 +1094,7 @@ mod tests {
             app.handle().clone(),
             "こころのメモ".into(),
             Some(vec!["内省".into()]),
+            None,
         )
         .unwrap();
         assert!(path.ends_with(".md"));
@@ -1099,6 +1105,37 @@ mod tests {
         // open_vault はフォルダを必ず作る（ファイルマネージャ起動の成否は環境依存で不問）。
         let _ = open_vault(app.handle().clone());
         assert!(dir.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_note_with_transcript_kind_saves_as_transcript() {
+        // #599: 用語補正済みの文字起こしは kind="transcript" で別ファイル保存する(非破壊・原本は残る)。
+        let app = mock_app();
+        let dir = tmp_dir("vault-corrected");
+        set_save_settings(
+            app.state(),
+            Some(dir.to_string_lossy().into_owned()),
+            false,
+            "wav".into(),
+            true,
+            Some("md".into()),
+        )
+        .unwrap();
+        let path = save_note(
+            app.handle().clone(),
+            "補正済み本文".into(),
+            None,
+            Some("transcript".into()),
+        )
+        .unwrap();
+        assert!(
+            path.contains("transcript"),
+            "transcript プレフィックスで保存される: {path}"
+        );
+        let entries = list_entries(app.handle().clone()).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].kind, "transcript");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

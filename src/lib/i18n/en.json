@@ -202,6 +202,7 @@
     "apply": "Replace selected terms and update",
     "close": "Close (replace none)",
     "replaced": "Replaced {n} term(s)",
+    "replaced_saved": "Replaced {n} term(s) and saved the corrected transcript as a new file",
     "suggestion_label": "Replacement term"
   },
   "update": {
@@ -314,6 +315,7 @@
     "autostart_failed": "Failed to configure auto-start: {detail}",
     "custom_need_both": "A custom pattern needs both a name and instructions.",
     "open_output_failed": "Could not open the output folder: {detail}",
+    "save_corrected_failed": "Could not save the corrected transcript: {detail}",
     "hotkey_set": "Hotkey set: {key}",
     "hotkey_failed": "Could not set the hotkey: {detail}",
     "transcribe_failed": "Transcription failed: {detail}",

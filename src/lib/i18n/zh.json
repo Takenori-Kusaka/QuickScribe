@@ -202,6 +202,7 @@
     "apply": "替换所选术语并更新",
     "close": "关闭（不替换）",
     "replaced": "已替换 {n} 个术语",
+    "replaced_saved": "已替换 {n} 个术语，并将校正版另存为新文件",
     "suggestion_label": "替换后的词"
   },
   "update": {
@@ -314,6 +315,7 @@
     "autostart_failed": "配置自动启动失败：{detail}",
     "custom_need_both": "自定义模式需要同时填写名称和指示。",
     "open_output_failed": "无法打开输出文件夹：{detail}",
+    "save_corrected_failed": "保存校正版失败：{detail}",
     "hotkey_set": "已设置热键：{key}",
     "hotkey_failed": "无法设置热键：{detail}",
     "transcribe_failed": "转写失败：{detail}",
