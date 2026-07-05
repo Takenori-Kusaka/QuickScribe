@@ -20,11 +20,12 @@ def main() -> int:
     ap.add_argument("--config", default="ja")
     args = ap.parse_args()
 
-    # datasets は CI でのみ導入（requirements.txt 参照）。未導入なら明示的に失敗させる。
+    # datasets / soundfile は CI でのみ導入（requirements.txt 参照）。未導入なら明示的に失敗させる。
     try:
-        from datasets import Audio, load_dataset
+        import soundfile as sf
+        from datasets import load_dataset
     except ImportError:
-        return "datasets 未導入。pip install -r scripts/asr_eval/requirements.txt（CI専用依存）。"
+        return "datasets/soundfile 未導入。pip で導入（CI専用依存）。"
 
     ds = load_dataset(
         args.dataset,
@@ -33,8 +34,8 @@ def main() -> int:
         streaming=True,
         trust_remote_code=True,
     )
-    # 生の音声バイトのまま取り出す（decode不要＝soundfile等の追加依存を避ける）。
-    ds = ds.cast_column("audio", Audio(decode=False))
+    # audio は既定で numpy 配列へデコードされる（mp3→array）。WAVで書き出して whisper に渡す
+    # （QuickScribe は WAV をそのままデコードできる）。
 
     os.makedirs(args.out_dir, exist_ok=True)
     manifest_path = os.path.join(args.out_dir, "manifest.tsv")
@@ -43,14 +44,12 @@ def main() -> int:
         for item in ds:
             sentence = (item.get("sentence") or "").strip()
             audio = item.get("audio") or {}
-            data = audio.get("bytes")
-            src_path = audio.get("path") or f"sample_{n}.mp3"
-            if not sentence or not data:
+            array = audio.get("array")
+            sr = audio.get("sampling_rate")
+            if not sentence or array is None or not sr:
                 continue  # 参照文か音声が欠けるものは飛ばす。
-            ext = os.path.splitext(src_path)[1] or ".mp3"
-            fn = f"cv_{n:05d}{ext}"
-            with open(os.path.join(args.out_dir, fn), "wb") as af:
-                af.write(data)
+            fn = f"cv_{n:05d}.wav"
+            sf.write(os.path.join(args.out_dir, fn), array, int(sr))
             ref = sentence.replace("\t", " ").replace("\n", " ")
             mf.write(f"{fn}\t{ref}\n")
             n += 1
