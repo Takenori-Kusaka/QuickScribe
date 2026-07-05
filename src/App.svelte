@@ -444,14 +444,13 @@
     }
   }
   function saveSettings() {
-    // 必須設定(選択中プロバイダのAPIキー/AWS資格情報)が未入力なら保存せず、不足項目を明示＋
-    // フォーカスして誘導する(#516)。ローカル/オフラインは要件なしでそのまま保存できる。
+    // 未設定でも保存する(文字起こしのみで使う人のため / #603)。整形に必要な設定(選択中クラウド
+    // プロバイダのAPIキー/AWS資格情報)が不足していてもブロックせず、警告だけ出す。従来#516は保存を
+    // ガードしていたが、文字起こし完結ペルソナのため緩和。鍵が空でも整形時の「鍵なしエラー」で
+    // 二重に安全(保存＝設定の永続化であって整形の実行ではない)。
     const cfgErr = refineConfigError();
-    if (cfgErr) {
-      openSettingsForConfig(cfgErr);
-      return;
-    }
     settingsError = "";
+    settingsWarning = "";
     // 鍵(API鍵/AWS鍵)は keyring に保存する(localStorageには置かない / S3.2)。
     void saveSecrets();
     void shortcut.applyShortcut();
@@ -460,9 +459,14 @@
     void device.applyTaskbarWidget(taskbarWidget);
     void syncSaveSettings();
     void syncSttSettings();
-    showSettings = false;
     // 鍵が入っていれば現在のプロバイダの最新モデルを取得（強制更新）。
     void resolveCurrentModel(true);
+    if (cfgErr) {
+      // 保存はしたが整形設定が不足。警告を出し、設定パネルは開いたまま(気づけるように)。
+      settingsWarning = $_("settings.save_warning_incomplete");
+    } else {
+      showSettings = false;
+    }
   }
 
   // キー入力イベントから Tauri アクセラレータ表記を組み立てる（修飾キー＋1キー）。
@@ -569,6 +573,8 @@
   );
   // 未設定時の動線(#516): 設定パネル内に表示する検証エラーと、不足項目へのフォーカス。
   let settingsError = $state<string>("");
+  // 非ブロックの警告(#603): 未設定でも保存はするが「この設定では整形が失敗する」と知らせる。
+  let settingsWarning = $state<string>("");
   // エラーコード→フォーカス対象の要素id。該当項目まで誘導する。
   function configFieldId(code: string): string | null {
     if (code === "errors.cfg_api_key" || code === "errors.cfg_api_key_aws") return "cfg-api-key";
@@ -586,6 +592,7 @@
       ? { ...err.params, provider: $_(err.params.provider) }
       : err.params;
     settingsError = $_(err.code, { values });
+    settingsWarning = ""; // ブロックのエラー表示時は非ブロック警告を消す(二重表示回避)。
     const id = configFieldId(err.code);
     if (id) {
       queueMicrotask(() => {
@@ -1104,6 +1111,15 @@
             <button class="btn small" onclick={() => refineNow()} disabled={refining}>
               {refining ? $_("results.refining") : $_("results.refine")}
             </button>
+            <!-- 文字起こしのみで完結する人向け: 保存先フォルダをここからも開ける(#603)。 -->
+            <button
+              type="button"
+              class="btn small ghost"
+              onclick={openVault}
+              title={$_("results.open_output_title")}
+            >
+              {$_("results.open_output")}
+            </button>
           </div>
         </div>
         <div class="scroll">{transcript}</div>
@@ -1369,6 +1385,10 @@
       <!-- 不足設定の明示(#516): 保存不可/整形不可の原因を設定内で表示し、該当項目へ誘導。 -->
       {#if settingsError}
         <p class="settings-error" role="alert">{settingsError}{$_("errors.config_suffix")}</p>
+      {/if}
+      <!-- 非ブロックの警告(#603): 未設定でも保存はしたが整形は失敗する旨を知らせる。 -->
+      {#if settingsWarning}
+        <p class="settings-warning" role="status">{settingsWarning}</p>
       {/if}
 
       <!-- 設定タブ(#512): 5分類で目的の設定へ素早く到達する。 -->
@@ -1990,6 +2010,16 @@
     border-radius: 8px;
     background: color-mix(in srgb, crimson 14%, transparent);
     color: color-mix(in srgb, crimson 75%, black);
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+  /* 非ブロックの警告(#603): エラー(赤)より穏当な琥珀色。保存はできたが整形は失敗する旨。 */
+  .settings-warning {
+    margin: 0 0 0.8rem;
+    padding: 0.6rem 0.8rem;
+    border-radius: 8px;
+    background: color-mix(in srgb, darkorange 16%, transparent);
+    color: color-mix(in srgb, darkorange 78%, black);
     font-size: 0.9rem;
     font-weight: 600;
   }

@@ -199,14 +199,14 @@ describe("App.svelte 設定操作", () => {
     expect(invokeMock).toHaveBeenCalledWith("set_save_settings", expect.anything());
   });
 
-  it("クラウド選択で鍵未入力だと保存できず不足設定を明示する(#516)", async () => {
-    // クラウド(gemini)を鍵未入力で起動 → 保存はガードされる。
+  it("クラウド選択で鍵未入力でも保存でき、整形失敗の警告を出す(#603)", async () => {
+    // クラウド(gemini)を鍵未入力で起動 → 保存はブロックせず警告を出す(文字起こし完結ペルソナ)。
     localStorage.setItem("provider", "gemini");
     render(App);
     await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
     await fireEvent.click(await screen.findByRole("button", { name: "保存" }));
-    // 不足設定(APIキー)が設定内に明示され、保存はガードされて設定は開いたまま。
-    expect(await screen.findByText(/APIキーが必要です/)).toBeInTheDocument();
+    // 未設定でも保存でき、整形(LLM処理)が失敗する旨の非ブロック警告が出る。設定は開いたまま。
+    expect(await screen.findByText(/整形（LLM処理）は失敗します/)).toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "設定" })).toBeInTheDocument();
   });
 

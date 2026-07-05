@@ -60,6 +60,7 @@
     "change": "Cambiar",
     "open_output": "Abrir carpeta de salida",
     "save": "Guardar",
+    "save_warning_incomplete": "Hay campos sin configurar. Está bien solo para transcripción, pero el refinamiento (procesamiento con LLM) fallará con esta configuración.",
     "check_update": "Buscar actualizaciones",
     "label_refine_provider": "Proveedor de refinado",
     "label_aws_region": "Región de AWS",

@@ -60,6 +60,7 @@
     "change": "変更",
     "open_output": "出力先フォルダを開く",
     "save": "保存",
+    "save_warning_incomplete": "未設定の項目があります。文字起こしのみなら問題ありませんが、この設定では整形（LLM処理）は失敗します。",
     "check_update": "更新を確認",
     "label_refine_provider": "整形プロバイダ",
     "label_aws_region": "AWSリージョン",
