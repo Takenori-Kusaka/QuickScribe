@@ -4,8 +4,8 @@ name: Release
 # 1) 手動のタグ push（`v*`）。github.ref_name がタグ。
 # 2) release-please.yml から reusable(workflow_call)として呼ぶ。release-please が Release PR
 #    マージで作成したタグ+ノートに対し、同一ラン内でバイナリを添付する（PAT不要 / GITHUB_TOKEN）。
-#    tauri-action は tagName で既存リリースを見つけ、releaseBody は「新規作成時のみ」適用のため
-#    release-please のノートを上書きしない。
+#    tauri-action は tagName で既存リリースを見つけてアセットを添付する。releaseBody は渡さない
+#    （渡すと既存リリースの本文を上書きし release-please のノートが消えるため / #572）。
 on:
   push:
     tags:
