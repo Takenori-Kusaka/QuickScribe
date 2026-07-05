@@ -14,7 +14,6 @@
     "lint:text": "textlint \"articles/**/*.md\"",
     "diagrams": "node scripts/render-diagrams.mjs",
     "diagrams:check": "node scripts/render-diagrams.mjs --check",
-    "qiita:build": "node scripts/zenn-to-qiita.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "docs:check": "npx -y typedoc@0.28.5",

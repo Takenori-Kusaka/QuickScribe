@@ -19,9 +19,9 @@
       "ja-no-weak-phrase": false,
       "no-doubled-conjunctive-particle-ga": false,
       "no-mix-dearu-desumasu": {
-        "preferInHeader": "である",
-        "preferInBody": "である",
-        "preferInList": "である"
+        "preferInHeader": "ですます",
+        "preferInBody": "ですます",
+        "preferInList": "ですます"
       },
       "max-ten": {
         "max": 4
