@@ -23,6 +23,10 @@ pub struct WhisperModel {
     pub sha256: &'static str,
     /// 期待されるバイトサイズ（破損・途中切れの早期検出）。
     pub size: u64,
+    /// 相対的な処理速度クラス（#598）: "fastest" | "fast" | "medium" | "slow"。
+    /// RTF は端末性能に依存するため絶対値ではなく相対クラスで示す（大きいモデルほど遅い、は不変）。
+    /// フロントは `settings.model_speed_<speed>` で「最速/速い/普通/低速」を表示する。
+    pub speed: &'static str,
 }
 
 /// モデルカタログ（既定 base を先頭に）。日本語特化 kotoba-whisper を含む。
@@ -38,6 +42,7 @@ pub const MODELS: &[WhisperModel] = &[
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
         sha256: "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
         size: 147951465,
+        speed: "fast",
     },
     WhisperModel {
         id: "kotoba-q5",
@@ -46,6 +51,7 @@ pub const MODELS: &[WhisperModel] = &[
         url: "https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0-q5_0.bin",
         sha256: "4a3b92192b5d3578ff854a5876213e2e27af0c2d357492c2d14271e82c303658",
         size: 537819875,
+        speed: "medium",
     },
     WhisperModel {
         id: "kotoba",
@@ -54,6 +60,7 @@ pub const MODELS: &[WhisperModel] = &[
         url: "https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0.bin",
         sha256: "eff70a8a236e731abba774ba71e1f6d0fce53302137208c32207e694e0bf4546",
         size: 1519521155,
+        speed: "slow",
     },
     WhisperModel {
         id: "small",
@@ -62,6 +69,7 @@ pub const MODELS: &[WhisperModel] = &[
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
         sha256: "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
         size: 487601967,
+        speed: "medium",
     },
     WhisperModel {
         id: "medium",
@@ -70,6 +78,7 @@ pub const MODELS: &[WhisperModel] = &[
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin",
         sha256: "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208",
         size: 1533763059,
+        speed: "slow",
     },
     WhisperModel {
         id: "tiny",
@@ -78,6 +87,7 @@ pub const MODELS: &[WhisperModel] = &[
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
         sha256: "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
         size: 77691713,
+        speed: "fastest",
     },
 ];
 
@@ -88,6 +98,8 @@ pub const MODELS: &[WhisperModel] = &[
 pub struct ModelInfo {
     pub id: String,
     pub label: String,
+    /// 相対処理速度クラス（#598）。フロントは settings.model_speed_<speed> で表示する。
+    pub speed: String,
 }
 
 /// カタログをフロント表示用に返す。
@@ -97,6 +109,7 @@ pub fn list_models() -> Vec<ModelInfo> {
         .map(|m| ModelInfo {
             id: m.id.to_string(),
             label: m.label.to_string(),
+            speed: m.speed.to_string(),
         })
         .collect()
 }

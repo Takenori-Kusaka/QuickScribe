@@ -80,11 +80,11 @@ describe("createDeviceStatus", () => {
   });
 
   it("loadWhisperModels は一覧を格納する", async () => {
-    invokeMock.mockResolvedValueOnce([{ id: "base", label: "Base" }]);
+    invokeMock.mockResolvedValueOnce([{ id: "base", label: "Base", speed: "fast" }]);
     const d = make();
     await d.loadWhisperModels();
     flushSync();
-    expect(d.whisperModels).toEqual([{ id: "base", label: "Base" }]);
+    expect(d.whisperModels).toEqual([{ id: "base", label: "Base", speed: "fast" }]);
   });
 
   it("applyTaskbarWidget は enabled をバックエンドへ渡す", async () => {
