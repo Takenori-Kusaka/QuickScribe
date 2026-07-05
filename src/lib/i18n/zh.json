@@ -60,6 +60,7 @@
     "change": "更改",
     "open_output": "打开输出文件夹",
     "save": "保存",
+    "save_warning_incomplete": "有未设置的项目。仅做转写没有问题，但在当前设置下整理（LLM 处理）会失败。",
     "check_update": "检查更新",
     "label_refine_provider": "整理服务商",
     "label_aws_region": "AWS 区域",

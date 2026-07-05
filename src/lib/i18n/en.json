@@ -60,6 +60,7 @@
     "change": "Change",
     "open_output": "Open output folder",
     "save": "Save",
+    "save_warning_incomplete": "Some fields are unset. That's fine for transcription only, but refinement (LLM processing) will fail with these settings.",
     "check_update": "Check for updates",
     "label_refine_provider": "Refine provider",
     "label_aws_region": "AWS region",
