@@ -11,7 +11,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "lint": "eslint .",
     "lint:css": "stylelint \"src/**/*.{css,svelte}\"",
-    "lint:text": "textlint \"articles/**/*.md\"",
+    "lint:text": "textlint \"books/**/*.md\"",
     "structurizr": "node scripts/render-structurizr.mjs",
     "structurizr:check": "node scripts/render-structurizr.mjs --check",
     "format": "prettier --write .",

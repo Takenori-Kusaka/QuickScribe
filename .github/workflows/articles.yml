@@ -1,7 +1,8 @@
 name: Articles
 
 # 技術記事の校正・図生成の品質ゲート（発信は Zenn 一本。Qiita は不採用）。
-# - textlint（preset-ja-technical-writing）で articles/ の日本語校正をゼロエラー必須にする。
+# - textlint（preset-ja-technical-writing）で books/（連載＝Zenn Book の章）の日本語校正を
+#   ゼロエラー必須にする。単発記事を置く場合は articles/ も対象。
 # - C4 図（docs/architecture/*.dsl）を Structurizr CLI → C4-PlantUML → 決定的 PNG に書き出し、
 #   Zenn 作法で参照する images/c4/ を最新化する（決定的なので通常は差分ゼロ＝churnしない）。
 # - クラス図・ER 図は Mermaid をインラインで書き、Zenn/GitHub が直接描画する（画像生成は不要）。
@@ -10,6 +11,7 @@ name: Articles
 on:
   pull_request:
     paths:
+      - "books/**"
       - "articles/**"
       - "docs/architecture/**"
       - "images/c4/**"
@@ -19,6 +21,7 @@ on:
   push:
     branches: [main]
     paths:
+      - "books/**"
       - "articles/**"
       - "docs/architecture/**"
       - "images/c4/**"

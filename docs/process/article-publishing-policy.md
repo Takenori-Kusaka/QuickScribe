@@ -15,11 +15,16 @@
   体系立てて束ねる方針と噛み合わないため。以前あった Qiita 変換パイプライン（`public/` 生成・
   `scripts/zenn-to-qiita.mjs`・`qiita-publish.yml`）は 2026-07-05 に撤去した。
 
-## 1. 単一ソース
+## 1. 単一ソースと構成（連載は Zenn Book に束ねる）
 
-- **正典は `articles/*.md`（Zenn 記事形式）**。記事はここにだけ手で書く。
-- Book を作る場合は `books/<slug>/`（`config.yaml` ＋ 章 Markdown）で管理する。順序は `config.yaml` の
-  `chapters` 配列で明示する（`chapters` に未列挙の章は Zenn 上で非公開になる点に注意）。
+- **連載（体系立てた設計解説）は Zenn Book で管理する**。正典は `books/<book-slug>/`（`config.yaml` ＋ 章 Markdown）。
+  章の順序は `config.yaml` の `chapters` 配列（章 slug＝ファイル名）で明示する。**`chapters` に未列挙の章は Zenn 上で
+  非公開になる**点に注意（書きかけ章のドラフト管理に使える）。章ファイルの front-matter は `title:` のみ（有料本で
+  個別無料公開したい章だけ `free: true`）。本の公開可否・価格・topics は `config.yaml`（`published` / `price` / `topics`）。
+  - 現行の本: `books/quickscribe-design/`（本連載）。フォルダ名 `quickscribe-design` がそのまま Zenn の本 slug になる。
+  - **Zenn の `articles/` はサブフォルダを許さない（平置きのみ）**ため、章をフォルダで束ねるには Book を使う。
+- 単発の記事（連載に属さない読み切り）を書く場合のみ `articles/<slug>.md`（平置き）に置く。
+- どちらも Zenn の GitHub 連携で自動同期される。
 
 ## 2. 図の作法（Zenn 画像作法に従う）
 

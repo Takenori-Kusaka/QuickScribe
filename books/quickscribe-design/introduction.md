@@ -1,16 +1,7 @@
 ---
 title: "ローカルで賢く整形する音声ジャーナルに、なぜ競合がいないのか"
-emoji: "🎙"
-type: "tech"
-topics: ["tauri", "rust", "svelte", "whisper", "設計"]
-published: false
 ---
 
-<!--
-この記事は articles/ 配下を単一ソースとして Zenn の GitHub 連携で管理します。
-画像は必ず絶対 URL で参照します（Zenn から参照するリポジトリ内の画像は相対パスでは解決できないため）。
-詳細は docs/process/article-publishing-policy.md。
--->
 
 > 対象は QuickScribe v1.0.0（2026-07-04 公開）。個人開発のオープンソースです。
 > 競合の記述はすべて 2026-07-05 時点の各社公開情報にもとづきます。設計判断は、該当箇所を引用して脚注で出典（意思決定記録＝ADR）を示します。
