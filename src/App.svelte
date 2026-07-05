@@ -508,6 +508,12 @@
     return v === key ? m.label : v;
   }
 
+  // モデルの相対処理速度クラスの表示名(#598)。RTFは端末性能に依存するため絶対値ではなく
+  // 相対クラス(最速/速い/普通/低速)で示す。未知のクラスはキーをそのまま返す(壊れない)。
+  function modelSpeedLabel(speed: string): string {
+    return $_(`settings.model_speed_${speed}`);
+  }
+
   // トレイのメニュー/ツールチップ文言をバックエンドへ反映する（#462: Rust側の日本語固定を排除）。
   // トレイ文字列は Rust 側で必要なため、フロントが現在のUI言語で解決して渡す。
   async function syncTrayTexts() {
@@ -1584,7 +1590,10 @@
               {$_("settings.stt_model")}
               <select bind:value={whisperModel}>
                 {#each device.whisperModels as m}
-                  <option value={m.id}>{whisperModelLabel(m)}</option>
+                  <option value={m.id}
+                    >{whisperModelLabel(m)}
+                    ｜ {$_("settings.model_speed_label")}: {modelSpeedLabel(m.speed)}</option
+                  >
                 {/each}
               </select>
             </label>

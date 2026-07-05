@@ -13,7 +13,7 @@ import { errorText, type Translator } from "./errors";
 export type AudioSource = { id: string; label: string; kind: string };
 
 /** whisper モデルの一覧項目。 */
-export type WhisperModelInfo = { id: string; label: string };
+export type WhisperModelInfo = { id: string; label: string; speed: string };
 
 /**
  * デバイス連携の実行時状態モジュールを生成する。
