@@ -54,8 +54,8 @@ describe("readSettings", () => {
     expect(s.awsAuthMode).toBe("sigv4");
   });
 
-  it("whisperModel の既定は日本語UIで kotoba-q5、他は base（#511/ADR-0021）", () => {
-    expect(readSettings("ja").whisperModel).toBe("kotoba-q5");
+  it("whisperModel の既定は日本語UIで large-v3-turbo、他は base（ADR-0025）", () => {
+    expect(readSettings("ja").whisperModel).toBe("large-v3-turbo");
     expect(readSettings("en").whisperModel).toBe("base");
   });
 

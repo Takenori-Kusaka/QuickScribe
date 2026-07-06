@@ -111,9 +111,11 @@ export function readSettings(localeDefault: string): AppSettings {
     offlineMode,
     sttModel: ls.getItem("sttModel") || "",
     sttAzureResource: ls.getItem("sttAzureResource") || "",
-    // ローカルwhisperの既定(#511/ADR-0021): 日本語UIは日本語特化 kotoba-q5、他は汎用 base。
+    // ローカルwhisperの既定: 日本語UIは large-v3-turbo、他は汎用 base（ADR-0025・実測に基づく見直し）。
+    // 旧既定 kotoba-q5 は実録音で「長尺の末尾欠落＋自発発話で崩壊」が確認され既定から降格（ADR-0021改訂）。
     // モデルは非同梱・初回自動DL（tip_model_download で明示）。保存済みは優先。
-    whisperModel: ls.getItem("whisperModel") || (localeDefault === "ja" ? "kotoba-q5" : "base"),
+    whisperModel:
+      ls.getItem("whisperModel") || (localeDefault === "ja" ? "large-v3-turbo" : "base"),
     customStyles,
     awsRegion: ls.getItem("awsRegion") || "us-east-1",
     awsWorkspaceId: ls.getItem("awsWorkspaceId") || "",

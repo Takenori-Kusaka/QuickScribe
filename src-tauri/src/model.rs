@@ -29,11 +29,12 @@ pub struct WhisperModel {
     pub speed: &'static str,
 }
 
-/// モデルカタログ（既定 base を先頭に）。日本語特化 kotoba-whisper を含む。
-/// ラベルは日本語CERベンチ(#26 / tests/fixtures/ja-accuracy)の実測に基づき、言語別の適否を示す。
-/// 実測(base=44.5% / tiny=56.9% / kotoba-q5=40.2% 平均CER)より、tiny は日本語で base に完全劣位＝
-/// 日本語では非推奨と明示する。kotoba-q5 は日本語平均で最良だが素材により幻覚(反復)で悪化しうるため、
-/// base を頑健なフォールバックとして残す（ADR-0022・不要な選択肢は増やさないが、用途別の選択肢は残す）。
+/// モデルカタログ（カタログ順の先頭 base。日本語の既定は large-v3-turbo / ADR-0025）。
+/// 実録音での実測(ADR-0025)で、**kotoba-q5 は長尺の末尾欠落＋自発発話(会話)で崩壊**が確認され、
+/// 日本語既定を kotoba-q5 → **large-v3-turbo** に変更した。turbo は会話に強く長尺の末尾も確実に取れる
+/// （ただし低速 RTF~1.15）。kotoba-q5 は静音・朗読(in-domain)向けの選択肢に降格。base は速く頑健な
+/// フォールバック（末尾欠落なし）。tiny は日本語で非推奨（実測で base に劣位）。
+/// ADR-0022(削らず用途で導く)＋ADR-0025(実測に基づく既定モデル見直し)。
 pub const MODELS: &[WhisperModel] = &[
     WhisperModel {
         id: "base",
@@ -45,8 +46,17 @@ pub const MODELS: &[WhisperModel] = &[
         speed: "fast",
     },
     WhisperModel {
+        id: "large-v3-turbo",
+        label: "高精度 large-v3-turbo 量子化（日本語・会話に強い／長尺の末尾も確実・約547MB・低速）",
+        filename: "ggml-large-v3-turbo-q5_0.bin",
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+        sha256: "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
+        size: 574041195,
+        speed: "slow",
+    },
+    WhisperModel {
         id: "kotoba-q5",
-        label: "日本語特化 kotoba-whisper 量子化（日本語精度◎・約538MB・日本語推奨）",
+        label: "日本語特化 kotoba-whisper 量子化（静音・朗読向き／会話や長尺は弱い・約538MB）",
         filename: "ggml-kotoba-whisper-v2.0-q5_0.bin",
         url: "https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0-q5_0.bin",
         sha256: "4a3b92192b5d3578ff854a5876213e2e27af0c2d357492c2d14271e82c303658",

@@ -282,6 +282,7 @@
     },
     "whisper_models": {
       "base": "標準 base（日本語と速度のバランス・約142MB / 既定・頑健）",
+      "large-v3-turbo": "高精度 large-v3-turbo（日本語・会話に強い／長尺の末尾も確実・約547MB・低速 / 日本語既定）",
       "kotoba-q5": "日本語特化 kotoba-whisper 量子化（日本語精度◎・約538MB・日本語推奨）",
       "kotoba": "日本語特化 kotoba-whisper 高精度（約1.5GB・低速）",
       "small": "多言語 small（英語向き・約466MB）",
