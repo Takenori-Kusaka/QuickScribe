@@ -1598,7 +1598,7 @@
               </select>
             </label>
             <p class="tip">
-              {$_("settings.tip_whisper_1")}<strong>kotoba-whisper</strong>{$_(
+              {$_("settings.tip_whisper_1")}<strong>large-v3-turbo</strong>{$_(
                 "settings.tip_whisper_2",
               )}
             </p>

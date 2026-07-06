@@ -282,6 +282,7 @@
     },
     "whisper_models": {
       "base": "base estándar (equilibrio entre japonés y velocidad, ~142MB / predeterminado, robusto)",
+      "large-v3-turbo": "large-v3-turbo de alta precisión (fuerte en japonés conversacional, final fiable; ~547MB, lento / predeterminado en japonés)",
       "kotoba-q5": "kotoba-whisper cuantizado especializado en japonés (máxima precisión en japonés, ~538MB, recomendado para japonés)",
       "kotoba": "kotoba-whisper de alta precisión especializado en japonés (~1.5GB, lento)",
       "small": "small multilingüe (bueno para inglés, ~466MB)",
