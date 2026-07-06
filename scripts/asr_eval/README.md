@@ -24,7 +24,9 @@ python test_asr_eval.py
 ## 段階計画（ADR-0024）
 
 - **第一スライス（実装済み）**: 評価コア（正規化・CER・ブートストラップCI）。← 本PR
-- **第二スライス**: Common Voice ja（CC0ミラー）を CI 実行時に取得（音声は**非コミット**）→ whisper.cpp で文字起こし → 本コアで CER＋95%CI を算出し `perf` レポートへ。既存の自前録音 fixture は smoke として残す。JSUT basic5000（DLのみ遵守）を回帰ベースラインに追加。フィラー保持率を独立計測。
+- **第二スライス**: 公開コーパスを CI 実行時に取得（音声は**非コミット**）→ whisper.cpp で文字起こし → 本コアで CER＋95%CI を算出し `perf` レポートへ。取得は汎用の [`fetch_hf_corpus.py`](fetch_hf_corpus.py)（`--dataset/--config/--split/--text-column`）。
+  - **実装済み**: Common Voice ja（CC0ミラー・多話者）＋ FLEURS ja（CC-BY-4.0・朗読の定点）。既存の自前録音 fixture は smoke として残す。
+  - **後続**: JSUT basic5000（非商用・再配布禁止＝DLのみ遵守）を安定ベースラインに追加。フィラー保持率を独立計測（自発発話コーパスが要るため要素材）。
 - **第三スライス**: 意味保持（BERTScore-ja＋日本語NLI）と、黄金評価セットによるペアA/B（整形版 vs 要約版）。**指標の日本語妥当性は少数の人手相関で自前検証**（#577）。
 
 ## 方針の要点（なぜこう測るか）
