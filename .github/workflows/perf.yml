@@ -412,34 +412,40 @@ jobs:
         # datasets は 2.x にピン。fsicoli ミラーはローディングスクリプト方式で、datasets 4.0+ は
         # スクリプト対応(trust_remote_code)を廃止したため 5.x では読めない（#578 スパイクで判明）。
         run: pip install -r scripts/asr_eval/requirements.txt "datasets>=2.19,<3" soundfile librosa
-      - name: Fetch Common Voice ja (CC0・非同梱・streaming)
+      - name: Fetch corpora (Common Voice ja[CC0] + FLEURS ja[CC-BY]・非同梱・streaming)
         run: |
-          python scripts/asr_eval/fetch_common_voice_ja.py \
-            --out-dir "$GITHUB_WORKSPACE/cv_ja" --num 50
-      - name: Transcribe each sample (kotoba-q5)
+          python scripts/asr_eval/fetch_hf_corpus.py \
+            --out-dir "$GITHUB_WORKSPACE/cv_ja" --num 50 \
+            --dataset fsicoli/common_voice_17_0 --config ja --split test \
+            --text-column sentence --prefix cv
+          python scripts/asr_eval/fetch_hf_corpus.py \
+            --out-dir "$GITHUB_WORKSPACE/fleurs_ja" --num 50 \
+            --dataset google/fleurs --config ja_jp --split test \
+            --text-column raw_transcription --prefix fleurs
+      - name: Transcribe + CER per corpus (kotoba-q5)
         run: |
           MODEL="$GITHUB_WORKSPACE/models/ggml-kotoba-whisper-v2.0-q5_0.bin"
-          CVD="$GITHUB_WORKSPACE/cv_ja"
-          HYP="$GITHUB_WORKSPACE/hyp"; mkdir -p "$HYP"
-          n=0
-          while IFS=$'\t' read -r fn ref; do
-            [ -z "$fn" ] && continue
-            if ! QS_LANG=ja QS_MODEL_PATH="$MODEL" \
-                 QS_AUDIO_PATH="$CVD/$fn" QS_TRANSCRIPT_OUT="$HYP/$fn.txt" \
-                 cargo test --manifest-path src-tauri/Cargo.toml \
-                   --test transcribe_integration -- --nocapture > /dev/null 2>&1; then
-              echo "::warning::transcribe failed for $fn"
-            fi
-            n=$((n + 1))
-          done < "$CVD/manifest.tsv"
-          echo "transcribed $n samples"
-      - name: Compute CER + bootstrap 95% CI
-        run: |
+          # 1コーパス分を文字起こしする（モデルは各サンプルで再ロード=dispatch限定なので許容）。
+          transcribe_corpus() {
+            local dir="$1" hyp="$2"
+            mkdir -p "$hyp"
+            while IFS=$'\t' read -r fn ref; do
+              [ -z "$fn" ] && continue
+              QS_LANG=ja QS_MODEL_PATH="$MODEL" \
+                QS_AUDIO_PATH="$dir/$fn" QS_TRANSCRIPT_OUT="$hyp/$fn.txt" \
+                cargo test --manifest-path src-tauri/Cargo.toml \
+                  --test transcribe_integration -- --nocapture > /dev/null 2>&1 \
+                || echo "::warning::transcribe failed for $fn"
+            done < "$dir/manifest.tsv"
+          }
+          transcribe_corpus "$GITHUB_WORKSPACE/cv_ja" "$GITHUB_WORKSPACE/hyp_cv"
+          transcribe_corpus "$GITHUB_WORKSPACE/fleurs_ja" "$GITHUB_WORKSPACE/hyp_fleurs"
           cd scripts/asr_eval
-          python report_cer.py \
-            --manifest "$GITHUB_WORKSPACE/cv_ja/manifest.tsv" \
-            --hyp-dir "$GITHUB_WORKSPACE/hyp" \
-            --label "Common Voice ja (kotoba-q5)" \
+          python report_cer.py --manifest "$GITHUB_WORKSPACE/cv_ja/manifest.tsv" \
+            --hyp-dir "$GITHUB_WORKSPACE/hyp_cv" --label "Common Voice ja (kotoba-q5)" \
+            --report "$GITHUB_WORKSPACE/ja-cer-corpus-report.md"
+          python report_cer.py --manifest "$GITHUB_WORKSPACE/fleurs_ja/manifest.tsv" \
+            --hyp-dir "$GITHUB_WORKSPACE/hyp_fleurs" --label "FLEURS ja (kotoba-q5)" \
             --report "$GITHUB_WORKSPACE/ja-cer-corpus-report.md"
           cat "$GITHUB_WORKSPACE/ja-cer-corpus-report.md" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Upload report
