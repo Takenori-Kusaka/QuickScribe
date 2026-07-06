@@ -5,6 +5,13 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [1.2.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.1.0...v1.2.0) (2026-07-06)
+
+
+### ✨ 新機能 / Features
+
+* **stt:** 日本語の既定STTを kotoba-q5 → large-v3-turbo へ（実測に基づく / ADR-0025） ([#610](https://github.com/Takenori-Kusaka/QuickScribe/issues/610)) ([1d23c3f](https://github.com/Takenori-Kusaka/QuickScribe/commit/1d23c3f12392e70836bdd4ffb073380aec25d462))
+
 ## [1.1.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.0.0...v1.1.0) (2026-07-06)
 
 
