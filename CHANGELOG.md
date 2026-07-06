@@ -5,6 +5,46 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [1.1.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.0.0...v1.1.0) (2026-07-06)
+
+
+### ✨ 新機能 / Features
+
+* **eval:** Common Voice ja(CC0)の日本語CERベンチをCIに追加（ADR-0024第二スライス / [#578](https://github.com/Takenori-Kusaka/QuickScribe/issues/578)） ([#602](https://github.com/Takenori-Kusaka/QuickScribe/issues/602)) ([c4e5dd7](https://github.com/Takenori-Kusaka/QuickScribe/commit/c4e5dd72773f191c7b27bb37e60352ec8af0405e))
+* **eval:** FLEURS ja(CC-BY)を2つ目の定点コーパスに追加＋fetch汎用化（ADR-0024第二スライス / [#578](https://github.com/Takenori-Kusaka/QuickScribe/issues/578)） ([#609](https://github.com/Takenori-Kusaka/QuickScribe/issues/609)) ([2d29f99](https://github.com/Takenori-Kusaka/QuickScribe/commit/2d29f99c8d5290b1ba8786ce7c5b3645c20154b6))
+* **eval:** 日本語ASR評価コア（正規化・CER・ブートストラップCI）＋ADR-0024 Accepted（[#578](https://github.com/Takenori-Kusaka/QuickScribe/issues/578)） ([#601](https://github.com/Takenori-Kusaka/QuickScribe/issues/601)) ([1a7be52](https://github.com/Takenori-Kusaka/QuickScribe/commit/1a7be52ee03c0f9f02289625404432e1dba05c19))
+* **models:** モデル選択に相対処理速度クラスを表示（[#598](https://github.com/Takenori-Kusaka/QuickScribe/issues/598) 第一スライス） ([#608](https://github.com/Takenori-Kusaka/QuickScribe/issues/608)) ([a3ddd94](https://github.com/Takenori-Kusaka/QuickScribe/commit/a3ddd947db1195932f861433b426cbc756001932))
+* **refine:** OpenAI互換base_url設定可能化＋プライバシー判定のURLホスト評価化（[#593](https://github.com/Takenori-Kusaka/QuickScribe/issues/593)） ([#597](https://github.com/Takenori-Kusaka/QuickScribe/issues/597)) ([40f4a94](https://github.com/Takenori-Kusaka/QuickScribe/commit/40f4a945a01e11334a7e540b46783d0af8cb4a0f))
+* **ux:** 文字起こし完結ユーザー向けUX（出力フォルダボタン＋未設定でも保存可・警告のみ）（[#603](https://github.com/Takenori-Kusaka/QuickScribe/issues/603)） ([#605](https://github.com/Takenori-Kusaka/QuickScribe/issues/605)) ([920a592](https://github.com/Takenori-Kusaka/QuickScribe/commit/920a59264a6d6971531be3bb83ae99b2e0fee3a7))
+
+
+### 🐛 修正 / Bug Fixes
+
+* **ci:** PlantUMLの太字日本語(豆腐)対策にfonts-noto-cjk導入 ([#586](https://github.com/Takenori-Kusaka/QuickScribe/issues/586)) ([b74a69b](https://github.com/Takenori-Kusaka/QuickScribe/commit/b74a69bb1b8451ae251ca8df6a90675204d3a6f7))
+* **corrections:** 用語補正の置換を補正版として別ファイル保存（非破壊 / [#599](https://github.com/Takenori-Kusaka/QuickScribe/issues/599)） ([#607](https://github.com/Takenori-Kusaka/QuickScribe/issues/607)) ([66b4d7f](https://github.com/Takenori-Kusaka/QuickScribe/commit/66b4d7f92f9b40fdd34a276961311408894670ab))
+* **release:** release-pleaseのノート上書きを解消（releaseBody除去 / [#572](https://github.com/Takenori-Kusaka/QuickScribe/issues/572)） ([#596](https://github.com/Takenori-Kusaka/QuickScribe/issues/596)) ([c6c42d7](https://github.com/Takenori-Kusaka/QuickScribe/commit/c6c42d7a5fcb4755fafb6bb629305d26c0f218f9))
+
+
+### ♻️ リファクタ / Refactor
+
+* **stt:** プロバイダ抽象をSttProvider enumに集約（[#392](https://github.com/Takenori-Kusaka/QuickScribe/issues/392)の横展開 / [#581](https://github.com/Takenori-Kusaka/QuickScribe/issues/581)） ([#595](https://github.com/Takenori-Kusaka/QuickScribe/issues/595)) ([8d37517](https://github.com/Takenori-Kusaka/QuickScribe/commit/8d37517ac560e8ee37a3b4c20030cb77c943df13))
+
+
+### 📝 ドキュメント / Docs
+
+* **adr:** ADR-0024 評価基盤の再設計(CER刷新+ニュアンス計測) Proposed（[#578](https://github.com/Takenori-Kusaka/QuickScribe/issues/578) [#577](https://github.com/Takenori-Kusaka/QuickScribe/issues/577)） ([ab7cc13](https://github.com/Takenori-Kusaka/QuickScribe/commit/ab7cc13f8b13eb2c1dcfd0533812ad08e4f27b5e))
+* **articles:** Zenn/Qiita技術記事ドラフト＋公開CI基盤（[#59](https://github.com/Takenori-Kusaka/QuickScribe/issues/59)/[#16](https://github.com/Takenori-Kusaka/QuickScribe/issues/16)） ([#575](https://github.com/Takenori-Kusaka/QuickScribe/issues/575)) ([b84307d](https://github.com/Takenori-Kusaka/QuickScribe/commit/b84307d0858260f5e534f3d0bfaebd4f2e8ea445))
+* **article:** 技術記事を「競合空白の非在理由」アングルで全面リライト ([#576](https://github.com/Takenori-Kusaka/QuickScribe/issues/576)) ([f61c3a3](https://github.com/Takenori-Kusaka/QuickScribe/commit/f61c3a3a5b52302dfb62f83999475d2db2e3e9a6))
+* **book:** Zenn Bookのカバー画像を追加（ロゴ＋タイトル・500x700） ([33512c8](https://github.com/Takenori-Kusaka/QuickScribe/commit/33512c8f67ff74b8618d367e731fe815f31edb5d))
+* **book:** Zenn Bookを公開（published: true） ([02a0334](https://github.com/Takenori-Kusaka/QuickScribe/commit/02a0334e2fe42e65d262486b7d9218c1f0e75cb1))
+* **book:** 最終章「精度で殴らない」＋章順整理(全7章完結) ([#594](https://github.com/Takenori-Kusaka/QuickScribe/issues/594)) ([be49313](https://github.com/Takenori-Kusaka/QuickScribe/commit/be493131131fbc2c01ae87c53351aeba5edddf31))
+* **book:** 第3章「整形の知性 ― 要約せずニュアンスを残す」 ([#588](https://github.com/Takenori-Kusaka/QuickScribe/issues/588)) ([313e8f3](https://github.com/Takenori-Kusaka/QuickScribe/commit/313e8f38b996d8903c6af73fef235616ca8a8814))
+* **book:** 第4章「プライバシーは既定と表示の正直さで差がつく」 ([#589](https://github.com/Takenori-Kusaka/QuickScribe/issues/589)) ([b925b52](https://github.com/Takenori-Kusaka/QuickScribe/commit/b925b520bcb24161215dd10ee9c01a338dca022a))
+* **book:** 第5章「捨てずに残して育てる ― データ設計」 ([#591](https://github.com/Takenori-Kusaka/QuickScribe/issues/591)) ([be4c4af](https://github.com/Takenori-Kusaka/QuickScribe/commit/be4c4af426aa201e0a5b8f60e7f4bf1608f16e4e))
+* **book:** 第6章「物理ボタンひとつで話しはじめる」＋連載まとめ（最終章） ([#592](https://github.com/Takenori-Kusaka/QuickScribe/issues/592)) ([6054595](https://github.com/Takenori-Kusaka/QuickScribe/commit/6054595024466e47656b71ea861bd9269db36507))
+* **book:** 連載をZenn Book(books/quickscribe-design)に再編 ([#587](https://github.com/Takenori-Kusaka/QuickScribe/issues/587)) ([576a357](https://github.com/Takenori-Kusaka/QuickScribe/commit/576a3570f2ad3b85baebf6b2be4893c692aafc92))
+* **marketing:** 英語版README/VitePress /en/ ロケール整備＋署名記述是正 ([#573](https://github.com/Takenori-Kusaka/QuickScribe/issues/573)) ([665ad81](https://github.com/Takenori-Kusaka/QuickScribe/commit/665ad8168a62c4d017c3c1d4f93b0ebf0a835d73))
+
 ## [1.0.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v0.10.0...v1.0.0) (2026-07-04)
 
 
