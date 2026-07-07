@@ -164,3 +164,34 @@ jobs:
           includeUpdaterJson: true
           # NSISのみのため updater は setup.exe を指す(msi誤参照を防ぐ)。
           updaterJsonPreferNsis: true
+
+  # リリースノート復旧(#572): tauri-action は既存リリース(release-please作成)の本文を空で
+  # 上書きするため、ビルド後に CHANGELOG の当該版節を本文へ戻す。毎回の手動復旧を廃止する恒久対応。
+  restore-notes:
+    name: リリースノート復旧 (release-please生成を保持 / #572)
+    needs: release
+    if: needs.release.result == 'success'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - name: Restore release notes from CHANGELOG
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          VER="${TAG#v}"
+          # CHANGELOG から当該版の節(## [VER] ... 次の ## [ まで)を抽出。index()で正規表現エスケープ回避。
+          awk -v ver="$VER" '
+            index($0, "## [" ver "]") == 1 { f = 1 }
+            f && index($0, "## [") == 1 && index($0, "## [" ver "]") != 1 { exit }
+            f { print }
+          ' CHANGELOG.md > notes.md
+          if [ -s notes.md ]; then
+            gh release edit "$TAG" --notes-file notes.md \
+              && echo "restored release notes for $TAG" \
+              || echo "::warning::ノート復旧に失敗(リリース/バイナリは正常)"
+          else
+            echo "::warning::CHANGELOG に $VER の節が見つからずノート復旧をスキップ"
+          fi
