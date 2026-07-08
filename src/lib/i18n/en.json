@@ -158,7 +158,8 @@
     "tip_show_onboarding": "Shows the first-run guide (3 steps) again.",
     "tip_refine_warn_1": "⚠ Cloud refinement ",
     "tip_refine_warn_strong": "sends your transcript off your device (to {provider})",
-    "tip_refine_warn_2": ". Each provider states it does not use API input for training by default, but if privacy matters use “Local (Ollama)”. Keys are stored in this device’s secure storage."
+    "tip_refine_warn_2": ". Each provider states it does not use API input for training by default, but if privacy matters use “Local (Ollama)”. Keys are stored in this device’s secure storage.",
+    "version_title": "App version (for sharing results)"
   },
   "nudge": {
     "title": "Time for today's journal?",

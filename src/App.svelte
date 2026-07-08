@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
+  import { getVersion } from "@tauri-apps/api/app";
   import { open } from "@tauri-apps/plugin-dialog";
   import { createUpdater } from "./lib/update.svelte";
   import { createDeviceStatus } from "./lib/device-status.svelte";
@@ -77,6 +78,8 @@
   let refinedStyle = $state<string>("structured");
   let refining = $state(false);
   let busy = $state(false);
+  // アプリのバージョン(release ビルドの実バージョン)。実行結果をどの版で得たか共有できるよう表示する。
+  let appVersion = $state<string>("");
 
   // 設定（localStorageに保存。秘密情報はローカル端末内のみ）。
   // 整形プロバイダ: Gemini / Anthropic / OpenAI / ローカル(Ollama) ＋
@@ -867,6 +870,10 @@
   onMount(() => {
     // 起動時間ベンチ(#403): UI 準備完了を通知（QS_PERF_STARTUP 設定時のみ Rust 側が計測）。
     void invoke("report_startup").catch(() => {});
+    // アプリのバージョンを取得して表示（どの版での実行結果かを共有できるように）。失敗時は空のまま。
+    void getVersion()
+      .then((v) => (appVersion = v))
+      .catch(() => {});
     loadSettings();
     // 初回起動（未表示）ならオンボーディングを出す（#397）。
     try {
@@ -1370,6 +1377,10 @@
       <p class="error" role="alert">{error}</p>
     {/if}
   </div>
+  <!-- 右下に控えめなバージョン表示。どの版での実行結果かを共有しやすくする。 -->
+  {#if appVersion}
+    <span class="app-version" title={$_("settings.version_title")}>v{appVersion}</span>
+  {/if}
 </main>
 
 {#if vault.showEntries}
@@ -2061,7 +2072,10 @@
         <!-- このアプリについて（ライセンス表示 / #394 監査項目5）。OSS帰属をアプリ内で明示。 -->
         <details class="meta-group">
           <summary class="meta-title">{$_("settings.group_about")}</summary>
-          <p class="tip">QuickScribe — {$_("settings.about_license")}</p>
+          <p class="tip">
+            QuickScribe{#if appVersion}
+              <strong>v{appVersion}</strong>{/if} — {$_("settings.about_license")}
+          </p>
           <p class="tip">{$_("settings.about_oss")}</p>
           <p class="tip">{$_("settings.about_repo")}: github.com/Takenori-Kusaka/QuickScribe</p>
         </details>
@@ -2901,6 +2915,18 @@
   }
   .jobs-summary {
     display: inline;
+  }
+  /* 右下の控えめなバージョン表示。操作を邪魔しないよう小さく淡色・クリック透過。 */
+  .app-version {
+    position: fixed;
+    right: 0.6rem;
+    bottom: 0.4rem;
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+    opacity: 0.7;
+    pointer-events: none;
+    user-select: text;
+    font-variant-numeric: tabular-nums;
   }
   .status-text.muted {
     color: var(--color-text-muted);
