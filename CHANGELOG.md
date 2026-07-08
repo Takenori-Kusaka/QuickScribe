@@ -5,6 +5,18 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [1.2.1](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.2.0...v1.2.1) (2026-07-07)
+
+
+### 🐛 修正 / Bug Fixes
+
+* **release:** リリースノートを自動復旧するジョブを追加（[#572](https://github.com/Takenori-Kusaka/QuickScribe/issues/572) 恒久修正） ([#612](https://github.com/Takenori-Kusaka/QuickScribe/issues/612)) ([db9ce3d](https://github.com/Takenori-Kusaka/QuickScribe/commit/db9ce3d0a305b30dea5c9a8ea1e9be568e85ad52))
+
+
+### 📝 ドキュメント / Docs
+
+* **book:** 追章「精度で殴らない、しかし床は抜かせない ― 既定モデルを実測で覆した日」 ([#614](https://github.com/Takenori-Kusaka/QuickScribe/issues/614)) ([fb17056](https://github.com/Takenori-Kusaka/QuickScribe/commit/fb17056ff2c9003547f2d287e9b606139aa5457e))
+
 ## [1.2.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.1.0...v1.2.0) (2026-07-06)
 
 
