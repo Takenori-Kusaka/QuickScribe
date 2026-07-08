@@ -155,7 +155,11 @@ pub fn format_timestamp(centiseconds: i64) -> String {
 /// whisper.cpp の sequential seek が長尺で末尾を落とす構造的問題を回避する。
 /// overlap は境界で語が切れないための重なり。担当区間は overlap の中点で切って重複排除する。
 pub const CHUNK_SECS: f64 = 24.0;
-pub const OVERLAP_SECS: f64 = 2.0;
+// overlap は境界の両側マージン。担当区間は overlap の中点で切るため、各チャンクは自分の音声末尾から
+// overlap/2 だけ手前までしか担当しない＝末尾帯(whisper が単一窓でも稀に落としうる領域)を担当しない。
+// 隣接チャンクは overlap/2 だけ内側から担当を始める＝コールドスタート直後の不安定セグメントも避ける。
+// 4s(両側2sマージン)で末尾欠落の再発余地を潰す（独立レビュー指摘）。冗長デコードは約17%。
+pub const OVERLAP_SECS: f64 = 4.0;
 
 /// 1チャンクの分割仕様（純粋計算 / #600）。時刻はセンチ秒（1/100秒＝whisperのt0単位）。
 #[derive(Debug, Clone, PartialEq)]
@@ -182,10 +186,13 @@ pub fn chunk_plan(total: usize, sr: u32, chunk_secs: f64, overlap_secs: f64) -> 
     }
     let sr_f = sr as f64;
     let chunk_n = ((chunk_secs * sr_f).round() as usize).max(1);
-    // overlap はチャンク未満に制限（stride>=1 を保証）。
-    let overlap_n = ((overlap_secs.max(0.0) * sr_f).round() as usize).min(chunk_n.saturating_sub(1));
+    // overlap は「チャンクの半分」を上限に制限する。stride>=chunk/2 を保証し、病的入力
+    // (overlap>=chunk)での stride≒1サンプル→チャンク爆発を防ぐ（レビュー指摘）。overlap>50%は無意味。
+    let overlap_n = ((overlap_secs.max(0.0) * sr_f).round() as usize).min(chunk_n / 2);
     let stride_n = (chunk_n - overlap_n).max(1);
-    let half_overlap_cs = ((overlap_secs.max(0.0) / 2.0) * 100.0).round() as i64;
+    // half_overlap は「実際に stride に使う clamp 後の overlap_n」から導出する（生の overlap_secs から
+    // 導くと overlap>=chunk の病的入力で担当境界が実 overlap 領域外へずれる / レビュー指摘 Finding3）。
+    let half_overlap_cs = ((overlap_n as f64 / sr_f / 2.0) * 100.0).round() as i64;
     let to_cs = |sample: usize| ((sample as f64 / sr_f) * 100.0).round() as i64;
 
     let mut specs: Vec<ChunkSpec> = Vec::new();
@@ -257,9 +264,18 @@ where
     let progress = std::sync::Arc::new(std::sync::Mutex::new(on_progress));
     let mut on_seg = on_segment;
     let mut text = String::new();
+    // 1チャンクのデコード失敗で全体(=他チャンクの成功分)を捨てないための直近エラー保持（レビュー指摘）。
+    // 全チャンクが失敗し結果が空のときだけ、このエラーを最終的に返す。
+    let mut last_err: Option<String> = None;
 
     for (idx, spec) in chunks.iter().enumerate() {
-        let mut state = ctx.create_state().map_err(|e| e.to_string())?;
+        let mut state = match ctx.create_state() {
+            Ok(s) => s,
+            Err(e) => {
+                last_err = Some(e.to_string());
+                continue;
+            }
+        };
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         if let Some(l) = lang {
             params.set_language(Some(l));
@@ -286,16 +302,32 @@ where
         });
 
         let chunk = &audio[spec.start..spec.end];
-        state.full(params, chunk).map_err(|e| e.to_string())?;
+        // チャンク単位で失敗を隔離: このチャンクだけ飛ばし、成功した他チャンクの文字起こしは残す。
+        // 隣接チャンクの overlap が失われた区間の一部を補う。長尺で1チャンクの一過性失敗が全体を潰さない。
+        if let Err(e) = state.full(params, chunk) {
+            eprintln!("[stt] chunk {idx} full() failed, skipped: {e}");
+            last_err = Some(e.to_string());
+            continue;
+        }
 
         // セグメントを絶対時刻へオフセットし、担当区間 [own_start, own_end) の分だけ採用（重複排除）。
-        let n_seg = state.full_n_segments().map_err(|e| e.to_string())?;
+        let n_seg = match state.full_n_segments() {
+            Ok(n) => n,
+            Err(e) => {
+                last_err = Some(e.to_string());
+                continue;
+            }
+        };
         for i in 0..n_seg {
             // 稀にチャンク境界の途切れトークンで UTF-8 が壊れ Err になることがある。
             // その1セグメントだけスキップし、全体の文字起こしは捨てない（堅牢性 / #600）。
+            // 静かなデータ欠落を残さないよう stderr に痕跡を残す（レビュー指摘: 可視性）。
             let seg = match state.full_get_segment_text(i) {
                 Ok(s) => s,
-                Err(_) => continue,
+                Err(e) => {
+                    eprintln!("[stt] chunk {idx} segment {i} text decode failed, skipped: {e}");
+                    continue;
+                }
             };
             let seg = seg.trim();
             if seg.is_empty() {
@@ -321,7 +353,15 @@ where
     if let Ok(mut f) = progress.lock() {
         f(100);
     }
-    Ok(text.trim().to_string())
+    let out = text.trim().to_string();
+    // 結果が空でどこかのチャンクが失敗していたら、その失敗を返す（全滅を Ok("") で握り潰さない）。
+    // 発話が無く自然に空のときは Ok("")（従来どおり）。
+    if out.is_empty() {
+        if let Some(e) = last_err {
+            return Err(e);
+        }
+    }
+    Ok(out)
 }
 
 /// コールバックなしの簡易版（統合テスト等で使用）。
@@ -776,6 +816,44 @@ mod tests {
         assert_eq!(specs.last().unwrap().own_end_cs, i64::MAX);
         // overlap中点で切れている: chunk1 は offset(22s=2200cs)+overlap/2(100cs)=2300cs から担当。
         assert_eq!(specs[1].own_start_cs, 2200 + 100);
+    }
+
+    #[test]
+    fn chunk_plan_pathological_overlap_does_not_explode() {
+        // overlap>=chunk の病的入力でも、overlap は chunk/2 に制限され stride>=chunk/2 を保つ。
+        // チャンク数は ~2*total/chunk 程度に収まり、爆発しない（レビュー指摘 Finding3）。
+        let sr = 16000;
+        let total = sr as usize * 120; // 120秒
+        let specs = chunk_plan(total, sr, 24.0, 30.0); // overlap>chunk
+        assert!(
+            specs.len() <= 12,
+            "stride>=chunk/2(12s) に制限され爆発しない: {} chunks",
+            specs.len()
+        );
+        // 担当区間は依然として連続（重複/欠落なし）。
+        for w in specs.windows(2) {
+            assert_eq!(w[0].own_end_cs, w[1].own_start_cs);
+        }
+        assert_eq!(specs.last().unwrap().own_end_cs, i64::MAX);
+    }
+
+    #[test]
+    fn chunk_plan_owned_region_ends_before_chunk_audio_tail() {
+        // 各チャンクの担当終端は、自分の音声末尾から overlap/2 以上手前にある
+        // （末尾帯を担当しない＝whisperの末尾ドロップに強い / レビュー指摘 Finding1）。
+        let sr = 16000;
+        let specs = chunk_plan(sr as usize * 120, sr, 24.0, 4.0);
+        let half_overlap_cs = 200; // overlap4s/2=2s=200cs
+        for spec in specs.iter().take(specs.len() - 1) {
+            let audio_end_cs = ((spec.end as f64 / sr as f64) * 100.0).round() as i64;
+            assert!(
+                spec.own_end_cs <= audio_end_cs - half_overlap_cs,
+                "担当終端 {} は音声末尾 {} より overlap/2({}) 以上手前",
+                spec.own_end_cs,
+                audio_end_cs,
+                half_overlap_cs
+            );
+        }
     }
 
     #[test]
