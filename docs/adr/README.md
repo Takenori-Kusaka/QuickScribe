@@ -27,3 +27,6 @@
 | [0021](0021-local-first-defaults.md) | ローカルファースト既定（整形=Ollama / 日本語STT=kotoba-whisper） | Accepted |
 | [0022](0022-model-catalog-curation.md) | whisperモデルカタログの精選（言語別ガイド） | Accepted |
 | [0023](0023-habit-nudge-local-notification.md) | 習慣ナッジ＝起動アンカーのopt-inローカル通知 | Accepted |
+| [0024](0024-evaluation-redesign-cer-and-nuance.md) | 評価基盤の再設計（CER＋ニュアンス計測） | Accepted |
+| [0025](0025-japanese-default-model-revision.md) | 日本語の既定STTを large-v3-turbo へ（実測に基づく） | Accepted |
+| [0026](0026-multi-background-transcription-jobs.md) | 複数バックグラウンド文字起こしジョブの逐次キュー化とジョブ一覧UI | Proposed |
