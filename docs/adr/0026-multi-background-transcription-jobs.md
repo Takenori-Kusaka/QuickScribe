@@ -1,6 +1,6 @@
 # ADR-0026: 複数バックグラウンド文字起こしジョブの逐次キュー化とジョブ一覧UI
 
-- Status: Proposed（Deciders 承認待ち。処理モデル/通知既定は 2026-07-08 に Decider 確認済み）
+- Status: Accepted（Deciders 承認 2026-07-08。処理モデル=逐次キュー/通知=アプリ内既定を確認、Phase1 実装着手を承認）
 - Date: 2026-07-08
 - Deciders: Takenori Kusaka
 - 関連: #600（長尺末尾欠落）/ ADR-0013（ループバック録音）/ ADR-0014（物理トリガー）/ [ADR-0006 スコープ完全性](0006-scope-completeness-policy.md)

@@ -343,6 +343,7 @@
       "E_FILE_MANAGER": "No se pudo abrir el administrador de archivos: {detail}",
       "E_LOCK_SETTINGS": "No se pudo bloquear la configuración.",
       "E_LOCK_RECORD_STATE": "No se pudo bloquear el estado de grabación.",
+      "E_LOCK_JOB_STATE": "No se pudo bloquear la cola de trabajos.",
       "E_ALREADY_RECORDING": "Ya se está grabando.",
       "E_TEXT_READ": "No se pudo leer el texto: {detail}",
       "E_SHORTCUT_PARSE": "Notación de atajo no válida: {detail}",

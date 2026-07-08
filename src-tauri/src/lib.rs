@@ -18,6 +18,7 @@ pub mod stt;
 pub mod vault;
 // 保管庫ドキュメントの本文組み立て・命名(#392 / DDD: lib.rs から抽出)。
 pub mod entry;
+pub mod job;
 // Windows タスクバーのサムネイルツールバー/オーバーレイ。Windowsのみ。
 #[cfg(windows)]
 mod taskbar;
@@ -287,6 +288,7 @@ fn save_note<R: tauri::Runtime>(
 /// 進捗(0-100%)と確定セグメントを逐次通知してUIに進捗UXを提供する。
 fn transcribe_blocking<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
+    job_id: Option<job::JobId>,
     audio: &[f32],
     timestamps: bool,
 ) -> Result<String, String> {
@@ -341,9 +343,22 @@ fn transcribe_blocking<R: tauri::Runtime>(
         timestamps,
         Box::new(move |pct| {
             let _ = app_p.emit("progress", pct);
+            // job_id 付き進捗（マルチジョブUI / ADR-0026）。0-100 にクランプ。
+            if let Some(jid) = job_id {
+                let _ = app_p.emit(
+                    "job-progress",
+                    JobProgress {
+                        job_id: jid,
+                        progress: pct.clamp(0, 100) as u8,
+                    },
+                );
+            }
         }),
         Box::new(move |seg| {
-            let _ = app_s.emit("segment", seg);
+            let _ = app_s.emit("segment", seg.clone());
+            if let Some(jid) = job_id {
+                let _ = app_s.emit("job-segment", JobSegment { job_id: jid, text: seg });
+            }
         }),
     )?;
 
@@ -366,6 +381,200 @@ fn transcribe_blocking<R: tauri::Runtime>(
     let _ = app.emit("status", "");
     let _ = app.emit("progress", 100);
     Ok(text)
+}
+
+// ─── マルチジョブ・キュー（ADR-0026 / #621 Phase1）──────────────────────────
+// 録音停止ごとに 1 ジョブを発番し、並列度1（FIFO）の逐次キューで処理する。
+// これにより「文字起こし中に次の録音を停止しても前ジョブが消えない」（取りこぼさない）。
+
+/// 終了済みジョブの履歴保持上限（キュー無限成長の防止 / UI は「最近N件＋履歴」）。
+const JOB_HISTORY_KEEP: usize = 50;
+
+/// キュー投入待ちの音声ペイロード（UI に見せる Job メタデータとは分離）。
+struct PendingWork {
+    audio: Vec<f32>,
+    raw: Vec<f32>,
+    sample_rate: u32,
+    channels: u16,
+    timestamps: bool,
+}
+
+/// ジョブ実行状態（Tauri 管理状態）。純粋な状態機械 job::JobQueue に加え、
+/// 実行待ち音声と「ワーカー稼働中フラグ」を持つ。ロックは await をまたがない。
+#[derive(Default)]
+struct JobState {
+    inner: std::sync::Mutex<JobExec>,
+}
+
+#[derive(Default)]
+struct JobExec {
+    queue: job::JobQueue,
+    pending: std::collections::HashMap<job::JobId, PendingWork>,
+    worker_active: bool,
+}
+
+// job_id 付きイベントのペイロード（フロントは camelCase で受ける / マルチジョブUI）。
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JobProgress {
+    job_id: job::JobId,
+    progress: u8,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JobSegment {
+    job_id: job::JobId,
+    text: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JobStatusEvent {
+    job_id: job::JobId,
+    status: &'static str,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JobDone {
+    job_id: job::JobId,
+    text: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JobError {
+    job_id: job::JobId,
+    code: String,
+}
+
+/// 1 ジョブ分の文字起こし＋（設定に従い）録音音声保存。旧 stop_recording の per-job 処理を抽出。
+/// 発話が無ければ空文字を返す（保存しない）。別スレッド(spawn_blocking)から呼ぶ前提。
+fn run_job<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    job_id: job::JobId,
+    work: &PendingWork,
+) -> Result<String, String> {
+    let text = transcribe_blocking(app, Some(job_id), &work.audio, work.timestamps)?;
+    if text.trim().is_empty() {
+        let _ = app.emit("status", "");
+        return Ok(String::new());
+    }
+    // 音声保存は「文字起こし対象があった場合かつ設定ON」のみ。原音を保存。
+    let settings = current_settings(app);
+    if settings.save_audio {
+        if let Ok(dir) = resolve_save_dir(&settings) {
+            let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+            let stem = format!("rec-{ts}");
+            let r = if settings.audio_format == "opus" {
+                audio_save::save_opus(&work.raw, work.sample_rate, work.channels, &dir, &stem)
+            } else {
+                audio_save::save_wav(&work.raw, work.sample_rate, work.channels, &dir, &stem)
+            };
+            if let Err(e) = r {
+                let _ = app.emit("status", errcode::ec(errcode::S_AUDIO_SAVE_FAILED, e));
+            }
+        }
+    }
+    Ok(text)
+}
+
+/// 逐次キューのワーカー。稼働中ジョブが 0 になるまで FIFO で1件ずつ処理する（並列度1）。
+/// 単一ワーカーであることが逐次性（同時 Running=高々1件）を保証する。
+/// 結果は job_id 付きイベント（マルチジョブUI）と旧イベント（現行UI互換）の双方で通知する。
+/// JobState をロックして JobExec を操作する共通ヘルパ。ロック（借用）は本関数内で完結し
+/// await をまたがない。poison 時は None。呼び出し側の借用ライフタイムを単純化する。
+fn with_job_state<R, F, T>(app: &tauri::AppHandle<R>, f: F) -> Option<T>
+where
+    R: tauri::Runtime,
+    F: FnOnce(&mut JobExec) -> T,
+{
+    let st = app.state::<JobState>();
+    let mut ex = st.inner.lock().ok()?;
+    Some(f(&mut ex))
+}
+
+fn spawn_job_worker<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            // 次ジョブを選ぶ（ロックはヘルパ内で完結し await をまたがない）。
+            // None(poison) は致命的でワーカー終了。(None,None) はキュー枯渇で終了。
+            let picked = with_job_state(&app, |ex| match ex.queue.next_queued() {
+                Some(id) => {
+                    ex.queue.mark_running(id);
+                    (Some(id), ex.pending.remove(&id))
+                }
+                None => {
+                    ex.worker_active = false;
+                    (None, None)
+                }
+            });
+            let (id, work) = match picked {
+                Some((Some(id), work)) => (id, work),
+                _ => break,
+            };
+            let _ = app.emit(
+                "job-status",
+                JobStatusEvent {
+                    job_id: id,
+                    status: "running",
+                },
+            );
+            // 音声ペイロードが無い（想定外）→ error にして次へ。
+            let Some(work) = work else {
+                finalize_error(&app, id, errcode::E_EMPTY_RECORDING.to_string());
+                continue;
+            };
+            let app_run = app.clone();
+            let result =
+                tauri::async_runtime::spawn_blocking(move || run_job(&app_run, id, &work)).await;
+            match result {
+                Ok(Ok(text)) => {
+                    with_job_state(&app, |ex| {
+                        ex.queue.mark_done(id);
+                        ex.queue.prune_finished(JOB_HISTORY_KEEP);
+                    });
+                    let _ = app.emit(
+                        "job-done",
+                        JobDone {
+                            job_id: id,
+                            text: text.clone(),
+                        },
+                    );
+                    // 現行UI互換（Phase2 で job-* へ移行し撤去予定）。
+                    let _ = app.emit("transcribe-done", text);
+                }
+                Ok(Err(e)) => finalize_error(&app, id, e),
+                Err(e) => finalize_error(&app, id, e.to_string()),
+            }
+        }
+    });
+}
+
+/// ジョブを Error 状態にし、job_id 付き＋旧イベントの双方で失敗を通知する。
+fn finalize_error<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: job::JobId, code: String) {
+    with_job_state(app, |ex| {
+        ex.queue.mark_error(id, code.clone());
+    });
+    let _ = app.emit(
+        "job-error",
+        JobError {
+            job_id: id,
+            code: code.clone(),
+        },
+    );
+    let _ = app.emit("transcribe-error", code);
+}
+
+/// 現在のジョブ一覧（登録順＝FIFO）を返す。マルチジョブUI（Phase2）が購読・描画する。
+#[tauri::command]
+fn list_jobs(state: tauri::State<'_, JobState>) -> Result<Vec<job::Job>, String> {
+    let ex = state
+        .inner
+        .lock()
+        .map_err(|_| errcode::E_LOCK_JOB_STATE.to_string())?;
+    Ok(ex.queue.jobs().to_vec())
 }
 
 /// 入力ファイルのサイズ上限（メモリ膨張・長時間ブロックの防止 / #397）。
@@ -419,7 +628,8 @@ async fn transcribe_file<R: tauri::Runtime>(
         check_input_size(meta.len())?;
         let _ = app.emit("status", errcode::S_LOADING_AUDIO);
         let audio = stt::decode_to_16k_mono(p)?;
-        transcribe_blocking(&app, &audio, timestamps)
+        // ファイル入力(S1.6)は録音ジョブキューには載せない（job_id なし＝従来どおり）。
+        transcribe_blocking(&app, None, &audio, timestamps)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -484,55 +694,36 @@ async fn stop_recording<R: tauri::Runtime>(
     if recorded.mono16k.is_empty() {
         return Err(errcode::E_EMPTY_RECORDING.into());
     }
-    let raw = recorded.raw;
-    let sample_rate = recorded.sample_rate;
-    let channels = recorded.channels;
-    let audio = recorded.mono16k;
+    // 音声長（秒）＝行ラベル/ETA の目安。16kHz mono 前提。
+    let duration_secs = recorded.mono16k.len() as f64 / stt::WHISPER_SR as f64;
+    let work = PendingWork {
+        audio: recorded.mono16k,
+        raw: recorded.raw,
+        sample_rate: recorded.sample_rate,
+        channels: recorded.channels,
+        timestamps,
+    };
 
-    // 文字起こしはバックグラウンドで実行（録音の非同期化＝stopは即返り録音状態を解放する）。
-    // これにより文字起こし/整形中でも次の録音を開始できる。結果はイベントで通知する。
-    let app_evt = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let app_blk = app_evt.clone();
-        let result = tauri::async_runtime::spawn_blocking(move || {
-            let text = transcribe_blocking(&app_blk, &audio, timestamps)?;
-            // 文字起こし対象（発話）が無ければ、音声は保存せず空を返す。
-            if text.trim().is_empty() {
-                let _ = app_blk.emit("status", "");
-                return Ok::<String, String>(String::new());
-            }
-            // 音声保存は「文字起こし対象があった場合かつ設定ON」のみ。原音を保存。
-            let settings = current_settings(&app_blk);
-            if settings.save_audio {
-                if let Ok(dir) = resolve_save_dir(&settings) {
-                    let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
-                    let stem = format!("rec-{ts}");
-                    let r = if settings.audio_format == "opus" {
-                        audio_save::save_opus(&raw, sample_rate, channels, &dir, &stem)
-                    } else {
-                        audio_save::save_wav(&raw, sample_rate, channels, &dir, &stem)
-                    };
-                    if let Err(e) = r {
-                        let _ =
-                            app_blk.emit("status", errcode::ec(errcode::S_AUDIO_SAVE_FAILED, e));
-                    }
-                }
-            }
-            Ok(text)
-        })
-        .await;
-        match result {
-            Ok(Ok(text)) => {
-                let _ = app_evt.emit("transcribe-done", text);
-            }
-            Ok(Err(e)) => {
-                let _ = app_evt.emit("transcribe-error", e);
-            }
-            Err(e) => {
-                let _ = app_evt.emit("transcribe-error", e.to_string());
-            }
+    // ジョブを発番して逐次キューへ即投入し、stop は即返る（取りこぼさない / ADR-0026）。
+    // ワーカー未稼働なら起動する。稼働中なら既存ワーカーが FIFO で拾う（並列度1）。
+    let created_at_ms = chrono::Local::now().timestamp_millis();
+    let (start_worker, snapshot) = with_job_state(&app, |ex| {
+        let id = ex.queue.enqueue(created_at_ms, duration_secs);
+        ex.pending.insert(id, work);
+        let start = !ex.worker_active;
+        if start {
+            ex.worker_active = true;
         }
-    });
+        (start, ex.queue.get(id).cloned())
+    })
+    .ok_or_else(|| errcode::E_LOCK_JOB_STATE.to_string())?;
+    // 一覧に行を追加できるよう、発番したジョブのメタデータを通知する。
+    if let Some(job) = snapshot {
+        let _ = app.emit("job-created", job);
+    }
+    if start_worker {
+        spawn_job_worker(app.clone());
+    }
 
     Ok(())
 }
@@ -1019,6 +1210,7 @@ mod tests {
             .manage(SttState::default())
             .manage(record::RecorderState::default())
             .manage(TrayTexts::default())
+            .manage(JobState::default())
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
             .expect("mock app")
     }
@@ -1220,6 +1412,74 @@ mod tests {
             wait_for_file(&dir, |n| n.starts_with("rec-") && n.ends_with(".opus")),
             "録音音声が opus で保存される"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// dir 配下に pred を満たすファイルが少なくとも want 件現れるまで待つ。
+    fn wait_for_file_count(dir: &std::path::Path, want: usize, pred: impl Fn(&str) -> bool) -> bool {
+        for _ in 0..300 {
+            if let Ok(rd) = std::fs::read_dir(dir) {
+                let n = rd
+                    .flatten()
+                    .filter(|e| pred(&e.file_name().to_string_lossy()))
+                    .count();
+                if n >= want {
+                    return true;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        false
+    }
+
+    #[test]
+    fn stop_recording_queues_multiple_jobs_without_losing_any() {
+        // マルチジョブ(ADR-0026 #621): 文字起こし中に次の録音を停止しても、
+        // 前ジョブは消えず両方が逐次処理され結果が保存される（取りこぼさない）。
+        let (base, _) = serve(vec![Route::json(
+            "/v1/listen",
+            200,
+            r#"{"results":{"channels":[{"alternatives":[{"transcript":"複数ジョブ"}]}]}}"#,
+        )]);
+        let app = mock_app();
+        let dir = tmp_dir("multi-job");
+        let _g = env_scope(&[("QS_TEST_DEEPGRAM_BASE", base.as_str())], &["QUICKSCRIBE_E2E"]);
+        set_save_settings(
+            app.state(),
+            Some(dir.to_string_lossy().into_owned()),
+            false,
+            "wav".into(),
+            true,
+            Some("txt".into()),
+        )
+        .unwrap();
+        set_stt_settings(app.state(), "deepgram".into(), "".into(), "dk".into(), None).unwrap();
+        // 2 本の録音を連続で停止＝2 ジョブをキュー投入。
+        for _ in 0..2 {
+            *app.state::<record::RecorderState>().current.lock().unwrap() =
+                Some(record::test_recording(vec![(vec![0.2; 3200], 16000, 1)]));
+            tauri::async_runtime::block_on(stop_recording(app.handle().clone(), app.state(), false))
+                .unwrap();
+        }
+        // 両ジョブの transcript が保存される（1件も失わない）。
+        assert!(
+            wait_for_file_count(&dir, 2, |n| n.starts_with("transcript-")
+                && n.ends_with(".txt")),
+            "2 ジョブ分の文字起こしが両方保存される"
+        );
+        // list_jobs は 2 件を返し、いずれも done になる。
+        let ok = (0..300).any(|_| {
+            let jobs = list_jobs(app.state()).unwrap();
+            jobs.len() == 2
+                && jobs
+                    .iter()
+                    .all(|j| j.status == crate::job::JobStatus::Done)
+                || {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    false
+                }
+        });
+        assert!(ok, "list_jobs が 2 件・全て done を返す");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1520,6 +1780,7 @@ pub fn run() {
         .manage(AppSettings::default())
         .manage(SttState::default())
         .manage(TrayTexts::default())
+        .manage(JobState::default())
         .invoke_handler(tauri::generate_handler![
             save_note,
             open_vault,
@@ -1529,6 +1790,7 @@ pub fn run() {
             list_whisper_models,
             start_recording,
             stop_recording,
+            list_jobs,
             resolve_model,
             refine_text,
             read_text_file,

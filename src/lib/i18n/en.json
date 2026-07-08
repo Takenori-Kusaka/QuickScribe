@@ -343,6 +343,7 @@
       "E_FILE_MANAGER": "Failed to open the file manager: {detail}",
       "E_LOCK_SETTINGS": "Failed to lock settings.",
       "E_LOCK_RECORD_STATE": "Failed to lock the recording state.",
+      "E_LOCK_JOB_STATE": "Failed to lock the job queue.",
       "E_ALREADY_RECORDING": "Already recording.",
       "E_TEXT_READ": "Failed to read the text: {detail}",
       "E_SHORTCUT_PARSE": "Invalid shortcut notation: {detail}",

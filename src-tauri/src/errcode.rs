@@ -29,6 +29,7 @@ pub const E_JOURNAL_DIR: &str = "E_JOURNAL_DIR";
 pub const E_FILE_MANAGER: &str = "E_FILE_MANAGER";
 pub const E_LOCK_SETTINGS: &str = "E_LOCK_SETTINGS";
 pub const E_LOCK_RECORD_STATE: &str = "E_LOCK_RECORD_STATE";
+pub const E_LOCK_JOB_STATE: &str = "E_LOCK_JOB_STATE";
 pub const E_ALREADY_RECORDING: &str = "E_ALREADY_RECORDING";
 pub const E_TEXT_READ: &str = "E_TEXT_READ";
 pub const E_SHORTCUT_PARSE: &str = "E_SHORTCUT_PARSE";
