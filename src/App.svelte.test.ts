@@ -112,9 +112,27 @@ async function gotoTab(name: string) {
 
 // listen の登録は onMount 内で非同期に走る。登録完了を待つ。
 async function waitForListeners() {
-  for (let i = 0; i < 50 && !listeners.has("transcribe-done"); i++) {
+  for (let i = 0; i < 50 && !listeners.has("job-done"); i++) {
     await Promise.resolve();
   }
+}
+
+// マルチジョブ(Phase2): 録音停止=ジョブ発番→逐次処理を、job-* イベントで再現するヘルパ。
+async function emitJobCreated(id: number, extra: Record<string, unknown> = {}) {
+  await emitEvent("job-created", {
+    id,
+    createdAtMs: id * 1000,
+    durationSecs: 5,
+    status: "queued",
+    progress: 0,
+    ...extra,
+  });
+}
+async function emitJobDone(id: number, text: string) {
+  await emitEvent("job-done", { jobId: id, text });
+}
+async function emitJobError(id: number, code: string) {
+  await emitEvent("job-error", { jobId: id, code });
 }
 
 describe("App.svelte 起動・基本描画", () => {
@@ -303,38 +321,60 @@ describe("App.svelte コピー", () => {
 });
 
 describe("App.svelte バックエンドイベント", () => {
-  it("transcribe-done で文字起こしが表示され、自動整形される", async () => {
+  it("job-done で文字起こしが作業領域に読み込まれ、自動整形される", async () => {
     render(App);
     await waitForListeners();
-    await emitEvent("transcribe-done", "文字起こしされた本文");
-    // 文字起こしが表示され、autoPipeline+ollama で自動整形まで走る。
+    await emitJobCreated(1);
+    await emitJobDone(1, "文字起こしされた本文");
+    // 最新の完了ジョブが作業領域へ自動読み込みされ、autoPipeline+ollama で自動整形まで走る。
     expect(await screen.findByText("整形された結果テキスト")).toBeInTheDocument();
     expect(invokeMock).toHaveBeenCalledWith("refine_text", expect.anything());
   });
 
-  it("空の transcribe-done は「音声なし」エラーを表示する", async () => {
+  it("空の job-done は作業領域に読み込まれず、整形も走らない（取りこぼさない=行は残る）", async () => {
     render(App);
     await waitForListeners();
-    await emitEvent("transcribe-done", "");
-    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await emitJobCreated(1);
+    await emitJobDone(1, "");
+    // 発話が無い完了は本文が無いため自動読み込みされず、整形も呼ばれない（グローバルエラーも出さない）。
+    await Promise.resolve();
     expect(invokeMock).not.toHaveBeenCalledWith("refine_text", expect.anything());
+    expect(screen.queryByText("整形された結果テキスト")).not.toBeInTheDocument();
   });
 
-  it("transcribe-error でエラーが表示される", async () => {
+  it("job-error でエラーが表示される", async () => {
     render(App);
     await waitForListeners();
-    await emitEvent("transcribe-error", "文字起こしに失敗しました");
+    await emitJobCreated(1);
+    await emitJobError(1, "文字起こしに失敗しました");
     expect(await screen.findByText("文字起こしに失敗しました")).toBeInTheDocument();
   });
 
-  it("録音停止→progress で進捗バーが表示される", async () => {
+  it("job-progress で実行中ジョブの進捗バーが表示される", async () => {
     render(App);
     await waitForListeners();
-    const btn = document.querySelector('[data-testid="record-btn"]') as HTMLButtonElement;
-    await fireEvent.click(btn); // 開始
-    await fireEvent.click(btn); // 停止 → transcribing=true
-    await emitEvent("progress", 42);
+    await emitJobCreated(1);
+    await emitEvent("job-status", { jobId: 1, status: "running" });
+    await emitEvent("job-progress", { jobId: 1, progress: 42 });
     expect(await screen.findByRole("progressbar")).toBeInTheDocument();
+  });
+
+  it("複数ジョブを取りこぼさず一覧に積み、過去の完了ジョブを開ける（Model A）", async () => {
+    render(App);
+    await waitForListeners();
+    // 2ジョブを連続で完了。最新(2)が作業領域へ自動読み込みされる。
+    await emitJobCreated(1);
+    await emitJobDone(1, "最初のジャーナル本文");
+    await emitJobCreated(2);
+    await emitJobDone(2, "次のジャーナル本文");
+    // 一覧を展開（activeJobs=0 なので「最近のジョブ」トグル）。
+    await fireEvent.click(await screen.findByText("最近のジョブ"));
+    // 過去ジョブ(1)を一覧から開く（1件も失っていない＝行が残っている）。
+    const openBtns = await screen.findAllByRole("button", { name: "開く" });
+    expect(openBtns.length).toBe(2);
+    await fireEvent.click(openBtns[0]);
+    // 開いた本文が作業領域に読み込まれる。
+    expect(await screen.findByText("最初のジャーナル本文")).toBeInTheDocument();
   });
 
   it("status イベントでステータス文言が表示される", async () => {
