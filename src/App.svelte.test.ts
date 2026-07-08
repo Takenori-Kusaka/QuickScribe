@@ -51,6 +51,7 @@ async function emitEvent(event: string, payload: unknown) {
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: listenMock }));
+vi.mock("@tauri-apps/api/app", () => ({ getVersion: vi.fn(async () => "1.2.3") }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: openMock }));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: checkMock }));
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: relaunchMock }));
@@ -144,6 +145,13 @@ describe("App.svelte 起動・基本描画", () => {
     const btn = document.querySelector('[data-testid="record-btn"]');
     expect(btn).toBeInTheDocument();
     expect(btn).toBeVisible();
+  });
+
+  it("アプリのバージョンが表示される（実行結果の共有用）", async () => {
+    render(App);
+    await waitForListeners();
+    // getVersion() のモックが返す版が右下フッタに表示される。
+    expect(await screen.findByText("v1.2.3")).toBeInTheDocument();
   });
 
   it("歯車ボタンで設定ダイアログが開く", async () => {
