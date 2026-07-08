@@ -343,7 +343,6 @@
       "E_FILE_MANAGER": "ファイルマネージャの起動に失敗しました: {detail}",
       "E_LOCK_SETTINGS": "設定のロックに失敗しました。",
       "E_LOCK_RECORD_STATE": "録音状態のロックに失敗しました。",
-      "E_LOCK_JOB_STATE": "ジョブキューのロックに失敗しました。",
       "E_ALREADY_RECORDING": "すでに録音中です。",
       "E_TEXT_READ": "テキストの読み込みに失敗しました: {detail}",
       "E_SHORTCUT_PARSE": "ショートカット表記が不正です: {detail}",

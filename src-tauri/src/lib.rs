@@ -413,6 +413,19 @@ struct JobExec {
     worker_active: bool,
 }
 
+impl JobExec {
+    /// 不変条件を保つ: `pending`（録音全体の Vec<f32> を保持）は **Queued のジョブ分のみ**残す。
+    /// Running は pick 時点で除去済み、終了(Done/Error/Canceled)・キュー削除済みの分はここで解放する。
+    /// これにより「Queued のままキャンセル/消滅したジョブの音声バッファが RAM に残り続ける」リークを防ぐ
+    /// （Phase3 の cancel コマンド配線後も安全 / レビュー指摘）。
+    fn drop_orphan_pending(&mut self) {
+        let queue = &self.queue;
+        self.pending.retain(|id, _| {
+            matches!(queue.get(*id).map(|j| j.status), Some(job::JobStatus::Queued))
+        });
+    }
+}
+
 // job_id 付きイベントのペイロード（フロントは camelCase で受ける / マルチジョブUI）。
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -484,22 +497,25 @@ fn run_job<R: tauri::Runtime>(
 /// 単一ワーカーであることが逐次性（同時 Running=高々1件）を保証する。
 /// 結果は job_id 付きイベント（マルチジョブUI）と旧イベント（現行UI互換）の双方で通知する。
 /// JobState をロックして JobExec を操作する共通ヘルパ。ロック（借用）は本関数内で完結し
-/// await をまたがない。poison 時は None。呼び出し側の借用ライフタイムを単純化する。
-fn with_job_state<R, F, T>(app: &tauri::AppHandle<R>, f: F) -> Option<T>
+/// await をまたがない。
+/// poison（ロック保持中のパニック）は **回復する**（`into_inner`）。JobState は長命な常駐
+/// サブシステムであり、1度のパニックでキュー全体を恒久ブリックさせる方が害が大きいため。
+/// 保持する状態（JobQueue/pending）は単純な操作のみで、torn 状態のリスクは実質無い。
+fn with_job_state<R, F, T>(app: &tauri::AppHandle<R>, f: F) -> T
 where
     R: tauri::Runtime,
     F: FnOnce(&mut JobExec) -> T,
 {
     let st = app.state::<JobState>();
-    let mut ex = st.inner.lock().ok()?;
-    Some(f(&mut ex))
+    let mut ex = st.inner.lock().unwrap_or_else(|e| e.into_inner());
+    f(&mut ex)
 }
 
 fn spawn_job_worker<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
     tauri::async_runtime::spawn(async move {
         loop {
             // 次ジョブを選ぶ（ロックはヘルパ内で完結し await をまたがない）。
-            // None(poison) は致命的でワーカー終了。(None,None) はキュー枯渇で終了。
+            // キュー枯渇なら worker_active=false にしてワーカー終了。
             let picked = with_job_state(&app, |ex| match ex.queue.next_queued() {
                 Some(id) => {
                     ex.queue.mark_running(id);
@@ -511,8 +527,8 @@ fn spawn_job_worker<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
                 }
             });
             let (id, work) = match picked {
-                Some((Some(id), work)) => (id, work),
-                _ => break,
+                (Some(id), work) => (id, work),
+                (None, _) => break,
             };
             let _ = app.emit(
                 "job-status",
@@ -534,6 +550,7 @@ fn spawn_job_worker<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
                     with_job_state(&app, |ex| {
                         ex.queue.mark_done(id);
                         ex.queue.prune_finished(JOB_HISTORY_KEEP);
+                        ex.drop_orphan_pending();
                     });
                     let _ = app.emit(
                         "job-done",
@@ -556,6 +573,8 @@ fn spawn_job_worker<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
 fn finalize_error<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: job::JobId, code: String) {
     with_job_state(app, |ex| {
         ex.queue.mark_error(id, code.clone());
+        ex.queue.prune_finished(JOB_HISTORY_KEEP);
+        ex.drop_orphan_pending();
     });
     let _ = app.emit(
         "job-error",
@@ -568,13 +587,10 @@ fn finalize_error<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: job::JobId, 
 }
 
 /// 現在のジョブ一覧（登録順＝FIFO）を返す。マルチジョブUI（Phase2）が購読・描画する。
+/// poison は回復する（一覧取得は読み取りのみで、恒久失敗させる必要がない）。
 #[tauri::command]
-fn list_jobs(state: tauri::State<'_, JobState>) -> Result<Vec<job::Job>, String> {
-    let ex = state
-        .inner
-        .lock()
-        .map_err(|_| errcode::E_LOCK_JOB_STATE.to_string())?;
-    Ok(ex.queue.jobs().to_vec())
+fn list_jobs<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Vec<job::Job> {
+    with_job_state(&app, |ex| ex.queue.jobs().to_vec())
 }
 
 /// 入力ファイルのサイズ上限（メモリ膨張・長時間ブロックの防止 / #397）。
@@ -715,8 +731,7 @@ async fn stop_recording<R: tauri::Runtime>(
             ex.worker_active = true;
         }
         (start, ex.queue.get(id).cloned())
-    })
-    .ok_or_else(|| errcode::E_LOCK_JOB_STATE.to_string())?;
+    });
     // 一覧に行を追加できるよう、発番したジョブのメタデータを通知する。
     if let Some(job) = snapshot {
         let _ = app.emit("job-created", job);
@@ -1433,6 +1448,36 @@ mod tests {
     }
 
     #[test]
+    fn drop_orphan_pending_keeps_only_queued_audio() {
+        // pending は Queued のジョブ分のみ保持する不変条件（音声バッファのリーク防止 / レビュー指摘）。
+        fn work() -> PendingWork {
+            PendingWork {
+                audio: vec![0.0; 8],
+                raw: vec![0.0; 8],
+                sample_rate: 16000,
+                channels: 1,
+                timestamps: false,
+            }
+        }
+        let mut ex = JobExec::default();
+        let a = ex.queue.enqueue(0, 1.0);
+        let b = ex.queue.enqueue(0, 1.0);
+        ex.pending.insert(a, work());
+        ex.pending.insert(b, work());
+        // a を完了させる（pick 相当で pending から抜く運用だが、ここでは終了状態のみ再現）。
+        ex.queue.mark_running(a);
+        ex.queue.mark_done(a);
+        ex.drop_orphan_pending();
+        // 終了した a の pending は解放され、まだ Queued の b は残る。
+        assert!(!ex.pending.contains_key(&a), "終了ジョブの音声は解放される");
+        assert!(ex.pending.contains_key(&b), "Queuedジョブの音声は保持される");
+        // b もキャンセル相当で Queued を外れたら解放される（Phase3 の cancel 安全性）。
+        ex.queue.cancel(b);
+        ex.drop_orphan_pending();
+        assert!(ex.pending.is_empty(), "Queued を外れた音声は全て解放される");
+    }
+
+    #[test]
     fn stop_recording_queues_multiple_jobs_without_losing_any() {
         // マルチジョブ(ADR-0026 #621): 文字起こし中に次の録音を停止しても、
         // 前ジョブは消えず両方が逐次処理され結果が保存される（取りこぼさない）。
@@ -1469,7 +1514,7 @@ mod tests {
         );
         // list_jobs は 2 件を返し、いずれも done になる。
         let ok = (0..300).any(|_| {
-            let jobs = list_jobs(app.state()).unwrap();
+            let jobs = list_jobs(app.handle().clone());
             jobs.len() == 2
                 && jobs
                     .iter()

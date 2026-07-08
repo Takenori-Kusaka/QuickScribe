@@ -343,7 +343,6 @@
       "E_FILE_MANAGER": "启动文件管理器失败：{detail}",
       "E_LOCK_SETTINGS": "锁定设置失败。",
       "E_LOCK_RECORD_STATE": "锁定录音状态失败。",
-      "E_LOCK_JOB_STATE": "锁定作业队列失败。",
       "E_ALREADY_RECORDING": "已在录音中。",
       "E_TEXT_READ": "读取文本失败：{detail}",
       "E_SHORTCUT_PARSE": "快捷键表示无效：{detail}",
