@@ -2909,10 +2909,10 @@
     font-size: 0.8rem;
   }
   .job-row.job-error .job-state {
-    color: #b91c1c;
+    color: var(--color-danger);
   }
   .job-row .job-err {
-    color: #b91c1c;
+    color: var(--color-danger);
     font-size: 0.8rem;
     margin-left: auto;
   }
