@@ -427,5 +427,19 @@
       "E_REFINE_NO_FLASH": "No flash-family model was found."
     },
     "unknown": "An unknown error occurred."
+  },
+  "jobs": {
+    "processing_n": "Processing {n}",
+    "recent": "Recent jobs",
+    "open": "Open",
+    "status": {
+      "queued": "Queued",
+      "running": "Transcribing",
+      "done": "Done",
+      "error": "Failed",
+      "canceled": "Canceled"
+    },
+    "done_n": "{n} done",
+    "no_speech": "No speech"
   }
 }

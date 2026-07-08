@@ -427,5 +427,19 @@
       "E_REFINE_NO_FLASH": "flash系モデルが見つかりませんでした。"
     },
     "unknown": "原因不明のエラーが発生しました。"
+  },
+  "jobs": {
+    "processing_n": "処理中 {n} 件",
+    "recent": "最近のジョブ",
+    "open": "開く",
+    "status": {
+      "queued": "待機中",
+      "running": "文字起こし中",
+      "done": "完了",
+      "error": "失敗",
+      "canceled": "キャンセル"
+    },
+    "done_n": "完了 {n} 件",
+    "no_speech": "発話なし"
   }
 }

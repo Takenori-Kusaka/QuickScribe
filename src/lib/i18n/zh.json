@@ -427,5 +427,19 @@
       "E_REFINE_NO_FLASH": "未找到 flash 系列模型。"
     },
     "unknown": "发生了未知错误。"
+  },
+  "jobs": {
+    "processing_n": "处理中 {n} 个",
+    "recent": "最近的任务",
+    "open": "打开",
+    "status": {
+      "queued": "排队中",
+      "running": "转写中",
+      "done": "完成",
+      "error": "失败",
+      "canceled": "已取消"
+    },
+    "done_n": "完成 {n} 个",
+    "no_speech": "无语音"
   }
 }

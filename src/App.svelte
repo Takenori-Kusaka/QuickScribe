@@ -25,6 +25,7 @@
   import { _, locale } from "svelte-i18n";
   import { LOCALE_STORAGE_KEY } from "./lib/i18n";
   import { statusText } from "./lib/status";
+  import * as jobsLib from "./lib/jobs";
   import {
     type Provider,
     type SttProvider,
@@ -51,18 +52,31 @@
   let error = $state<string | null>(null);
   let startedAt = $state<number | null>(null);
   let status = $state<string>("");
-  let progress = $state<number>(0);
   let eta = $state<string>("");
   let transcribeStartMs = $state<number | null>(null);
-  let segments = $state<string[]>([]);
   let transcript = $state<string | null>(null);
   let refined = $state<string | null>(null);
+
+  // マルチジョブ・キュー(ADR-0026 / #621 Phase2)。録音停止ごとに1ジョブ。逐次処理で取りこぼさない。
+  // 純粋ロジックは lib/jobs.ts。App はイベント→jobs[] の反映と描画のみ。
+  let jobs = $state<jobsLib.Job[]>([]);
+  // ジョブ一覧の展開状態(既定=畳む。控えめ運用)。
+  let showJobs = $state(false);
+  const JOBS_KEEP = 50;
+  // 処理中(queued+running)件数。ヘッダの「処理中N件」バッジ。
+  const activeJobs = $derived(jobsLib.activeCount(jobs));
+  // 実行中ジョブ(逐次のため高々1件)。進捗バーの対象。
+  const running = $derived(jobsLib.runningJob(jobs));
+  // 未読の完了ジョブ数(完了だが作業領域で未 open)。埋もれ防止の「完了N件」表示に使う。
+  const unopenedDone = $derived(jobsLib.unopenedDoneCount(jobs));
+  // 文字起こし中インジケータは jobs から導出(単一スロット transcribing を廃止)。
+  const transcribing = $derived(activeJobs > 0);
+  // 直近に作業領域へ読み込んだ完了ジョブID(重複自動読み込みの抑止)。
+  let loadedJobId = $state<number | null>(null);
   // 現在の整形結果がどのスタイルで作られたか(結果からの再整形チップの強調 / S3.5)。
   let refinedStyle = $state<string>("structured");
   let refining = $state(false);
   let busy = $state(false);
-  // バックグラウンド文字起こし中（録音ボタンはブロックしない＝録音の非同期化）。
-  let transcribing = $state(false);
 
   // 設定（localStorageに保存。秘密情報はローカル端末内のみ）。
   // 整形プロバイダ: Gemini / Anthropic / OpenAI / ローカル(Ollama) ＋
@@ -88,7 +102,6 @@
   function trySample() {
     transcript = $_("onboarding.sample_text");
     refined = null;
-    segments = [];
     error = null;
     dismissOnboarding();
   }
@@ -535,8 +548,6 @@
     error = null;
     transcript = null;
     refined = null;
-    segments = [];
-    progress = 0;
     eta = "";
     transcribeStartMs = null;
     const selected = await open({
@@ -745,7 +756,6 @@
       }
       transcript = text;
       refined = null;
-      segments = [];
       await refineNow();
     } catch (e) {
       error = $_("errors.memo_refine_failed", { values: { detail: errorText(e, $_) } });
@@ -765,13 +775,9 @@
         startedAt = Date.now();
         // タスクバーボタンに録音中バッジを表示（状態の可視化）。
         void invoke("set_recording_overlay", { recording: true });
-        // 新しい録音に向けて表示をリセット。
-        transcript = null;
-        refined = null;
-        segments = [];
-        progress = 0;
-        eta = "";
-        transcribeStartMs = null;
+        // マルチジョブ(Model A): 新録音で作業領域を消さない=前の結果を失わない(取りこぼさない)。
+        // 新ジョブは完了時に最新として自動読み込み、前の結果は一覧に残る。stale エラーのみ消す。
+        error = null;
       } catch (e) {
         error = $_("errors.record_start_failed", { values: { detail: errorText(e, $_) } });
       }
@@ -780,13 +786,11 @@
       startedAt = null;
       // タスクバーの録音中バッジを解除。
       void invoke("set_recording_overlay", { recording: false });
-      // 文字起こしはバックグラウンドで走る（録音はすぐ再開できる＝非同期）。
-      // 結果は transcribe-done / transcribe-error イベントで受け取る。
-      transcribing = true;
+      // 文字起こしはバックグラウンドのジョブキューで走る（録音はすぐ再開できる＝非同期）。
+      // 結果は job-* イベントで jobs[] に届く。処理中インジケータは activeJobs から導出。
       try {
         await invoke("stop_recording", { timestamps: includeTimestamps });
       } catch (e) {
-        transcribing = false;
         error = $_("errors.record_stop_failed", { values: { detail: errorText(e, $_) } });
       }
     }
@@ -818,6 +822,47 @@
       if (recording) void toggle();
     }, MOMENTARY_STOP_DELAY_MS);
   }
+
+  // ジョブ行のラベル: 録音時刻(HH:MM)＋音声長(m:ss)。一覧で識別しやすくする。
+  function formatJobLabel(j: jobsLib.Job): string {
+    const d = new Date(j.createdAtMs);
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    const dm = Math.floor(j.durationSecs / 60);
+    const ds = String(Math.floor(j.durationSecs % 60)).padStart(2, "0");
+    return `${hh}:${mm} (${dm}:${ds})`;
+  }
+
+  // 完了ジョブの本文を作業領域に読み込み、整形フローへ載せる(Model A: キュー層＋既存作業領域)。
+  function loadJob(j: jobsLib.Job) {
+    if (!j.text) return;
+    transcript = j.text;
+    refined = null;
+    corrections = null;
+    loadedJobId = j.id;
+    jobs = jobsLib.markOpened(jobs, j.id); // 開いた=未読でなくなる(未読件数/prune保護に反映)。
+    status = "";
+    showJobs = false;
+    // 一気通貫: 自動で整形まで(プロバイダ設定済みのときのみ)。
+    if (autoPipeline && refineConfigError() === null) void refineNow();
+  }
+
+  // 作業領域が空のときだけ最新の完了ジョブを自動読み込みする(=作業中の結果や編集を上書きしない)。
+  // 空でない/整形中で読み込めないときは、埋もれないよう一覧を自動展開して気づけるようにする
+  // (前の結果も新しい結果も失わない＝取りこぼさない / レビュー指摘)。
+  function autoLoadNewestDone() {
+    const j = jobsLib.newestDone(jobs);
+    if (!j || loadedJobId === j.id) return;
+    const areaFree = transcript === null && refined === null && !refining;
+    if (areaFree) {
+      loadJob(j);
+    } else {
+      showJobs = true; // 未読の完了があることを可視化(一覧を開く)。
+    }
+  }
+
+  // 失敗ジョブの再試行(Phase3で backend cancel/retry を配線するまでは、音声を再送できないため
+  // 当面は行を残すのみ。ここでは将来のフックとして open のみ提供)。
 
   onMount(() => {
     // 起動時間ベンチ(#403): UI 準備完了を通知（QS_PERF_STARTUP 設定時のみ Rust 側が計測）。
@@ -854,38 +899,46 @@
     });
     // status は Rust から安定コード(S_XXX)で届く → カタログでローカライズ(#462)。
     const unStatus = listen<string>("status", (e) => (status = statusText(e.payload, $_)));
-    const unProgress = listen<number>("progress", (e) => {
-      progress = e.payload;
-      if (progress > 0 && transcribeStartMs === null) transcribeStartMs = Date.now();
-      if (transcribeStartMs && progress > 0 && progress < 100) {
+    // マルチジョブ・キュー(ADR-0026 #621 Phase2)。各イベントは job_id 付きで届き jobs[] を更新する。
+    // 逐次処理のため running は高々1件。旧イベント(progress/segment/transcribe-*)は購読しない。
+    const unJobCreated = listen<jobsLib.JobCreated>("job-created", (e) => {
+      jobs = jobsLib.upsertCreated(jobs, e.payload);
+    });
+    const unJobStatus = listen<{ jobId: number; status: jobsLib.JobStatus }>("job-status", (e) => {
+      jobs = jobsLib.setStatus(jobs, e.payload.jobId, e.payload.status);
+      if (e.payload.status === "running") {
+        transcribeStartMs = Date.now(); // このジョブの開始起点(ETA用)。
+        eta = "";
+      }
+    });
+    const unJobProgress = listen<{ jobId: number; progress: number }>("job-progress", (e) => {
+      jobs = jobsLib.setProgress(jobs, e.payload.jobId, e.payload.progress);
+      const p = e.payload.progress;
+      if (transcribeStartMs && p > 0 && p < 100) {
         const elapsed = (Date.now() - transcribeStartMs) / 1000;
-        eta = formatRemaining(estimateRemaining(elapsed, progress), $_);
+        eta = formatRemaining(estimateRemaining(elapsed, p), $_);
       } else {
         eta = "";
       }
     });
-    const unSegment = listen<string>("segment", (e) => {
-      const t = e.payload.trim();
-      if (t) segments = [...segments, t];
+    const unJobSegment = listen<{ jobId: number; text: string }>("job-segment", (e) => {
+      jobs = jobsLib.addSegment(jobs, e.payload.jobId, e.payload.text);
     });
-    // バックグラウンド文字起こしの完了/失敗（録音の非同期化）。
-    const unDone = listen<string>("transcribe-done", (e) => {
-      transcribing = false;
+    const unJobDone = listen<{ jobId: number; text: string }>("job-done", (e) => {
+      jobs = jobsLib.setDone(jobs, e.payload.jobId, e.payload.text);
+      jobs = jobsLib.pruneFinished(jobs, JOBS_KEEP);
       status = "";
-      const text = e.payload;
-      if (text) {
-        transcript = text;
-        // 一気通貫: 自動で整形まで実行（プロバイダが設定済みのときのみ）。
-        if (autoPipeline && refineConfigError() === null) void refineNow();
-      } else {
-        error = $_("errors.no_audio");
-      }
+      eta = "";
+      // 作業領域が空なら最新の完了ジョブを自動で読み込む(現行踏襲)。作業中なら一覧から開ける。
+      autoLoadNewestDone();
     });
-    const unErr = listen<string>("transcribe-error", (e) => {
-      transcribing = false;
+    const unJobError = listen<{ jobId: number; code: string }>("job-error", (e) => {
+      jobs = jobsLib.setError(jobs, e.payload.jobId, e.payload.code);
+      jobs = jobsLib.pruneFinished(jobs, JOBS_KEEP);
       status = "";
+      eta = "";
       // 安定エラーコード(E_XXX)をローカライズして表示（生コードを露出させない / #462）。
-      error = errorText(e.payload, $_);
+      error = errorText(e.payload.code, $_);
     });
     return () => {
       clearMomentaryTimer();
@@ -895,10 +948,12 @@
       unStartRec.then((f) => f());
       unStopRec.then((f) => f());
       unStatus.then((f) => f());
-      unProgress.then((f) => f());
-      unSegment.then((f) => f());
-      unDone.then((f) => f());
-      unErr.then((f) => f());
+      unJobCreated.then((f) => f());
+      unJobStatus.then((f) => f());
+      unJobProgress.then((f) => f());
+      unJobSegment.then((f) => f());
+      unJobDone.then((f) => f());
+      unJobError.then((f) => f());
     };
   });
 </script>
@@ -1082,32 +1137,86 @@
       </p>
     {/if}
 
-    {#if busy || transcribing || status}
-      <div class="panel" role="status" aria-live="polite">
-        <div class="status-row">
-          <span class="spinner" aria-hidden="true"></span>
-          <span class="status-text">{status || $_("results.processing")}</span>
+    <!-- マルチジョブ・キュー(ADR-0026 #621 Phase2): 録音停止ごとの文字起こしジョブを取りこぼさず表示。
+         控えめ運用: 既定は「処理中N件」バッジ＋実行中の細い進捗のみ。展開で行型一覧(状態/進捗/開く)。
+         aria-live=polite で状態変化を静かに読み上げる。file入力(ジョブ非経由)は busy/status で表示。 -->
+    {#if jobs.length || busy || status}
+      <div class="panel jobs-panel">
+        <!-- a11y: 進捗の細かな変化を全部読み上げてスパムしないよう、live 領域は「粗いサマリ文言」だけに限定。
+             進捗バー・一覧は live 領域の外に置く（レビュー指摘）。 -->
+        <div class="jobs-head">
+          {#if activeJobs > 0}
+            <span class="spinner" aria-hidden="true"></span>
+            <button
+              type="button"
+              class="jobs-toggle"
+              onclick={() => (showJobs = !showJobs)}
+              aria-expanded={showJobs}
+            >
+              <span class="jobs-summary" role="status" aria-live="polite">
+                {$_("jobs.processing_n", { values: { n: activeJobs } })}
+              </span>
+              <span class="chev" aria-hidden="true">{showJobs ? "▾" : "▸"}</span>
+            </button>
+          {:else if jobs.length}
+            <button
+              type="button"
+              class="jobs-toggle"
+              onclick={() => (showJobs = !showJobs)}
+              aria-expanded={showJobs}
+            >
+              <span class="jobs-summary" role="status" aria-live="polite">
+                {unopenedDone > 0
+                  ? $_("jobs.done_n", { values: { n: unopenedDone } })
+                  : $_("jobs.recent")}
+              </span>
+              <span class="chev" aria-hidden="true">{showJobs ? "▾" : "▸"}</span>
+            </button>
+          {:else}
+            <span class="spinner" aria-hidden="true"></span>
+            <span class="status-text" role="status" aria-live="polite"
+              >{status || $_("results.processing")}</span
+            >
+          {/if}
+          {#if status && activeJobs > 0}<span class="status-text muted">{status}</span>{/if}
         </div>
-        {#if progress > 0}
+
+        <!-- 実行中ジョブの進捗(逐次のため高々1件)。畳んでいても見える細いバー。live 領域外(読み上げ抑制)。 -->
+        {#if running}
           <div
             class="progress"
             role="progressbar"
             aria-label={$_("results.processing")}
-            aria-valuenow={progress}
+            aria-valuenow={running.progress}
             aria-valuemin="0"
             aria-valuemax="100"
           >
-            <div class="bar" style="width: {progress}%"></div>
+            <div class="bar" style="width: {running.progress}%"></div>
           </div>
           <div class="progress-meta">
-            <span class="pct">{progress}%</span>
+            <span class="pct">{running.progress}%</span>
             {#if eta}<span class="eta">{eta}</span>{/if}
           </div>
         {/if}
-        {#if segments.length}
-          <div class="segments">
-            {#each segments as seg}<span>{seg}</span>{/each}
-          </div>
+
+        {#if showJobs && jobs.length}
+          <ul class="jobs-list">
+            {#each jobs as j (j.id)}
+              <li class="job-row job-{j.status}">
+                <span class="job-label">{formatJobLabel(j)}</span>
+                <span class="job-state">{$_(`jobs.status.${j.status}`)}</span>
+                {#if j.status === "done" && j.text}
+                  <button type="button" class="btn small ghost" onclick={() => loadJob(j)}>
+                    {$_("jobs.open")}
+                  </button>
+                {:else if j.status === "done"}
+                  <span class="job-state muted">{$_("jobs.no_speech")}</span>
+                {:else if j.status === "error"}
+                  <span class="job-err">{errorText(j.errorCode ?? "", $_)}</span>
+                {/if}
+              </li>
+            {/each}
+          </ul>
         {/if}
       </div>
     {/if}
@@ -2766,6 +2875,73 @@
     line-height: 1.6;
     color: var(--color-text-muted);
     text-align: left;
+  }
+
+  /* マルチジョブ・キュー(ADR-0026 #621 Phase2)。控えめなヘッダ＋展開する行型一覧。 */
+  .jobs-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .jobs-toggle {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--color-text);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .jobs-toggle .chev {
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+  }
+  .jobs-summary {
+    display: inline;
+  }
+  .status-text.muted {
+    color: var(--color-text-muted);
+    font-size: 0.82rem;
+  }
+  .jobs-list {
+    list-style: none;
+    margin: 0.6rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    text-align: left;
+  }
+  .job-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    padding: 0.3rem 0.4rem;
+    border-radius: 8px;
+    background: var(--color-surface);
+  }
+  .job-row .job-label {
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text);
+  }
+  .job-row .job-state {
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+  }
+  .job-row.job-error .job-state {
+    color: var(--color-danger);
+  }
+  .job-row .job-err {
+    color: var(--color-danger);
+    font-size: 0.8rem;
+    margin-left: auto;
+  }
+  .job-row .btn.small {
+    margin-left: auto;
   }
 
   .card {
