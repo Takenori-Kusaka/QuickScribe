@@ -150,6 +150,87 @@ pub fn format_timestamp(centiseconds: i64) -> String {
     format!("{h:02}:{m:02}:{s:02}")
 }
 
+/// 長尺音声のチャンク分割パラメータ（#600 末尾欠落の根治）。
+/// whisper の窓は30秒。それ未満のチャンクに切って個別デコードすることで、
+/// whisper.cpp の sequential seek が長尺で末尾を落とす構造的問題を回避する。
+/// overlap は境界で語が切れないための重なり。担当区間は overlap の中点で切って重複排除する。
+pub const CHUNK_SECS: f64 = 24.0;
+// overlap は境界の両側マージン。担当区間は overlap の中点で切るため、各チャンクは自分の音声末尾から
+// overlap/2 だけ手前までしか担当しない＝末尾帯(whisper が単一窓でも稀に落としうる領域)を担当しない。
+// 隣接チャンクは overlap/2 だけ内側から担当を始める＝コールドスタート直後の不安定セグメントも避ける。
+// 4s(両側2sマージン)で末尾欠落の再発余地を潰す（独立レビュー指摘）。冗長デコードは約17%。
+pub const OVERLAP_SECS: f64 = 4.0;
+
+/// 1チャンクの分割仕様（純粋計算 / #600）。時刻はセンチ秒（1/100秒＝whisperのt0単位）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChunkSpec {
+    /// サンプル開始インデックス（含む）。
+    pub start: usize,
+    /// サンプル終端インデックス（含まず）。
+    pub end: usize,
+    /// チャンク先頭の絶対時刻（センチ秒）。セグメント時刻のオフセットに使う。
+    pub offset_cs: i64,
+    /// このチャンクが出力を担当する絶対区間の開始（含む・センチ秒）。
+    pub own_start_cs: i64,
+    /// 担当区間の終端（含まず）。最終チャンクは i64::MAX。
+    pub own_end_cs: i64,
+}
+
+/// 音声を `chunk_secs` 長・`overlap_secs` 重なりで分割する計画を返す（純粋関数・テスト対象 / #600）。
+/// 各チャンクを個別に whisper へ渡すことで長尺末尾の欠落を防ぐ。担当区間 `[own_start_cs, own_end_cs)`
+/// は隣接チャンクの重なりの中点で境界を引き、overlap 領域の重複出力を決定的に排除する。
+/// `total` が `chunk_secs` 以下なら単一チャンク＝従来動作（短尺は無回帰）。
+pub fn chunk_plan(total: usize, sr: u32, chunk_secs: f64, overlap_secs: f64) -> Vec<ChunkSpec> {
+    if total == 0 {
+        return Vec::new();
+    }
+    let sr_f = sr as f64;
+    let chunk_n = ((chunk_secs * sr_f).round() as usize).max(1);
+    // overlap は「チャンクの半分」を上限に制限する。stride>=chunk/2 を保証し、病的入力
+    // (overlap>=chunk)での stride≒1サンプル→チャンク爆発を防ぐ（レビュー指摘）。overlap>50%は無意味。
+    let overlap_n = ((overlap_secs.max(0.0) * sr_f).round() as usize).min(chunk_n / 2);
+    let stride_n = (chunk_n - overlap_n).max(1);
+    // half_overlap は「実際に stride に使う clamp 後の overlap_n」から導出する（生の overlap_secs から
+    // 導くと overlap>=chunk の病的入力で担当境界が実 overlap 領域外へずれる / レビュー指摘 Finding3）。
+    let half_overlap_cs = ((overlap_n as f64 / sr_f / 2.0) * 100.0).round() as i64;
+    let to_cs = |sample: usize| ((sample as f64 / sr_f) * 100.0).round() as i64;
+
+    let mut specs: Vec<ChunkSpec> = Vec::new();
+    let mut start = 0usize;
+    loop {
+        let end = (start + chunk_n).min(total);
+        specs.push(ChunkSpec {
+            start,
+            end,
+            offset_cs: to_cs(start),
+            own_start_cs: 0,
+            own_end_cs: 0,
+        });
+        if end >= total {
+            break;
+        }
+        start += stride_n;
+    }
+
+    // 担当区間を埋める: 先頭は0から、以降は自チャンク先頭＋overlap中点。終端は次チャンクの担当開始。
+    let n = specs.len();
+    for i in 0..n {
+        let own_start = if i == 0 {
+            0
+        } else {
+            specs[i].offset_cs + half_overlap_cs
+        };
+        let own_end = if i + 1 < n {
+            specs[i + 1].offset_cs + half_overlap_cs
+        } else {
+            i64::MAX
+        };
+        specs[i].own_start_cs = own_start;
+        specs[i].own_end_cs = own_end;
+    }
+    specs
+}
+
 /// whisper.cpp モデルで文字起こしする（進捗0-100%と確定セグメントを逐次通知）。
 /// 進捗UX(プログレス/逐次表示)を可能にしつつ、全CPUコアで高速化する。
 /// `timestamps` が true のとき、各セグメント行頭に [HH:MM:SS] を付与する
@@ -167,51 +248,120 @@ where
     S: FnMut(String) + Send + 'static,
 {
     let model = model_path.to_str().ok_or(crate::errcode::E_STT_MODEL_PATH)?;
+    // モデル(ctx)は1回だけロードし、各チャンクはそのstateを都度作って回す（再ロード回避）。
     let ctx = WhisperContext::new_with_params(model, WhisperContextParameters::default())
         .map_err(|e| crate::errcode::ec(crate::errcode::E_STT_MODEL_LOAD, e))?;
-    let mut state = ctx.create_state().map_err(|e| e.to_string())?;
-
-    let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-    if let Some(l) = lang {
-        params.set_language(Some(l));
-    }
-    // 物理コア数でスレッド設定（論理コア全指定はメモリ帯域律速で逆効果になりうる）。
     let threads = num_cpus::get_physical().max(1) as i32;
-    params.set_n_threads(threads);
-    params.set_print_progress(false);
-    params.set_print_special(false);
-    params.set_print_realtime(false);
-    // ハルシネーション/反復ループ抑制(#600)。既定(no_context=false)は直前の文字起こしを
-    // 初期プロンプトに使うため、末尾の無音等で一度反復("I I I I"…)に陥ると文脈がループを固定し、
-    // タイムスタンプが進まず末尾の音声が失われる(実録音11:40が11:21で凍結する事象を確認)。
-    // 前文脈を使わないことでループの固定を防ぐ。継続性はわずかに犠牲になるが、ジャーナル用途では
-    // 末尾欠落の害の方が大きい。温度フォールバック(temperature_inc=0.2)・entropy/logprob 閾値は
-    // whisper.cpp 既定でループ回復機構が有効。効果は日本語CERベンチ(ADR-0024)で回帰監視する。
-    params.set_no_context(true);
 
-    // 進捗(0-100)と確定セグメントの逐次通知。
-    params.set_progress_callback_safe(on_progress);
+    // #600 根治: 長尺を chunk_secs 未満に分割し個別デコードする。whisper.cpp の sequential seek が
+    // 長尺で末尾を落とす構造的問題を回避する（短尺は単一チャンク＝従来動作で無回帰）。
+    let chunks = chunk_plan(audio.len(), WHISPER_SR, CHUNK_SECS, OVERLAP_SECS);
+    if chunks.is_empty() {
+        return Ok(String::new());
+    }
+    let n_chunks = chunks.len();
+    // 進捗はチャンクをまたいで 0-100 に正規化して通知する（複数の full() 呼び出しを1本の進捗に集約）。
+    let progress = std::sync::Arc::new(std::sync::Mutex::new(on_progress));
     let mut on_seg = on_segment;
-    params.set_segment_callback_safe(move |data: whisper_rs::SegmentCallbackData| {
-        on_seg(data.text);
-    });
-
-    state.full(params, audio).map_err(|e| e.to_string())?;
-
-    let n = state.full_n_segments().map_err(|e| e.to_string())?;
     let mut text = String::new();
-    for i in 0..n {
-        let seg = state.full_get_segment_text(i).map_err(|e| e.to_string())?;
-        let seg = seg.trim();
-        if timestamps {
-            // セグメント開始時刻(センチ秒)を行頭に付与。AI整形が時間関係を解釈できる。
-            let t0 = state.full_get_segment_t0(i).unwrap_or(0);
-            text.push_str(&format!("[{}] {}\n", format_timestamp(t0), seg));
-        } else {
-            text.push_str(seg);
+    // 1チャンクのデコード失敗で全体(=他チャンクの成功分)を捨てないための直近エラー保持（レビュー指摘）。
+    // 全チャンクが失敗し結果が空のときだけ、このエラーを最終的に返す。
+    let mut last_err: Option<String> = None;
+
+    for (idx, spec) in chunks.iter().enumerate() {
+        let mut state = match ctx.create_state() {
+            Ok(s) => s,
+            Err(e) => {
+                last_err = Some(e.to_string());
+                continue;
+            }
+        };
+        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+        if let Some(l) = lang {
+            params.set_language(Some(l));
+        }
+        // 物理コア数でスレッド設定（論理コア全指定はメモリ帯域律速で逆効果になりうる）。
+        params.set_n_threads(threads);
+        params.set_print_progress(false);
+        params.set_print_special(false);
+        params.set_print_realtime(false);
+        // ハルシネーション/反復ループ抑制(#600)。前文脈を使うと末尾無音等での反復ループが固定され
+        // 末尾が失われるため、前文脈を使わない。チャンク化と併せ末尾欠落を根治する。温度フォールバック・
+        // entropy/logprob 閾値は whisper.cpp 既定のループ回復が有効。効果は日本語CERベンチ(ADR-0024)で監視。
+        params.set_no_context(true);
+
+        // チャンク内進捗(0-100)を全体の [idx/n, (idx+1)/n] 区間へ写像して通知する。
+        let pshare = progress.clone();
+        let base = idx as f32 / n_chunks as f32;
+        let span = 1.0 / n_chunks as f32;
+        params.set_progress_callback_safe(move |p: i32| {
+            let global = (((base + span * (p.clamp(0, 100) as f32 / 100.0)) * 100.0) as i32).clamp(0, 100);
+            if let Ok(mut f) = pshare.lock() {
+                f(global);
+            }
+        });
+
+        let chunk = &audio[spec.start..spec.end];
+        // チャンク単位で失敗を隔離: このチャンクだけ飛ばし、成功した他チャンクの文字起こしは残す。
+        // 隣接チャンクの overlap が失われた区間の一部を補う。長尺で1チャンクの一過性失敗が全体を潰さない。
+        if let Err(e) = state.full(params, chunk) {
+            eprintln!("[stt] chunk {idx} full() failed, skipped: {e}");
+            last_err = Some(e.to_string());
+            continue;
+        }
+
+        // セグメントを絶対時刻へオフセットし、担当区間 [own_start, own_end) の分だけ採用（重複排除）。
+        let n_seg = match state.full_n_segments() {
+            Ok(n) => n,
+            Err(e) => {
+                last_err = Some(e.to_string());
+                continue;
+            }
+        };
+        for i in 0..n_seg {
+            // 稀にチャンク境界の途切れトークンで UTF-8 が壊れ Err になることがある。
+            // その1セグメントだけスキップし、全体の文字起こしは捨てない（堅牢性 / #600）。
+            // 静かなデータ欠落を残さないよう stderr に痕跡を残す（レビュー指摘: 可視性）。
+            let seg = match state.full_get_segment_text(i) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("[stt] chunk {idx} segment {i} text decode failed, skipped: {e}");
+                    continue;
+                }
+            };
+            let seg = seg.trim();
+            if seg.is_empty() {
+                continue;
+            }
+            let t0_local = state.full_get_segment_t0(i).unwrap_or(0);
+            let abs_t0 = spec.offset_cs + t0_local;
+            // overlap 中点で切った担当区間外のセグメントは隣接チャンクが出すのでスキップ。
+            if abs_t0 < spec.own_start_cs || abs_t0 >= spec.own_end_cs {
+                continue;
+            }
+            // 確定セグメントの逐次通知（プレビュー用）。担当分のみ＝重複プレビューを出さない。
+            on_seg(seg.to_string());
+            if timestamps {
+                // 絶対時刻を行頭に付与。AI整形が時間関係を解釈できる。
+                text.push_str(&format!("[{}] {}\n", format_timestamp(abs_t0), seg));
+            } else {
+                text.push_str(seg);
+            }
         }
     }
-    Ok(text.trim().to_string())
+
+    if let Ok(mut f) = progress.lock() {
+        f(100);
+    }
+    let out = text.trim().to_string();
+    // 結果が空でどこかのチャンクが失敗していたら、その失敗を返す（全滅を Ok("") で握り潰さない）。
+    // 発話が無く自然に空のときは Ok("")（従来どおり）。
+    if out.is_empty() {
+        if let Some(e) = last_err {
+            return Err(e);
+        }
+    }
+    Ok(out)
 }
 
 /// コールバックなしの簡易版（統合テスト等で使用）。
@@ -615,6 +765,105 @@ mod tests {
     fn resample_same_rate_is_identity() {
         let v = vec![0.1, 0.2, 0.3];
         assert_eq!(resample_linear(&v, 16000, 16000), v);
+    }
+
+    // ─── #600 チャンク分割計画 ───
+
+    #[test]
+    fn chunk_plan_empty_audio_is_empty() {
+        assert!(chunk_plan(0, 16000, 24.0, 2.0).is_empty());
+    }
+
+    #[test]
+    fn chunk_plan_short_audio_is_single_chunk_owning_all() {
+        // 24秒以下は単一チャンク＝従来動作（短尺は無回帰）。
+        let total = 16000 * 10; // 10秒
+        let specs = chunk_plan(total, 16000, 24.0, 2.0);
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].start, 0);
+        assert_eq!(specs[0].end, total);
+        assert_eq!(specs[0].own_start_cs, 0);
+        assert_eq!(specs[0].own_end_cs, i64::MAX);
+    }
+
+    #[test]
+    fn chunk_plan_long_audio_splits_with_stride_and_overlap() {
+        // 60秒 / chunk=24s overlap=2s → stride=22s。開始: 0, 22, 44(→60で終端)。
+        let sr = 16000;
+        let total = sr as usize * 60;
+        let specs = chunk_plan(total, sr, 24.0, 2.0);
+        assert_eq!(specs.len(), 3, "0-24 / 22-46 / 44-60 の3チャンク");
+        assert_eq!(specs[0].start, 0);
+        assert_eq!(specs[1].start, sr as usize * 22);
+        assert_eq!(specs[2].start, sr as usize * 44);
+        // 各チャンクは chunk 長 or 末尾まで。
+        assert_eq!(specs[0].end, sr as usize * 24);
+        assert_eq!(specs[2].end, total, "最終チャンクは末尾まで（末尾を落とさない）");
+    }
+
+    #[test]
+    fn chunk_plan_ownership_windows_are_contiguous_and_cover_all() {
+        // 担当区間は隙間なく連続し、[0, MAX) を覆う（重複も欠落もしない）。
+        let sr = 16000;
+        let specs = chunk_plan(sr as usize * 60, sr, 24.0, 2.0);
+        assert_eq!(specs[0].own_start_cs, 0);
+        for w in specs.windows(2) {
+            assert_eq!(
+                w[0].own_end_cs, w[1].own_start_cs,
+                "隣接担当区間は境界を共有（重複/欠落なし）"
+            );
+        }
+        assert_eq!(specs.last().unwrap().own_end_cs, i64::MAX);
+        // overlap中点で切れている: chunk1 は offset(22s=2200cs)+overlap/2(100cs)=2300cs から担当。
+        assert_eq!(specs[1].own_start_cs, 2200 + 100);
+    }
+
+    #[test]
+    fn chunk_plan_pathological_overlap_does_not_explode() {
+        // overlap>=chunk の病的入力でも、overlap は chunk/2 に制限され stride>=chunk/2 を保つ。
+        // チャンク数は ~2*total/chunk 程度に収まり、爆発しない（レビュー指摘 Finding3）。
+        let sr = 16000;
+        let total = sr as usize * 120; // 120秒
+        let specs = chunk_plan(total, sr, 24.0, 30.0); // overlap>chunk
+        assert!(
+            specs.len() <= 12,
+            "stride>=chunk/2(12s) に制限され爆発しない: {} chunks",
+            specs.len()
+        );
+        // 担当区間は依然として連続（重複/欠落なし）。
+        for w in specs.windows(2) {
+            assert_eq!(w[0].own_end_cs, w[1].own_start_cs);
+        }
+        assert_eq!(specs.last().unwrap().own_end_cs, i64::MAX);
+    }
+
+    #[test]
+    fn chunk_plan_owned_region_ends_before_chunk_audio_tail() {
+        // 各チャンクの担当終端は、自分の音声末尾から overlap/2 以上手前にある
+        // （末尾帯を担当しない＝whisperの末尾ドロップに強い / レビュー指摘 Finding1）。
+        let sr = 16000;
+        let specs = chunk_plan(sr as usize * 120, sr, 24.0, 4.0);
+        let half_overlap_cs = 200; // overlap4s/2=2s=200cs
+        for spec in specs.iter().take(specs.len() - 1) {
+            let audio_end_cs = ((spec.end as f64 / sr as f64) * 100.0).round() as i64;
+            assert!(
+                spec.own_end_cs <= audio_end_cs - half_overlap_cs,
+                "担当終端 {} は音声末尾 {} より overlap/2({}) 以上手前",
+                spec.own_end_cs,
+                audio_end_cs,
+                half_overlap_cs
+            );
+        }
+    }
+
+    #[test]
+    fn chunk_plan_zero_overlap_boundaries_at_offsets() {
+        let sr = 16000;
+        let specs = chunk_plan(sr as usize * 50, sr, 24.0, 0.0);
+        // overlap=0 → stride=24s。担当境界はチャンク先頭時刻に一致。
+        for w in specs.windows(2) {
+            assert_eq!(w[0].own_end_cs, w[1].offset_cs);
+        }
     }
 
     /// symphonia デコード経路の実行時検証(#467 symphonia0.6 移行の回帰ガード)。

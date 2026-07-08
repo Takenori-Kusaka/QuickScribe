@@ -25,8 +25,18 @@ fn transcribes_known_audio_when_assets_present() {
     // 言語は QS_LANG で指定（未設定なら自動判定）。実運用ではアプリが言語を渡すため、
     // 日本語音声の英語誤検出を避けたい検証では QS_LANG=ja を指定する。
     let lang = std::env::var("QS_LANG").ok();
-    let text = quickscribe_lib::stt::transcribe(Path::new(&model), &samples, lang.as_deref())
-        .expect("文字起こしに失敗");
+    // QS_TIMESTAMPS 設定時は行頭に [HH:MM:SS] を付与する。長尺の末尾欠落(#600)の恒久検証に使う:
+    // 出力末尾のタイムスタンプが実発話末尾(例 ~11:40)まで到達しているかを確認できる。
+    let timestamps = std::env::var("QS_TIMESTAMPS").is_ok();
+    let text = quickscribe_lib::stt::transcribe_with(
+        Path::new(&model),
+        &samples,
+        lang.as_deref(),
+        timestamps,
+        |_| {},
+        |_| {},
+    )
+    .expect("文字起こしに失敗");
     eprintln!("transcript = {text:?}");
     // 精度ベンチ(#403 CER)向けに、認識テキストをファイルへ出力する(env 指定時のみ)。
     // stderr パースより堅牢に、後段の CER 計算へ渡す。
