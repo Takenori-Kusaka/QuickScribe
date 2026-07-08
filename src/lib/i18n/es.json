@@ -438,6 +438,8 @@
       "done": "Hecho",
       "error": "Falló",
       "canceled": "Cancelado"
-    }
+    },
+    "done_n": "{n} hechos",
+    "no_speech": "Sin voz"
   }
 }

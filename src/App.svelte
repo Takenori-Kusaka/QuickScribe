@@ -67,6 +67,8 @@
   const activeJobs = $derived(jobsLib.activeCount(jobs));
   // 実行中ジョブ(逐次のため高々1件)。進捗バーの対象。
   const running = $derived(jobsLib.runningJob(jobs));
+  // 未読の完了ジョブ数(完了だが作業領域で未 open)。埋もれ防止の「完了N件」表示に使う。
+  const unopenedDone = $derived(jobsLib.unopenedDoneCount(jobs));
   // 文字起こし中インジケータは jobs から導出(単一スロット transcribing を廃止)。
   const transcribing = $derived(activeJobs > 0);
   // 直近に作業領域へ読み込んだ完了ジョブID(重複自動読み込みの抑止)。
@@ -838,18 +840,25 @@
     refined = null;
     corrections = null;
     loadedJobId = j.id;
+    jobs = jobsLib.markOpened(jobs, j.id); // 開いた=未読でなくなる(未読件数/prune保護に反映)。
     status = "";
     showJobs = false;
     // 一気通貫: 自動で整形まで(プロバイダ設定済みのときのみ)。
     if (autoPipeline && refineConfigError() === null) void refineNow();
   }
 
-  // 最新の完了ジョブを作業領域へ自動読み込み(前の結果は jobs[] に残る=失わない/一覧から開ける)。
-  // 整形中(refining)は邪魔しない=完了ジョブは一覧で待ち、後から開ける。
+  // 作業領域が空のときだけ最新の完了ジョブを自動読み込みする(=作業中の結果や編集を上書きしない)。
+  // 空でない/整形中で読み込めないときは、埋もれないよう一覧を自動展開して気づけるようにする
+  // (前の結果も新しい結果も失わない＝取りこぼさない / レビュー指摘)。
   function autoLoadNewestDone() {
     const j = jobsLib.newestDone(jobs);
     if (!j || loadedJobId === j.id) return;
-    if (!refining) loadJob(j);
+    const areaFree = transcript === null && refined === null && !refining;
+    if (areaFree) {
+      loadJob(j);
+    } else {
+      showJobs = true; // 未読の完了があることを可視化(一覧を開く)。
+    }
   }
 
   // 失敗ジョブの再試行(Phase3で backend cancel/retry を配線するまでは、音声を再送できないため
@@ -1132,7 +1141,9 @@
          控えめ運用: 既定は「処理中N件」バッジ＋実行中の細い進捗のみ。展開で行型一覧(状態/進捗/開く)。
          aria-live=polite で状態変化を静かに読み上げる。file入力(ジョブ非経由)は busy/status で表示。 -->
     {#if jobs.length || busy || status}
-      <div class="panel jobs-panel" role="status" aria-live="polite">
+      <div class="panel jobs-panel">
+        <!-- a11y: 進捗の細かな変化を全部読み上げてスパムしないよう、live 領域は「粗いサマリ文言」だけに限定。
+             進捗バー・一覧は live 領域の外に置く（レビュー指摘）。 -->
         <div class="jobs-head">
           {#if activeJobs > 0}
             <span class="spinner" aria-hidden="true"></span>
@@ -1142,7 +1153,9 @@
               onclick={() => (showJobs = !showJobs)}
               aria-expanded={showJobs}
             >
-              {$_("jobs.processing_n", { values: { n: activeJobs } })}
+              <span class="jobs-summary" role="status" aria-live="polite">
+                {$_("jobs.processing_n", { values: { n: activeJobs } })}
+              </span>
               <span class="chev" aria-hidden="true">{showJobs ? "▾" : "▸"}</span>
             </button>
           {:else if jobs.length}
@@ -1152,17 +1165,23 @@
               onclick={() => (showJobs = !showJobs)}
               aria-expanded={showJobs}
             >
-              {$_("jobs.recent")}
+              <span class="jobs-summary" role="status" aria-live="polite">
+                {unopenedDone > 0
+                  ? $_("jobs.done_n", { values: { n: unopenedDone } })
+                  : $_("jobs.recent")}
+              </span>
               <span class="chev" aria-hidden="true">{showJobs ? "▾" : "▸"}</span>
             </button>
           {:else}
             <span class="spinner" aria-hidden="true"></span>
-            <span class="status-text">{status || $_("results.processing")}</span>
+            <span class="status-text" role="status" aria-live="polite"
+              >{status || $_("results.processing")}</span
+            >
           {/if}
           {#if status && activeJobs > 0}<span class="status-text muted">{status}</span>{/if}
         </div>
 
-        <!-- 実行中ジョブの進捗(逐次のため高々1件)。畳んでいても見える細いバー。 -->
+        <!-- 実行中ジョブの進捗(逐次のため高々1件)。畳んでいても見える細いバー。live 領域外(読み上げ抑制)。 -->
         {#if running}
           <div
             class="progress"
@@ -1190,6 +1209,8 @@
                   <button type="button" class="btn small ghost" onclick={() => loadJob(j)}>
                     {$_("jobs.open")}
                   </button>
+                {:else if j.status === "done"}
+                  <span class="job-state muted">{$_("jobs.no_speech")}</span>
                 {:else if j.status === "error"}
                   <span class="job-err">{errorText(j.errorCode ?? "", $_)}</span>
                 {/if}
@@ -2877,6 +2898,9 @@
   .jobs-toggle .chev {
     color: var(--color-text-muted);
     font-size: 0.8rem;
+  }
+  .jobs-summary {
+    display: inline;
   }
   .status-text.muted {
     color: var(--color-text-muted);

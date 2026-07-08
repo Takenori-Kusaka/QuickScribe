@@ -438,6 +438,8 @@
       "done": "完成",
       "error": "失败",
       "canceled": "已取消"
-    }
+    },
+    "done_n": "完成 {n} 个",
+    "no_speech": "无语音"
   }
 }

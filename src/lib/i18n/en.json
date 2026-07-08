@@ -438,6 +438,8 @@
       "done": "Done",
       "error": "Failed",
       "canceled": "Canceled"
-    }
+    },
+    "done_n": "{n} done",
+    "no_speech": "No speech"
   }
 }

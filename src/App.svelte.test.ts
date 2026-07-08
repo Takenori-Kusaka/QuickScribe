@@ -359,22 +359,22 @@ describe("App.svelte バックエンドイベント", () => {
     expect(await screen.findByRole("progressbar")).toBeInTheDocument();
   });
 
-  it("複数ジョブを取りこぼさず一覧に積み、過去の完了ジョブを開ける（Model A）", async () => {
+  it("作業中に次ジョブが完了しても上書きせず、一覧から開ける（クロバー防止/取りこぼさない）", async () => {
     render(App);
     await waitForListeners();
-    // 2ジョブを連続で完了。最新(2)が作業領域へ自動読み込みされる。
+    // job1 完了 → 作業領域が空なので自動読み込み。
     await emitJobCreated(1);
     await emitJobDone(1, "最初のジャーナル本文");
+    expect(await screen.findByText("最初のジャーナル本文")).toBeInTheDocument();
+    // job1 を表示・整形中に job2 が完了 → 作業領域(job1)を上書きしない。
     await emitJobCreated(2);
     await emitJobDone(2, "次のジャーナル本文");
-    // 一覧を展開（activeJobs=0 なので「最近のジョブ」トグル）。
-    await fireEvent.click(await screen.findByText("最近のジョブ"));
-    // 過去ジョブ(1)を一覧から開く（1件も失っていない＝行が残っている）。
+    expect(screen.getByText("最初のジャーナル本文")).toBeInTheDocument();
+    // 未読の完了があるので一覧が自動展開される。job2 を一覧から開く。
     const openBtns = await screen.findAllByRole("button", { name: "開く" });
     expect(openBtns.length).toBe(2);
-    await fireEvent.click(openBtns[0]);
-    // 開いた本文が作業領域に読み込まれる。
-    expect(await screen.findByText("最初のジャーナル本文")).toBeInTheDocument();
+    await fireEvent.click(openBtns[openBtns.length - 1]);
+    expect(await screen.findByText("次のジャーナル本文")).toBeInTheDocument();
   });
 
   it("status イベントでステータス文言が表示される", async () => {
