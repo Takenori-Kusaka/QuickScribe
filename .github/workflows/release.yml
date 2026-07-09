@@ -197,28 +197,6 @@ jobs:
         run: echo "LIBCLANG_PATH=$((Get-Command clang).Source | Split-Path)" >> $env:GITHUB_ENV
         shell: pwsh
 
-      # CUDA Toolkit(nvcc+cudart+cublas)。VS統合は入れず Ninja 生成系でビルドする
-      # (ローカル実証済み手順 / docs/research/gpu-backend-options.md)。
-      - uses: Jimver/cuda-toolkit@v0.2.21
-        id: cuda
-        with:
-          cuda: "12.8.0"
-          method: network
-          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "nvrtc_dev"]'
-
-      - name: Setup MSVC dev env (Ninja+nvcc に cl が必要)
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: amd64
-      - name: Set CUDA build env (Ninja / GPU非搭載ランナーのためアーキ明示)
-        shell: bash
-        run: |
-          {
-            echo "CMAKE_GENERATOR=Ninja"
-            # ランナーにGPUが無いため native 検出不可。Pascal〜Ada を明示(61=GTX10xx/75=RTX20xx/86=RTX30xx/89=RTX40xx)。
-            echo "CMAKE_CUDA_ARCHITECTURES=61;75;86;89"
-          } >> "$GITHUB_ENV"
-
       - name: Install npm dependencies
         run: npm ci
 
@@ -250,6 +228,30 @@ jobs:
         run: |
           VERSION="${TAG#v}"
           perl -0pi -e 's/^version = "[^"]*"/version = "'"$VERSION"'"/m if !$done++' src-tauri/Cargo.toml
+
+      # CUDA Toolkit(nvcc+cudart+cublas)。VS統合は入れず Ninja 生成系でビルドする
+      # (ローカル実証済み手順 / docs/research/gpu-backend-options.md)。
+      # 注意: ilammy/msvc-dev-cmd は必ず cargo-about(THIRD-PARTY生成)より後に置く。
+      # MSVC環境をPATHへ展開すると、bashステップの cargo が Git の /usr/bin/link と衝突しリンク失敗する。
+      - uses: Jimver/cuda-toolkit@v0.2.21
+        id: cuda
+        with:
+          cuda: "12.8.0"
+          method: network
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "nvrtc_dev"]'
+
+      - name: Setup MSVC dev env (Ninja+nvcc に cl が必要)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+      - name: Set CUDA build env (Ninja / GPU非搭載ランナーのためアーキ明示)
+        shell: bash
+        run: |
+          {
+            echo "CMAKE_GENERATOR=Ninja"
+            # ランナーにGPUが無いため native 検出不可。Pascal〜Ada を明示(61=GTX10xx/75=RTX20xx/86=RTX30xx/89=RTX40xx)。
+            echo "CMAKE_CUDA_ARCHITECTURES=61;75;86;89"
+          } >> "$GITHUB_ENV"
 
       - name: Stage CUDA runtime DLLs for bundling (インストール先直下へ同梱)
         shell: pwsh

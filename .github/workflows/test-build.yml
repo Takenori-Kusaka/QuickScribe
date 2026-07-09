@@ -47,7 +47,23 @@ jobs:
         run: echo "LIBCLANG_PATH=$((Get-Command clang).Source | Split-Path)" >> $env:GITHUB_ENV
         shell: pwsh
 
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Generate icons
+        run: npm run icons
+
+      - name: Generate THIRD-PARTY-NOTICES (cargo-about / 法的MUST・ADR-0010)
+        shell: bash
+        run: |
+          cargo install cargo-about --locked --features cli
+          cd src-tauri
+          cargo about generate about.hbs > THIRD-PARTY-NOTICES.txt
+          wc -l THIRD-PARTY-NOTICES.txt
+
       # --- CUDA変種(ADR-0027 / inputs.cuda=true のみ) ---
+      # 注意: ilammy/msvc-dev-cmd は必ず cargo-about(THIRD-PARTY生成)より後に置く。
+      # MSVC環境をPATHへ展開すると、bashステップの cargo が Git の /usr/bin/link と衝突しリンク失敗する。
       - uses: Jimver/cuda-toolkit@v0.2.21
         if: ${{ inputs.cuda }}
         with:
@@ -76,20 +92,6 @@ jobs:
           Copy-Item "$bin/cudart64_*.dll" src-tauri/cuda-dlls/
           Copy-Item "$bin/cublas64_*.dll" src-tauri/cuda-dlls/
           Copy-Item "$bin/cublasLt64_*.dll" src-tauri/cuda-dlls/
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Generate icons
-        run: npm run icons
-
-      - name: Generate THIRD-PARTY-NOTICES (cargo-about / 法的MUST・ADR-0010)
-        shell: bash
-        run: |
-          cargo install cargo-about --locked --features cli
-          cd src-tauri
-          cargo about generate about.hbs > THIRD-PARTY-NOTICES.txt
-          wc -l THIRD-PARTY-NOTICES.txt
 
       # updater が公開鍵設定済みのため tauri build は updater 成果物の署名を要求する。
       # ここでは公開リリースも latest.json 発行もしない（成果物アップロードのみ）が、
