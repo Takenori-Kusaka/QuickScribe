@@ -26,7 +26,8 @@ env:
 jobs:
   test-build:
     name: test-build (windows)
-    runs-on: windows-latest
+    # cuda=true は windows-2022(VS2022) 固定: windows-latest の VS18 は CUDA 12.8 nvcc が拒否する。
+    runs-on: ${{ inputs.cuda && 'windows-2022' || 'windows-latest' }}
     steps:
       - uses: actions/checkout@v7
         with:

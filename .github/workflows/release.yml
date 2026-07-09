@@ -173,7 +173,9 @@ jobs:
     name: release (windows-x64-cuda / ADR-0027)
     needs: release
     if: needs.release.result == 'success'
-    runs-on: windows-latest
+    # windows-latest は VS18(MSVC 14.5x) 移行済みで CUDA 12.8 の nvcc がホストコンパイラとして
+    # 拒否する(実検出)。VS2022(MSVC 14.4x) を持つ windows-2022 に固定する。
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v7
         with:
