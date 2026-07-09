@@ -29,8 +29,8 @@
 ## 段階実装（ADR-0006: 削らず段階で全部やる）
 
 - **Phase 1（本ADR・実装）**: CUDA 変種の release ジョブ＋feature＋バックエンド可視化＋NVIDIA 通知＋test-build 検証入力。インストーラ命名で「NVIDIA GPU（ドライバ）必須」を明示（nvcuda.dll はドライバ由来のため、非搭載機では起動不可）。
-- **Phase 2**: NSIS プレインストールフックで NVIDIA ドライバ（nvcuda.dll）検出→非搭載機に警告・中止（ADR-0012 Phase2 の CPUガード設計を流用）。updater custom target（`windows-x86_64-cuda`）で変種内自動更新を有効化。
-- **Phase 3**: Vulkan 変種（ベンダー横断・DLL 不要）。GPU 無し環境でのフォールバック挙動の実機検証をゲートに。
+- **Phase 2（実装済み 2026-07-09 / 研究 gpu-driver-prerequisite-ux.md）**: NSIS プレインストールフック（`nsis-hooks-cuda.nsh`）で NVIDIA ドライバ（nvcuda.dll）検出→未検出なら **[入手/続行(CPU)/中止] の3択ダイアログ**（①誘導②理由③スキップ可）。アプリ内も「GPU利用不可→CPU」表示に **[ドライバを入手]** リンク（`open_external` コマンド・NVIDIA公式DLページ）。ドライバは再配布不可のため**同梱・自動導入はしない**（NVIDIA公式remedyも検出+案内）。最低ドライバ版は minor-version互換で **≥528.33**（570ではない）。updater custom target は Phase2 残（当面 CUDA版は手動更新・その旨アプリ内表示）。
+- **Phase 3**: Vulkan 変種（ベンダー横断・DLL 不要・Vulkan対応ドライバのみ＝ドライバ案内負担が最小）。**GPU 無し環境での CPU 自動フォールバック挙動の実機検証をゲート**（成立すれば「Vulkan単一ビルド＋CPUフォールバック」で CPU専用ビルドを不要化し、配布を CUDA/Vulkan+CPU-fallback に簡素化できる可能性）。RTX 4060 で CUDA と速度実測し既定GPU変種を判断。
 - **Phase 4（長期・要ゲート）**: GGML_BACKEND_DL による1配布物化（カスタム sys クレート投資。Vulkan/CUDA 変種の運用負荷が顕在化したら着手判断）。
 
 ## 結果・トレードオフ

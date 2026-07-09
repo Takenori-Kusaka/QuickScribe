@@ -212,6 +212,37 @@ fn open_vault<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<(), String>
     open_in_file_manager(&dir)
 }
 
+/// 外部URLを既定ブラウザで開く（ADR-0027: NVIDIAドライバ入手ページ等への誘導）。
+/// 許可は https のみ（任意URL実行の防止）。open_vault と同じ OS ネイティブ起動を使う。
+#[tauri::command]
+fn open_external(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") {
+        return Err(errcode::E_UNSUPPORTED_FORMAT.into());
+    }
+    #[cfg(windows)]
+    let mut cmd = {
+        // explorer は URL を既定ブラウザで開く。
+        let mut c = std::process::Command::new("explorer");
+        c.arg(&url);
+        c
+    };
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("open");
+        c.arg(&url);
+        c
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut cmd = {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(&url);
+        c
+    };
+    cmd.spawn()
+        .map(|_| ())
+        .map_err(|e| errcode::ec(errcode::E_FILE_MANAGER, e))
+}
+
 /// OS別にディレクトリをファイルマネージャで開く（待たずに起動）。
 fn open_in_file_manager(dir: &std::path::Path) -> Result<(), String> {
     #[cfg(windows)]
@@ -1889,6 +1920,7 @@ pub fn run() {
             list_audio_sources,
             list_whisper_models,
             stt_backend,
+            open_external,
             start_recording,
             stop_recording,
             list_jobs,

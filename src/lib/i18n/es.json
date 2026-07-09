@@ -165,7 +165,8 @@
     "gpu_unavailable": "La GPU no está disponible en este entorno (controlador NVIDIA no detectado). Se ejecuta en CPU.",
     "backend_cpu": "versión CPU",
     "backend_cuda": "versión GPU CUDA",
-    "cuda_manual_update": "Las actualizaciones de la versión GPU (CUDA) son manuales. Descarga el último x64-cuda-setup.exe desde la página de versiones."
+    "cuda_manual_update": "Las actualizaciones de la versión GPU (CUDA) son manuales. Descarga el último x64-cuda-setup.exe desde la página de versiones.",
+    "get_driver": "Obtener el controlador NVIDIA"
   },
   "nudge": {
     "title": "¿Hora del diario de hoy?",

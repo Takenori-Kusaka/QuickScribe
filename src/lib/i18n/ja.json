@@ -165,7 +165,8 @@
     "gpu_unavailable": "この環境ではGPUを利用できません（NVIDIAドライバ未検出）。CPUで実行します。",
     "backend_cpu": "CPU版",
     "backend_cuda": "GPU版 CUDA",
-    "cuda_manual_update": "GPU版(CUDA)の更新は手動です。リリースページから最新の x64-cuda-setup.exe を取得してください。"
+    "cuda_manual_update": "GPU版(CUDA)の更新は手動です。リリースページから最新の x64-cuda-setup.exe を取得してください。",
+    "get_driver": "NVIDIAドライバを入手"
   },
   "nudge": {
     "title": "今日のジャーナル、どうですか？",
