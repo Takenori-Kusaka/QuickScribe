@@ -17,6 +17,14 @@ fn main() {
         if std::env::var("CARGO_FEATURE_CUDA").is_ok() {
             println!("cargo::rustc-link-arg=/DELAYLOAD:nvcuda.dll");
         }
+        // Vulkan変種(ADR-0027 Phase3): whisper-rs-sys が vulkan-1.dll を静的インポートするため、
+        // ローダ未導入(GPUドライバ無しの最小Windows)ではEXEが起動時解決に失敗して起動不能になる。
+        // 遅延ロードにすれば解決は最初のVulkan呼び出し時に延び、GPU無し機でも起動できる
+        // (起動時の vulkan_device_present()=ash動的ロードでデバイス0を検出→use_gpu=false=Vulkan API不使用。
+        //  デバイス有りの時だけGPU経路に入り、その時は vulkan-1.dll が在るので遅延解決が成功する)。
+        if std::env::var("CARGO_FEATURE_VULKAN").is_ok() {
+            println!("cargo::rustc-link-arg=/DELAYLOAD:vulkan-1.dll");
+        }
     }
     tauri_build::build()
 }

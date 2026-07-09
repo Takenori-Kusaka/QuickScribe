@@ -15,6 +15,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # GPU(CUDA)ビルド変種(ADR-0027)。既定はCPU。リリースの cuda ジョブ/test-build(cuda) が有効化する。
 # NVIDIA GPU+ドライバ必須。cudart/cublas/cublasLt DLL の同梱は tauri.cuda.conf.json 側。
 cuda = ["whisper-rs/cuda"]
+# GPU(Vulkan)ビルド変種(ADR-0027 Phase3)。ベンダー横断(NVIDIA/AMD/Intel)・DLL同梱不要・
+# Vulkan対応ドライバのみ。ビルドに VULKAN_SDK が必要。
+# 起動時にVulkan実デバイスを列挙(ash)し、有る時だけGPUを使う=whisperのGPU初期化abort回避。
+vulkan = ["whisper-rs/vulkan", "dep:ash"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -55,6 +59,10 @@ opus = "0.3"
 ogg = "0.9"
 # 文字起こし(ローカル whisper.cpp / ADR-0002)。whisper-rs が whisper.cpp をビルドする。
 whisper-rs = "0.14"
+# Vulkan物理デバイスの安全な列挙(起動時判定 / ADR-0027 Phase3)。vulkan feature時のみ。
+# whisperのGPU初期化はデバイス無しだとC++例外でabort(Rust捕捉不可)するため、その前に
+# ローダのC API(vkEnumeratePhysicalDevices)でデバイス数を数える。ashは実行時dlopen(loaded)。
+ash = { version = "0.38", default-features = false, features = ["loaded"], optional = true }
 # 音声デコード(純Rust)。mp3等の圧縮音声/WAVを読む(S1.6)。外部ffmpeg不要・配布が軽い。
 symphonia = { version = "0.6", default-features = false, features = [
     "mp3",
