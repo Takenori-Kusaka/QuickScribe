@@ -3,7 +3,7 @@
 // 主要フロー(録音トグル/ジャーナル/メモ整形/設定操作)を @testing-library/svelte で駆動し、
 // App.svelte の実効カバレッジを上げる。Tauri の各APIはモック(invoke はコマンド別に返す)。
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/svelte";
+import { render, screen, fireEvent, waitFor } from "@testing-library/svelte";
 
 // i18n は import 時に起動ロケールを解決する。App の import より前に locale=ja と
 // provider=ollama(鍵不要=整形が通る)を固定する(hoistedは全importより先に走る)。
@@ -703,5 +703,30 @@ describe("App.svelte GPUバックエンド表示(ADR-0028)", () => {
     const cb = (await screen.findByLabelText(/GPUで文字起こし/)) as HTMLInputElement;
     expect(cb.disabled).toBe(true);
     expect(await screen.findByText(/対応GPUが見つかりません/)).toBeInTheDocument();
+  });
+
+  it("撤去済みモデル(kotoba)を選択中の既存ユーザーはモデル選択が base へ正規化される(ADR-0029)", async () => {
+    // 旧設定で kotoba を保存していた状態を再現。カタログには kotoba が無い。
+    localStorage.setItem("whisperModel", "kotoba");
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_whisper_models")
+        return [
+          { id: "base", label: "標準 base", speed: "fast" },
+          { id: "large-v3-turbo", label: "turbo", speed: "slow" },
+        ];
+      return defaultInvoke(cmd);
+    });
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    await gotoTab("文字起こし");
+    // モデル選択(turbo オプションを持つ combobox)を特定し、kotoba→base へ正規化されたことを確認。
+    const modelSelect = await waitFor(() => {
+      const s = (screen.getAllByRole("combobox") as HTMLSelectElement[]).find((el) =>
+        Array.from(el.options).some((o) => o.value === "large-v3-turbo"),
+      );
+      if (!s || s.value !== "base") throw new Error("not normalized yet");
+      return s;
+    });
+    expect(modelSelect.value).toBe("base");
   });
 });

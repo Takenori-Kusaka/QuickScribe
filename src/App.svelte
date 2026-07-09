@@ -250,6 +250,16 @@
   // ローカル whisper のモデル選択（S2.2）。クラウドの sttModel とは分離。永続化する。
   // 選択可能なモデル一覧(whisperModels)は device.loadWhisperModels() で列挙する。
   let whisperModel = $state<string>(""); // 空=既定 base
+  // 撤去済みモデル(kotoba等 / ADR-0029)を選択したまま更新した既存ユーザー向けの表示正規化。
+  // 一覧が読み込まれた後、保存済みidがカタログに無ければ base(常に存在する頑健な既定)へ戻す。
+  // バックエンドは model_for で未知id→base に安全マップ済み＝機能は元々問題ないが、選択ドロップ
+  // ダウンに該当optionが無い(selectedIndex=-1)表示を一覧と一致させる。base は条件が偽=再代入せず収束。
+  $effect(() => {
+    const ids = (device.whisperModels ?? []).map((m) => m.id);
+    if (whisperModel && ids.length > 0 && !ids.includes(whisperModel)) {
+      whisperModel = ids.includes("base") ? "base" : ids[0];
+    }
+  });
   // クラウドSTTのAPIキー（プロバイダごと）。keyringに "sttKey:<provider>" で保管。
   let sttKeys = $state<Record<string, string>>({
     groq: "",
