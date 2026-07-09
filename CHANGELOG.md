@@ -5,6 +5,19 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [1.5.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.4.0...v1.5.0) (2026-07-09)
+
+配布とモデルカタログを簡素化しました（[ADR-0029](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0029-simplify-offering-drop-cuda-and-kotoba.md)）。GPU文字起こしは v1.4.0 の単一 Vulkan ビルドで CPU〜あらゆる GPU を1つのインストーラでカバーできるため、価値の薄い選択肢を整理しました。
+
+### ♻️ 変更 / Changes
+
+* **CUDA 変種を廃止**しました。Vulkan は NVIDIA GPU でも CUDA とほぼ同速（実測で差 約11%）でありながら、専用ドライバや DLL 同梱を必要とせず単一インストーラで完結します。2つ目の別インストーラを保守する意味が無くなったため撤去しました（[#631](https://github.com/Takenori-Kusaka/QuickScribe/pull/631)）。
+* **kotoba-whisper モデルをモデル一覧から撤去**しました。本アプリのコア用途である自発的な発話（会話寄り）では精度が崩れやすく（会話 CER 実測で large-v3-turbo の約2.7倍）、長尺で末尾が欠落する弱点があり、開発元の重み更新も停止しているためです。**kotoba を選択していた場合は、自動的に安全な既定モデル（base）で動作します**。日本語の推奨は引き続き large-v3-turbo です（[#631](https://github.com/Takenori-Kusaka/QuickScribe/pull/631)）。
+
+### 🔧 雑務 / Chore
+
+* release 1.5.0 ([e6b5e6c](https://github.com/Takenori-Kusaka/QuickScribe/commit/e6b5e6c56a2b8b4547b158ab31181d0b91fbbff7))
+
 ## [1.4.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.3.0...v1.4.0) (2026-07-09)
 
 
