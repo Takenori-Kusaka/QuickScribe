@@ -5,6 +5,19 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [1.4.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.3.0...v1.4.0) (2026-07-09)
+
+
+### ✨ 新機能 / Features
+
+* **gpu:** CUDA変種のドライバ前提UX（NSIS案内＋アプリ内リンク / ADR-0027 Phase2） ([#628](https://github.com/Takenori-Kusaka/QuickScribe/issues/628)) ([b5abf7e](https://github.com/Takenori-Kusaka/QuickScribe/commit/b5abf7e6bbfa819ae2e5e8c3fc0a7c9f523c7d6e))
+* **stt:** GPU配布を単一Vulkanビルドへ一本化＋起動時デバイス検出（ADR-0028） ([#629](https://github.com/Takenori-Kusaka/QuickScribe/issues/629)) ([cf89c3d](https://github.com/Takenori-Kusaka/QuickScribe/commit/cf89c3dd925f19ca6d1f39a8f4507ec1d0e530d4))
+
+
+### 📝 ドキュメント / Docs
+
+* **research:** GPU変種のドライバ前提UX調査（案内/自動導入の可否・最低ドライバ版・Vulkan代替） ([c64e1e9](https://github.com/Takenori-Kusaka/QuickScribe/commit/c64e1e93ccb9b83c00a28a108175349724cfdbb1))
+
 ## [1.3.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.2.1...v1.3.0) (2026-07-09)
 
 
