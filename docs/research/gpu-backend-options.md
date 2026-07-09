@@ -29,10 +29,20 @@
 - **CUDA 変種**: cudart/cublas/cublasLt の**DLL同梱が必要**（ドライバのみでは動かない。Windows に static cublas が無いため静的リンクでも回避不可）。**CUDA EULA Attachment A で再配布可・MIT配布と両立**（条件: SDK単体配布禁止/実質機能/自アプリのみアクセス/NVIDIA通知文＝サードパーティ表記）。
 - 「CUDA+Vulkan 同梱静的ビルド＋実行時 --device 選択」は whisper.cpp/whisper-rs 文脈で未確認（1-2 棄却）。
 
-## D3: RTX 4060 の実測 RTF（research では未確定 → 実機で実測）
+## D3: RTX 4060 の実測 RTF（2026-07-09 実機で確定）
 
-- 3票検証を通過した RTX 4060/Ada 世代の whisper.cpp 実測 RTF は**存在しなかった**。
-- → **実機ベンチが最短の確定手段**。本セッションで CUDA Toolkit v12.8 の存在を確認し、vendored `cuda` feature でビルドして実測中（結果は本ファイルに追記）。
+**vendored 0.13.1 の `cuda` feature でエンドツーエンドにビルド・動作を実証**（#569 不要を実機確認）。
+実録音 rec-20260708-184059.opus（16:44・日本語独り語り）・large-v3-turbo q5・#600チャンク化：
+
+| 実行 | 所要 | RTF | 末尾到達 |
+|---|---|---|---|
+| CPU (Ryzen 3700X) | 196.3分 | 11.7 | [16:38] ✓ |
+| **GPU (RTX 4060, CUDA)** | **5.48分** | **0.33** | [16:38] ✓ |
+
+- **約36倍の短縮**。品質同等（transcript 行数・末尾到達とも同等）。VRAM 8GB で問題なし（`using device CUDA0` 確認）。
+- 60秒スライス単体は173.8s＝**固定オーバーヘッド（モデルGPU転送+CUDA初期化）が約2.5分**を占め、チャンクあたりの限界速度は ~3.4s/20sストライド（**限界RTF≈0.17**）。短い録音ほど固定費が支配的、長い録音ほど RTF→0.17 に漸近。
+- ビルド手順（Windows）: CUDA Toolkit 12.8 + **Ninja 生成系**（`CMAKE_GENERATOR=Ninja`・vcvars64 環境・`CMAKE_GENERATOR_INSTANCE` 除去）で VS統合ファイル不要。stale CMakeCache（VS生成系の残骸）は削除が必要。ビルド約20分。
+- Vulkan 変種の実測は未実施（VULKAN_SDK 未導入）。CUDA 実証により「GPU で桁が変わる」は確定。
 
 ## D4: CPU並列処理オプション
 
