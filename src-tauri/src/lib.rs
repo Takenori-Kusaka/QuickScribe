@@ -221,9 +221,11 @@ fn open_external(url: String) -> Result<(), String> {
     }
     #[cfg(windows)]
     let mut cmd = {
-        // explorer は URL を既定ブラウザで開く。
-        let mut c = std::process::Command::new("explorer");
-        c.arg(&url);
+        // `cmd /c start "" <url>` で URL を既定ブラウザで開く（explorer の URL 処理より確実 / レビュー指摘）。
+        // start の第1引数はウィンドウタイトル扱いのため空文字を必ず挟む。url は shell 経由でなく
+        // 引数として渡す（open_external が https 限定・単一引数 spawn＝注入不可）。
+        let mut c = std::process::Command::new("cmd");
+        c.args(["/C", "start", "", &url]);
         c
     };
     #[cfg(target_os = "macos")]

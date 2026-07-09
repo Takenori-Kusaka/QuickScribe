@@ -14,7 +14,9 @@
   qs_driver_missing:
     ${EnableX64FSRedirection}
     ; ③スキップ可(続行=CPUで動作)/①入手/中止 の3択。②理由=速度差を本文で明示。
-    MessageBox MB_YESNOCANCEL|MB_ICONINFORMATION \
+    ; /SD IDNO: サイレント/無人インストール(/S・MDM等)では「続行(CPUで動作)」を自動選択し、
+    ; ダイアログでハング・中止しない(レビュー指摘)。
+    MessageBox MB_YESNOCANCEL|MB_ICONINFORMATION|MB_DEFBUTTON2 /SD IDNO \
       "これは QuickScribe の GPU版(CUDA)です。$\r$\n$\r$\nNVIDIA GPU のドライバが見つかりませんでした。$\r$\nGPUがあると文字起こしが大幅に高速になります(実測で約36倍)。$\r$\nドライバが無くても、この版は自動的にCPUで動作します(遅くなります)。$\r$\n$\r$\n[はい] NVIDIAドライバの入手ページを開く$\r$\n[いいえ] このまま続行する(CPUで動作)$\r$\n[キャンセル] インストールを中止する" \
       IDYES qs_open_driver IDNO qs_continue
     ; キャンセル → 中止
