@@ -11,6 +11,12 @@ fn main() {
     if std::env::var("CARGO_CFG_WINDOWS").is_ok() {
         println!("cargo::rustc-link-arg=/DELAYLOAD:comctl32.dll");
         println!("cargo::rustc-link-arg=delayimp.lib");
+        // CUDA変種(ADR-0027): nvcuda.dll はNVIDIAドライバ由来で同梱できない。遅延ロードにより
+        // 非搭載機でもEXEが起動できるようにする(use_gpu=false 判定時はCUDA APIを一切呼ばない設計と
+        // 併せて、CUDA変種がGPU無し環境でもCPU実行で動作する)。cudart/cublas等はインストーラ同梱。
+        if std::env::var("CARGO_FEATURE_CUDA").is_ok() {
+            println!("cargo::rustc-link-arg=/DELAYLOAD:nvcuda.dll");
+        }
     }
     tauri_build::build()
 }

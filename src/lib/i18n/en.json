@@ -159,7 +159,13 @@
     "tip_refine_warn_1": "⚠ Cloud refinement ",
     "tip_refine_warn_strong": "sends your transcript off your device (to {provider})",
     "tip_refine_warn_2": ". Each provider states it does not use API input for training by default, but if privacy matters use “Local (Ollama)”. Keys are stored in this device’s secure storage.",
-    "version_title": "App version (for sharing results)"
+    "version_title": "App version (for sharing results)",
+    "use_gpu": "Transcribe on GPU (CUDA, fast)",
+    "tip_gpu": "Runs transcription on your NVIDIA GPU (much faster in our measurements). Turn off to run on CPU if you hit issues.",
+    "gpu_unavailable": "GPU is not available in this environment (NVIDIA driver not detected). Running on CPU.",
+    "backend_cpu": "CPU build",
+    "backend_cuda": "GPU build CUDA",
+    "cuda_manual_update": "Updates for the GPU (CUDA) build are manual. Get the latest x64-cuda-setup.exe from the releases page."
   },
   "nudge": {
     "title": "Time for today's journal?",

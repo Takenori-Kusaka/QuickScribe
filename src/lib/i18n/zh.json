@@ -159,7 +159,13 @@
     "tip_refine_warn_1": "⚠ 云端整理会",
     "tip_refine_warn_strong": "将文字稿发送到设备之外（发往 {provider}）",
     "tip_refine_warn_2": "。各服务商均声明默认不会将 API 输入用于训练，但如重视隐私请使用「本地（Ollama）」。密钥保存在本设备的安全存储区。",
-    "version_title": "应用版本（用于共享结果）"
+    "version_title": "应用版本（用于共享结果）",
+    "use_gpu": "使用GPU转写（CUDA·高速）",
+    "tip_gpu": "在NVIDIA GPU上运行转写（实测大幅提速）。如遇问题可关闭以使用CPU。",
+    "gpu_unavailable": "此环境无法使用GPU（未检测到NVIDIA驱动）。将使用CPU运行。",
+    "backend_cpu": "CPU版",
+    "backend_cuda": "GPU版 CUDA",
+    "cuda_manual_update": "GPU版(CUDA)需手动更新。请从发布页面获取最新的 x64-cuda-setup.exe。"
   },
   "nudge": {
     "title": "今天的日记写了吗？",

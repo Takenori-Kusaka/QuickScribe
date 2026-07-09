@@ -240,6 +240,7 @@ pub fn transcribe_with<P, S>(
     audio: &[f32],
     lang: Option<&str>,
     timestamps: bool,
+    use_gpu: bool,
     on_progress: P,
     on_segment: S,
 ) -> Result<String, String>
@@ -248,11 +249,6 @@ where
     S: FnMut(String) + Send + 'static,
 {
     let model = model_path.to_str().ok_or(crate::errcode::E_STT_MODEL_PATH)?;
-    // モデル(ctx)は1回だけロードし、各チャンクはそのstateを都度作って回す（再ロード回避）。
-    let ctx = WhisperContext::new_with_params(model, WhisperContextParameters::default())
-        .map_err(|e| crate::errcode::ec(crate::errcode::E_STT_MODEL_LOAD, e))?;
-    let threads = num_cpus::get_physical().max(1) as i32;
-
     // #600 根治: 長尺を chunk_secs 未満に分割し個別デコードする。whisper.cpp の sequential seek が
     // 長尺で末尾を落とす構造的問題を回避する（短尺は単一チャンク＝従来動作で無回帰）。
     let chunks = chunk_plan(audio.len(), WHISPER_SR, CHUNK_SECS, OVERLAP_SECS);
@@ -260,113 +256,141 @@ where
         return Ok(String::new());
     }
     let n_chunks = chunks.len();
+    let threads = num_cpus::get_physical().max(1) as i32;
     // 進捗はチャンクをまたいで 0-100 に正規化して通知する（複数の full() 呼び出しを1本の進捗に集約）。
     let progress = std::sync::Arc::new(std::sync::Mutex::new(on_progress));
     let mut on_seg = on_segment;
-    let mut text = String::new();
-    // 1チャンクのデコード失敗で全体(=他チャンクの成功分)を捨てないための直近エラー保持（レビュー指摘）。
-    // 全チャンクが失敗し結果が空のときだけ、このエラーを最終的に返す。
-    let mut last_err: Option<String> = None;
 
-    for (idx, spec) in chunks.iter().enumerate() {
-        let mut state = match ctx.create_state() {
-            Ok(s) => s,
-            Err(e) => {
-                last_err = Some(e.to_string());
+    // GPU(CUDA変種)は設定・実行環境判定に従う(ADR-0027)。GPUの失敗は「ctx初期化」だけでなく
+    // 「チャンク実行時(create_state/full)のVRAM不足等」が現実的な失敗面（レビュー指摘）のため、
+    // どちらでも CPU で全体を再試行し「速度は落ちても文字起こしは必ず完了する」を保証する。
+    // 注: GPU試行で一部チャンクが成功していた場合、プレビューsegmentは再試行で重複しうるが、
+    // 最終テキスト(戻り値)は再試行分のみ＝正しい（取りこぼさない方を優先）。
+    let gpu_attempts: &[bool] = if use_gpu { &[true, false] } else { &[false] };
+    let n_attempts = gpu_attempts.len();
+    for (attempt, &gpu) in gpu_attempts.iter().enumerate() {
+        let has_fallback = attempt + 1 < n_attempts;
+        // モデル(ctx)は試行ごとに1回ロードし、各チャンクは state を都度作って回す（再ロード回避）。
+        let mut ctx_params = WhisperContextParameters::default();
+        ctx_params.use_gpu(gpu);
+        let ctx = match WhisperContext::new_with_params(model, ctx_params) {
+            Ok(c) => c,
+            Err(e) if has_fallback => {
+                eprintln!("[stt] GPU init failed, falling back to CPU: {e}");
                 continue;
             }
+            Err(e) => return Err(crate::errcode::ec(crate::errcode::E_STT_MODEL_LOAD, e)),
         };
-        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-        if let Some(l) = lang {
-            params.set_language(Some(l));
-        }
-        // 物理コア数でスレッド設定（論理コア全指定はメモリ帯域律速で逆効果になりうる）。
-        params.set_n_threads(threads);
-        params.set_print_progress(false);
-        params.set_print_special(false);
-        params.set_print_realtime(false);
-        // ハルシネーション/反復ループ抑制(#600)。前文脈を使うと末尾無音等での反復ループが固定され
-        // 末尾が失われるため、前文脈を使わない。チャンク化と併せ末尾欠落を根治する。温度フォールバック・
-        // entropy/logprob 閾値は whisper.cpp 既定のループ回復が有効。効果は日本語CERベンチ(ADR-0024)で監視。
-        params.set_no_context(true);
+        let mut text = String::new();
+        // 1チャンクのデコード失敗で全体(=他チャンクの成功分)を捨てないための直近エラー保持。
+        // 全チャンク失敗で結果が空のときだけ最終的に Err を返す（Ok("")で握り潰さない）。
+        let mut last_err: Option<String> = None;
 
-        // チャンク内進捗(0-100)を全体の [idx/n, (idx+1)/n] 区間へ写像して通知する。
-        let pshare = progress.clone();
-        let base = idx as f32 / n_chunks as f32;
-        let span = 1.0 / n_chunks as f32;
-        params.set_progress_callback_safe(move |p: i32| {
-            let global = (((base + span * (p.clamp(0, 100) as f32 / 100.0)) * 100.0) as i32).clamp(0, 100);
-            if let Ok(mut f) = pshare.lock() {
-                f(global);
-            }
-        });
-
-        let chunk = &audio[spec.start..spec.end];
-        // チャンク単位で失敗を隔離: このチャンクだけ飛ばし、成功した他チャンクの文字起こしは残す。
-        // 隣接チャンクの overlap が失われた区間の一部を補う。長尺で1チャンクの一過性失敗が全体を潰さない。
-        if let Err(e) = state.full(params, chunk) {
-            eprintln!("[stt] chunk {idx} full() failed, skipped: {e}");
-            last_err = Some(e.to_string());
-            continue;
-        }
-
-        // セグメントを絶対時刻へオフセットし、担当区間 [own_start, own_end) の分だけ採用（重複排除）。
-        let n_seg = match state.full_n_segments() {
-            Ok(n) => n,
-            Err(e) => {
-                last_err = Some(e.to_string());
-                continue;
-            }
-        };
-        for i in 0..n_seg {
-            // 稀にチャンク境界の途切れトークンで UTF-8 が壊れ Err になることがある。
-            // その1セグメントだけスキップし、全体の文字起こしは捨てない（堅牢性 / #600）。
-            // 静かなデータ欠落を残さないよう stderr に痕跡を残す（レビュー指摘: 可視性）。
-            let seg = match state.full_get_segment_text(i) {
+        for (idx, spec) in chunks.iter().enumerate() {
+            let mut state = match ctx.create_state() {
                 Ok(s) => s,
                 Err(e) => {
-                    eprintln!("[stt] chunk {idx} segment {i} text decode failed, skipped: {e}");
+                    last_err = Some(e.to_string());
                     continue;
                 }
             };
-            let seg = seg.trim();
-            if seg.is_empty() {
-                continue;
+            let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+            if let Some(l) = lang {
+                params.set_language(Some(l));
             }
-            let t0_local = state.full_get_segment_t0(i).unwrap_or(0);
-            let abs_t0 = spec.offset_cs + t0_local;
-            // overlap 中点で切った担当区間外のセグメントは隣接チャンクが出すのでスキップ。
-            if abs_t0 < spec.own_start_cs || abs_t0 >= spec.own_end_cs {
-                continue;
-            }
-            // 確定セグメントの逐次通知（プレビュー用）。担当分のみ＝重複プレビューを出さない。
-            on_seg(seg.to_string());
-            if timestamps {
-                // 絶対時刻を行頭に付与。AI整形が時間関係を解釈できる。
-                text.push_str(&format!("[{}] {}\n", format_timestamp(abs_t0), seg));
-            } else {
-                text.push_str(seg);
-            }
-        }
-    }
+            // 物理コア数でスレッド設定（論理コア全指定はメモリ帯域律速で逆効果になりうる）。
+            params.set_n_threads(threads);
+            params.set_print_progress(false);
+            params.set_print_special(false);
+            params.set_print_realtime(false);
+            // ハルシネーション/反復ループ抑制(#600)。前文脈を使うと末尾無音等での反復ループが固定され
+            // 末尾が失われるため、前文脈を使わない。チャンク化と併せ末尾欠落を根治する。温度フォールバック・
+            // entropy/logprob 閾値は whisper.cpp 既定のループ回復が有効。効果は日本語CERベンチ(ADR-0024)で監視。
+            params.set_no_context(true);
 
-    if let Ok(mut f) = progress.lock() {
-        f(100);
-    }
-    let out = text.trim().to_string();
-    // 結果が空でどこかのチャンクが失敗していたら、その失敗を返す（全滅を Ok("") で握り潰さない）。
-    // 発話が無く自然に空のときは Ok("")（従来どおり）。
-    if out.is_empty() {
-        if let Some(e) = last_err {
-            return Err(e);
+            // チャンク内進捗(0-100)を全体の [idx/n, (idx+1)/n] 区間へ写像して通知する。
+            let pshare = progress.clone();
+            let base = idx as f32 / n_chunks as f32;
+            let span = 1.0 / n_chunks as f32;
+            params.set_progress_callback_safe(move |p: i32| {
+                let global = (((base + span * (p.clamp(0, 100) as f32 / 100.0)) * 100.0) as i32).clamp(0, 100);
+                if let Ok(mut f) = pshare.lock() {
+                    f(global);
+                }
+            });
+
+            let chunk = &audio[spec.start..spec.end];
+            // チャンク単位で失敗を隔離: このチャンクだけ飛ばし、成功した他チャンクの文字起こしは残す。
+            // 隣接チャンクの overlap が失われた区間の一部を補う。長尺で1チャンクの一過性失敗が全体を潰さない。
+            if let Err(e) = state.full(params, chunk) {
+                eprintln!("[stt] chunk {idx} full() failed, skipped: {e}");
+                last_err = Some(e.to_string());
+                continue;
+            }
+
+            // セグメントを絶対時刻へオフセットし、担当区間 [own_start, own_end) の分だけ採用（重複排除）。
+            let n_seg = match state.full_n_segments() {
+                Ok(n) => n,
+                Err(e) => {
+                    last_err = Some(e.to_string());
+                    continue;
+                }
+            };
+            for i in 0..n_seg {
+                // 稀にチャンク境界の途切れトークンで UTF-8 が壊れ Err になることがある。
+                // その1セグメントだけスキップし、全体の文字起こしは捨てない（堅牢性 / #600）。
+                // 静かなデータ欠落を残さないよう stderr に痕跡を残す（レビュー指摘: 可視性）。
+                let seg = match state.full_get_segment_text(i) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("[stt] chunk {idx} segment {i} text decode failed, skipped: {e}");
+                        continue;
+                    }
+                };
+                let seg = seg.trim();
+                if seg.is_empty() {
+                    continue;
+                }
+                let t0_local = state.full_get_segment_t0(i).unwrap_or(0);
+                let abs_t0 = spec.offset_cs + t0_local;
+                // overlap 中点で切った担当区間外のセグメントは隣接チャンクが出すのでスキップ。
+                if abs_t0 < spec.own_start_cs || abs_t0 >= spec.own_end_cs {
+                    continue;
+                }
+                // 確定セグメントの逐次通知（プレビュー用）。担当分のみ＝重複プレビューを出さない。
+                on_seg(seg.to_string());
+                if timestamps {
+                    // 絶対時刻を行頭に付与。AI整形が時間関係を解釈できる。
+                    text.push_str(&format!("[{}] {}\n", format_timestamp(abs_t0), seg));
+                } else {
+                    text.push_str(seg);
+                }
+            }
         }
+
+        // GPU試行で失敗チャンクがあれば、CPUで全体を再試行する（部分欠落を黙って返さない）。
+        if last_err.is_some() && has_fallback {
+            eprintln!("[stt] chunk failure(s) on GPU attempt, retrying whole transcription on CPU");
+            continue;
+        }
+        if let Ok(mut f) = progress.lock() {
+            f(100);
+        }
+        let out = text.trim().to_string();
+        // 結果が空でどこかのチャンクが失敗していたら、その失敗を返す。発話が無く自然に空なら Ok("")。
+        if out.is_empty() {
+            if let Some(e) = last_err {
+                return Err(e);
+            }
+        }
+        return Ok(out);
     }
-    Ok(out)
+    unreachable!("gpu_attempts は常に1要素以上")
 }
 
 /// コールバックなしの簡易版（統合テスト等で使用）。
 pub fn transcribe(model_path: &Path, audio: &[f32], lang: Option<&str>) -> Result<String, String> {
-    transcribe_with(model_path, audio, lang, false, |_| {}, |_| {})
+    transcribe_with(model_path, audio, lang, false, true, |_| {}, |_| {})
 }
 
 /// 文字起こしエンジンの抽象（S2.3 / Strategy・DIP 境界）。
@@ -633,6 +657,8 @@ impl TranscriptionEngine for AzureSttEngine {
 /// ローカル whisper.cpp 実装（既定エンジン / ADR-0002）。
 pub struct LocalWhisperEngine {
     pub model_path: std::path::PathBuf,
+    /// GPUで実行するか（CUDA変種のみ実効。CPUビルドでは無視される / ADR-0027）。
+    pub use_gpu: bool,
 }
 
 impl TranscriptionEngine for LocalWhisperEngine {
@@ -649,6 +675,7 @@ impl TranscriptionEngine for LocalWhisperEngine {
             audio,
             lang,
             timestamps,
+            self.use_gpu,
             on_progress,
             on_segment,
         )
@@ -667,6 +694,8 @@ pub struct SttConfig {
     pub azure_resource: String,
     /// ローカル whisper のモデルファイルパス。
     pub model_path: std::path::PathBuf,
+    /// ローカル whisper をGPUで実行するか（ADR-0027。クラウド/CPUビルドでは未使用）。
+    pub use_gpu: bool,
 }
 
 /// 文字起こしプロバイダ（S2.3/S2.4）。別名解釈・クラウド判定・既定モデル・エンジン生成を
@@ -741,6 +770,7 @@ impl SttProvider {
             }),
             Self::Local => Box::new(LocalWhisperEngine {
                 model_path: cfg.model_path,
+                use_gpu: cfg.use_gpu,
             }),
         }
     }
@@ -906,6 +936,7 @@ mod tests {
             api_key: "k".into(),
             azure_resource: "res".into(),
             model_path: std::path::PathBuf::from("dummy.bin"),
+            use_gpu: false,
         }
     }
 

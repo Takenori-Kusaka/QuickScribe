@@ -11,6 +11,11 @@ repository = "https://github.com/Takenori-Kusaka/QuickScribe"
 name = "quickscribe_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# GPU(CUDA)ビルド変種(ADR-0027)。既定はCPU。リリースの cuda ジョブ/test-build(cuda) が有効化する。
+# NVIDIA GPU+ドライバ必須。cudart/cublas/cublasLt DLL の同梱は tauri.cuda.conf.json 側。
+cuda = ["whisper-rs/cuda"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

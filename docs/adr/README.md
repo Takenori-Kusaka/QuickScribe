@@ -29,4 +29,5 @@
 | [0023](0023-habit-nudge-local-notification.md) | 習慣ナッジ＝起動アンカーのopt-inローカル通知 | Accepted |
 | [0024](0024-evaluation-redesign-cer-and-nuance.md) | 評価基盤の再設計（CER＋ニュアンス計測） | Accepted |
 | [0025](0025-japanese-default-model-revision.md) | 日本語の既定STTを large-v3-turbo へ（実測に基づく） | Accepted |
-| [0026](0026-multi-background-transcription-jobs.md) | 複数バックグラウンド文字起こしジョブの逐次キュー化とジョブ一覧UI | Proposed |
+| [0026](0026-multi-background-transcription-jobs.md) | 複数バックグラウンド文字起こしジョブの逐次キュー化とジョブ一覧UI | Accepted |
+| [0027](0027-gpu-build-variants.md) | GPUビルド変種（CUDA）の opt-in 配布と実行バックエンド可視化 | Accepted |

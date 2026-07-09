@@ -10,6 +10,11 @@ on:
         description: "ビルド対象の branch / tag / SHA"
         required: false
         default: ""
+      cuda:
+        description: "GPU(CUDA)変種をビルドする(ADR-0027)。NVIDIA GPU実機での検証用"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -21,7 +26,8 @@ env:
 jobs:
   test-build:
     name: test-build (windows)
-    runs-on: windows-latest
+    # cuda=true は windows-2022(VS2022) 固定: windows-latest の VS18 は CUDA 12.8 nvcc が拒否する。
+    runs-on: ${{ inputs.cuda && 'windows-2022' || 'windows-latest' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -56,6 +62,38 @@ jobs:
           cargo about generate about.hbs > THIRD-PARTY-NOTICES.txt
           wc -l THIRD-PARTY-NOTICES.txt
 
+      # --- CUDA変種(ADR-0027 / inputs.cuda=true のみ) ---
+      # 注意: ilammy/msvc-dev-cmd は必ず cargo-about(THIRD-PARTY生成)より後に置く。
+      # MSVC環境をPATHへ展開すると、bashステップの cargo が Git の /usr/bin/link と衝突しリンク失敗する。
+      - uses: Jimver/cuda-toolkit@v0.2.21
+        if: ${{ inputs.cuda }}
+        with:
+          cuda: "12.8.0"
+          method: network
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "nvrtc_dev", "thrust"]'
+      - name: Setup MSVC dev env (CUDA/Ninja)
+        if: ${{ inputs.cuda }}
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+      - name: Set CUDA build env
+        if: ${{ inputs.cuda }}
+        shell: bash
+        run: |
+          {
+            echo "CMAKE_GENERATOR=Ninja"
+            echo "CMAKE_CUDA_ARCHITECTURES=61;75;86;89"
+          } >> "$GITHUB_ENV"
+      - name: Stage CUDA runtime DLLs
+        if: ${{ inputs.cuda }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force src-tauri/cuda-dlls | Out-Null
+          $bin = Join-Path $env:CUDA_PATH "bin"
+          Copy-Item "$bin/cudart64_*.dll" src-tauri/cuda-dlls/
+          Copy-Item "$bin/cublas64_*.dll" src-tauri/cuda-dlls/
+          Copy-Item "$bin/cublasLt64_*.dll" src-tauri/cuda-dlls/
+
       # updater が公開鍵設定済みのため tauri build は updater 成果物の署名を要求する。
       # ここでは公開リリースも latest.json 発行もしない（成果物アップロードのみ）が、
       # ビルドを完走させるため release.yml と同じ署名鍵を渡す。
@@ -63,7 +101,7 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npx tauri build --config src-tauri/tauri.release.conf.json
+        run: npx tauri build --config src-tauri/tauri.release.conf.json ${{ inputs.cuda && '--config src-tauri/tauri.cuda.conf.json --features cuda' || '' }}
 
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v7

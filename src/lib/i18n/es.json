@@ -159,7 +159,13 @@
     "tip_refine_warn_1": "⚠ El refinado en la nube ",
     "tip_refine_warn_strong": "envía tu transcripción fuera de tu dispositivo (a {provider})",
     "tip_refine_warn_2": ". Cada proveedor declara que no usa la entrada de la API para entrenar de forma predeterminada, pero si la privacidad te importa usa «Local (Ollama)». Las claves se guardan en el almacenamiento seguro de este dispositivo.",
-    "version_title": "Versión de la app (para compartir resultados)"
+    "version_title": "Versión de la app (para compartir resultados)",
+    "use_gpu": "Transcribir en GPU (CUDA, rápido)",
+    "tip_gpu": "Ejecuta la transcripción en tu GPU NVIDIA (mucho más rápido según nuestras mediciones). Desactívalo para usar la CPU si hay problemas.",
+    "gpu_unavailable": "La GPU no está disponible en este entorno (controlador NVIDIA no detectado). Se ejecuta en CPU.",
+    "backend_cpu": "versión CPU",
+    "backend_cuda": "versión GPU CUDA",
+    "cuda_manual_update": "Las actualizaciones de la versión GPU (CUDA) son manuales. Descarga el último x64-cuda-setup.exe desde la página de versiones."
   },
   "nudge": {
     "title": "¿Hora del diario de hoy?",

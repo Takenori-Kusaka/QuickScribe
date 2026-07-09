@@ -33,6 +33,8 @@ export interface AppSettings {
   /** OpenAI互換エンドポイントの接続先(base_url / #593)。既定は空＝公式 api.openai.com。 */
   openaiBaseUrl: string;
   sttProvider: SttProvider;
+  /** GPUで文字起こし(CUDA変種のみ実効・既定ON=速度最適 / ADR-0027)。 */
+  sttUseGpu: boolean;
   offlineMode: boolean;
   sttModel: string;
   sttAzureResource: string;
@@ -69,6 +71,7 @@ export function readSettings(localeDefault: string): AppSettings {
   for (const p of ALL_PROVIDERS) resolvedModel[p] = ls.getItem(`resolvedModel:${p}`) ?? "";
 
   let sttProvider = (ls.getItem("sttProvider") as SttProvider) || "local";
+  const sttUseGpu = ls.getItem("sttUseGpu") !== "false"; // 既定ON(ADR-0027)
   const offlineMode = ls.getItem("offlineMode") === "true";
   // オフライン固定モード(#465): ON なら起動時からローカルに固定（クラウド設定が残っていても無視）。
   if (offlineMode) {
@@ -108,6 +111,7 @@ export function readSettings(localeDefault: string): AppSettings {
     outputLang: ls.getItem("outputLang") || localeDefault,
     openaiBaseUrl: ls.getItem("openaiBaseUrl") || "",
     sttProvider: clampSttProvider(sttProvider),
+    sttUseGpu,
     offlineMode,
     sttModel: ls.getItem("sttModel") || "",
     sttAzureResource: ls.getItem("sttAzureResource") || "",
@@ -155,6 +159,7 @@ export function writeSettings(s: AppSettings): void {
   ls.setItem("outputLang", s.outputLang);
   ls.setItem("openaiBaseUrl", s.openaiBaseUrl);
   ls.setItem("sttProvider", s.sttProvider);
+  ls.setItem("sttUseGpu", String(s.sttUseGpu));
   ls.setItem("sttModel", s.sttModel);
   ls.setItem("sttAzureResource", s.sttAzureResource);
   ls.setItem("whisperModel", s.whisperModel);
