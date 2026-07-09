@@ -165,7 +165,8 @@
     "gpu_unavailable": "此环境无法使用GPU（未检测到NVIDIA驱动）。将使用CPU运行。",
     "backend_cpu": "CPU版",
     "backend_cuda": "GPU版 CUDA",
-    "cuda_manual_update": "GPU版(CUDA)需手动更新。请从发布页面获取最新的 x64-cuda-setup.exe。"
+    "cuda_manual_update": "GPU版(CUDA)需手动更新。请从发布页面获取最新的 x64-cuda-setup.exe。",
+    "get_driver": "获取NVIDIA驱动"
   },
   "nudge": {
     "title": "今天的日记写了吗？",

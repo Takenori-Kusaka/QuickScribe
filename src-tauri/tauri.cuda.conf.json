@@ -5,7 +5,12 @@
       "THIRD-PARTY-NOTICES.txt": "./",
       "cuda-dlls/*": "./"
     },
-    "createUpdaterArtifacts": false
+    "createUpdaterArtifacts": false,
+    "windows": {
+      "nsis": {
+        "installerHooks": "./nsis-hooks-cuda.nsh"
+      }
+    }
   },
   "plugins": {
     "updater": {

@@ -85,6 +85,8 @@
   let gpuAvailable = $state(false);
   // GPUで文字起こしする(ユーザー設定・既定ON=環境が許せば速度最適なGPUを自動選択 / ADR-0027)。
   let sttUseGpu = $state(true);
+  // NVIDIAドライバ入手ページ(型番非依存の公式入口 / ADR-0027)。
+  const NVIDIA_DRIVER_URL = "https://www.nvidia.com/Download/index.aspx";
 
   // 設定（localStorageに保存。秘密情報はローカル端末内のみ）。
   // 整形プロバイダ: Gemini / Anthropic / OpenAI / ローカル(Ollama) ＋
@@ -1694,7 +1696,15 @@
               {$_("settings.use_gpu")}
             </label>
             {#if !gpuAvailable}
+              <!-- ①誘導 ②理由 ③スキップ可(=そのままCPUで動作) を満たす案内(ADR-0027 Phase2)。 -->
               <p class="tip">{$_("settings.gpu_unavailable")}</p>
+              <button
+                type="button"
+                class="btn small ghost"
+                onclick={() => void invoke("open_external", { url: NVIDIA_DRIVER_URL })}
+              >
+                {$_("settings.get_driver")}
+              </button>
             {:else}
               <p class="tip">{$_("settings.tip_gpu")}</p>
             {/if}
