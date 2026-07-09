@@ -5,6 +5,11 @@
 // システム音声ループバック・デバイス切替・Stream Deck連携は後続の縦切りで追加する
 // (ADR-0006 によりスコープからは外さない)。
 
+// GPUバックエンドの相互排他(ADR-0027/0028)。両方有効だと stt_backend の variant 報告
+// (cuda優先) と gpu_backend_available の実判定 (vulkan優先) が食い違うため、コンパイル時に禁止する。
+#[cfg(all(feature = "cuda", feature = "vulkan"))]
+compile_error!("features `cuda` と `vulkan` は排他です。GPUバックエンドは一方のみ有効にしてください。");
+
 pub mod audio_save;
 // AWS SigV4署名(Bedrock / Claude Platform on AWS の整形プロバイダ用 / ADR-0011)。
 pub mod aws_sign;

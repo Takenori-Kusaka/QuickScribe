@@ -106,8 +106,10 @@ jobs:
         if: ${{ inputs.vulkan }}
         shell: pwsh
         run: |
-          $ver = (Invoke-WebRequest "https://vulkan.lunarg.com/sdk/latest/windows.txt" -UseBasicParsing).Content.Trim()
-          Write-Host "Vulkan SDK version: $ver"
+          # 既知良好版にピン留め(ADR-0012 決定的ビルド / LunarGの破壊的更新でリリースが赤化するのを防ぐ)。
+          # 更新は明示的なPRで(実機Vulkan動作を確認のうえ版を上げる)。
+          $ver = "1.4.350.0"
+          Write-Host "Vulkan SDK version (pinned): $ver"
           $url = "https://sdk.lunarg.com/sdk/download/$ver/windows/vulkansdk-windows-X64-$ver.exe"
           $exe = "$env:RUNNER_TEMP\vulkan-sdk-installer.exe"
           Invoke-WebRequest -Uri $url -OutFile $exe
