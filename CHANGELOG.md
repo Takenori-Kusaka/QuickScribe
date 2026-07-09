@@ -5,6 +5,24 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [1.3.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.2.1...v1.3.0) (2026-07-09)
+
+
+### ✨ 新機能 / Features
+
+* **stt:** マルチジョブ逐次キューのバックエンド（ADR-0026 [#621](https://github.com/Takenori-Kusaka/QuickScribe/issues/621) Phase1） ([#622](https://github.com/Takenori-Kusaka/QuickScribe/issues/622)) ([e50dc3c](https://github.com/Takenori-Kusaka/QuickScribe/commit/e50dc3c101dd7ece3a786cc81af3e19c7d1194fb))
+* **ui:** アプリのバージョンを表示（実行結果の共有用） ([#625](https://github.com/Takenori-Kusaka/QuickScribe/issues/625)) ([d4309cd](https://github.com/Takenori-Kusaka/QuickScribe/commit/d4309cd94153d2fb09036379a42b32daf655384c))
+* **ui:** マルチジョブ・ジョブ一覧UI（ADR-0026 [#621](https://github.com/Takenori-Kusaka/QuickScribe/issues/621) Phase2） ([#624](https://github.com/Takenori-Kusaka/QuickScribe/issues/624)) ([41540e7](https://github.com/Takenori-Kusaka/QuickScribe/commit/41540e71b4b774c00e76b211b95f42b4dd74bcc6))
+
+
+### 📝 ドキュメント / Docs
+
+* **adr:** ADR-0026 複数バックグラウンド文字起こしジョブの逐次キュー化とジョブ一覧UI ([3998bcf](https://github.com/Takenori-Kusaka/QuickScribe/commit/3998bcf42e9d3b21ff68a50acb19fd2fbddb59a3))
+* **research:** GPU/実行オプション拡充の調査（全PC環境対応・CPU並列・配布両立） ([6fe53f4](https://github.com/Takenori-Kusaka/QuickScribe/commit/6fe53f4c0cca2714f04a8263d125b734792d5678))
+* **research:** RTX 4060 実測を追記 — GPU(CUDA)で 196分→5.5分(36倍・RTF0.33) ([fc2ff1c](https://github.com/Takenori-Kusaka/QuickScribe/commit/fc2ff1c57fece8761230ab1dfbd2531c68609d60))
+* **research:** turbo文字起こし高速化の調査（180分=反復ループ暴走の主因確定） ([ee037f8](https://github.com/Takenori-Kusaka/QuickScribe/commit/ee037f8a935be2c09cf029e2704b14a50daca479))
+* **research:** 文字起こし効率化の限界調査（streaming vs チャンク化・日本語特性・性能限界） ([c68b7df](https://github.com/Takenori-Kusaka/QuickScribe/commit/c68b7df4a894b70f78767fff74d4f0ecc2475ebd))
+
 ## [1.2.1](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.2.0...v1.2.1) (2026-07-07)
 
 
