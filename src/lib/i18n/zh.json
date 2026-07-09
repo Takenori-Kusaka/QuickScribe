@@ -164,7 +164,8 @@
     "tip_gpu": "在NVIDIA GPU上运行转写（实测大幅提速）。如遇问题可关闭以使用CPU。",
     "gpu_unavailable": "此环境无法使用GPU（未检测到NVIDIA驱动）。将使用CPU运行。",
     "backend_cpu": "CPU版",
-    "backend_cuda": "GPU版 CUDA"
+    "backend_cuda": "GPU版 CUDA",
+    "cuda_manual_update": "GPU版(CUDA)需手动更新。请从发布页面获取最新的 x64-cuda-setup.exe。"
   },
   "nudge": {
     "title": "今天的日记写了吗？",

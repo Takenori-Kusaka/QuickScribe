@@ -164,7 +164,8 @@
     "tip_gpu": "NVIDIA GPUで文字起こしを実行します（実測で大幅に高速）。問題がある場合はOFFにするとCPUで実行します。",
     "gpu_unavailable": "この環境ではGPUを利用できません（NVIDIAドライバ未検出）。CPUで実行します。",
     "backend_cpu": "CPU版",
-    "backend_cuda": "GPU版 CUDA"
+    "backend_cuda": "GPU版 CUDA",
+    "cuda_manual_update": "GPU版(CUDA)の更新は手動です。リリースページから最新の x64-cuda-setup.exe を取得してください。"
   },
   "nudge": {
     "title": "今日のジャーナル、どうですか？",

@@ -164,7 +164,8 @@
     "tip_gpu": "Runs transcription on your NVIDIA GPU (much faster in our measurements). Turn off to run on CPU if you hit issues.",
     "gpu_unavailable": "GPU is not available in this environment (NVIDIA driver not detected). Running on CPU.",
     "backend_cpu": "CPU build",
-    "backend_cuda": "GPU build CUDA"
+    "backend_cuda": "GPU build CUDA",
+    "cuda_manual_update": "Updates for the GPU (CUDA) build are manual. Get the latest x64-cuda-setup.exe from the releases page."
   },
   "nudge": {
     "title": "Time for today's journal?",

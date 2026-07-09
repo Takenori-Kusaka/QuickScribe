@@ -884,12 +884,15 @@
       .then((v) => (appVersion = v))
       .catch(() => {});
     // ビルド変種(CPU/CUDA)と実行環境のGPU判定（ADR-0027）。既定で速度最適なモードを自動選択する。
+    // 更新の自動チェックは変種判定の後に実行: CUDA変種は自動更新なし(Phase1)のためスキップし、
+    // 未発行エンドポイントへの毎起動エラーを出さない。
     void invoke<{ variant: string; gpuAvailable: boolean }>("stt_backend")
       .then((b) => {
         sttBackend = b?.variant ?? "";
         gpuAvailable = !!b?.gpuAvailable;
+        if (sttBackend !== "cuda") void updater.checkForUpdate();
       })
-      .catch(() => {});
+      .catch(() => void updater.checkForUpdate());
     loadSettings();
     // 初回起動（未表示）ならオンボーディングを出す（#397）。
     try {
@@ -905,7 +908,7 @@
     void syncSaveSettings();
     void syncTrayTexts();
     void resolveCurrentModel();
-    void updater.checkForUpdate();
+    // 更新の自動チェックは stt_backend 解決後に実行(CUDA変種はスキップ / 上のonMount冒頭参照)。
     // 習慣ナッジ（#58）: 起動をアンカーに、継続中ストリークが今日未記録なら1回だけ促す（opt-in）。
     void maybeNudgeOnStartup();
     // トレイ/メニュー/CLI --toggle-record は常にトグル。
@@ -2116,9 +2119,15 @@
 
       <div class="settings-actions">
         <button class="btn small" onclick={saveSettings}>{$_("settings.save")}</button>
-        <button class="btn small ghost" onclick={() => updater.checkForUpdate(true)}
-          >{$_("settings.check_update")}</button
-        >
+        {#if sttBackend === "cuda"}
+          <!-- CUDA変種は自動更新なし(ADR-0027 Phase1)。手動DL(リリースページ)へ誘導し、
+               未発行の latest-cuda.json への更新チェック=常時エラーを出さない。 -->
+          <span class="tip">{$_("settings.cuda_manual_update")}</span>
+        {:else}
+          <button class="btn small ghost" onclick={() => updater.checkForUpdate(true)}
+            >{$_("settings.check_update")}</button
+          >
+        {/if}
       </div>
       {#if updater.updateMsg}<p class="muted" role="status" aria-live="polite">
           {updater.updateMsg}
