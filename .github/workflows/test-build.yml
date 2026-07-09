@@ -108,7 +108,7 @@ jobs:
         run: |
           $ver = (Invoke-WebRequest "https://vulkan.lunarg.com/sdk/latest/windows.txt" -UseBasicParsing).Content.Trim()
           Write-Host "Vulkan SDK version: $ver"
-          $url = "https://sdk.lunarg.com/sdk/download/$ver/windows/VulkanSDK-$ver-Installer.exe"
+          $url = "https://sdk.lunarg.com/sdk/download/$ver/windows/vulkansdk-windows-X64-$ver.exe"
           $exe = "$env:RUNNER_TEMP\vulkan-sdk-installer.exe"
           Invoke-WebRequest -Uri $url -OutFile $exe
           Start-Process -FilePath $exe -ArgumentList "--accept-licenses","--default-answer","--confirm-command","install" -Wait
