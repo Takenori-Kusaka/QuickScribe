@@ -159,7 +159,12 @@
     "tip_refine_warn_1": "⚠ クラウド整形は",
     "tip_refine_warn_strong": "文字起こしテキストを端末外（{provider}）へ送信",
     "tip_refine_warn_2": "します。各社は既定でAPI入力を学習利用しないと明言していますが、プライバシー重視なら「ローカル（Ollama）」をお使いください。鍵はこの端末の安全な保管領域に保存されます。",
-    "version_title": "アプリのバージョン（実行結果の共有に）"
+    "version_title": "アプリのバージョン（実行結果の共有に）",
+    "use_gpu": "GPUで文字起こし（CUDA・高速）",
+    "tip_gpu": "NVIDIA GPUで文字起こしを実行します（実測で大幅に高速）。問題がある場合はOFFにするとCPUで実行します。",
+    "gpu_unavailable": "この環境ではGPUを利用できません（NVIDIAドライバ未検出）。CPUで実行します。",
+    "backend_cpu": "CPU版",
+    "backend_cuda": "GPU版 CUDA"
   },
   "nudge": {
     "title": "今日のジャーナル、どうですか？",

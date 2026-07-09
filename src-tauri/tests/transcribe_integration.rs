@@ -33,6 +33,8 @@ fn transcribes_known_audio_when_assets_present() {
         &samples,
         lang.as_deref(),
         timestamps,
+        // GPU使用可否は whisper.cpp 既定に合わせ true（CPUビルドでは無視・CUDAビルドでGPU実測に使う）。
+        true,
         |_| {},
         |_| {},
     )

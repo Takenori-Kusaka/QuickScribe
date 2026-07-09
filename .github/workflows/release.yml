@@ -165,6 +165,118 @@ jobs:
           # NSISのみのため updater は setup.exe を指す(msi誤参照を防ぐ)。
           updaterJsonPreferNsis: true
 
+  # GPU(CUDA)ビルド変種(ADR-0027): NVIDIA GPU向けの opt-in 配布物。tauri-action は使わず
+  # (x64版とNSISファイル名が衝突し上書きされる・latest.json/updaterを汚さないため)、
+  # 直接ビルド→ *-cuda-setup.exe へ改名→ gh release upload で添付する。
+  # updaterはCUDA専用エンドポイント(latest-cuda.json・当面未発行=自動更新なし)でCPU版への誤更新を防ぐ。
+  release-cuda:
+    name: release (windows-x64-cuda / ADR-0027)
+    needs: release
+    if: needs.release.result == 'success'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: windows-x64-cuda
+
+      - name: Set LIBCLANG_PATH (Windows, for whisper-rs bindgen)
+        run: echo "LIBCLANG_PATH=$((Get-Command clang).Source | Split-Path)" >> $env:GITHUB_ENV
+        shell: pwsh
+
+      # CUDA Toolkit(nvcc+cudart+cublas)。VS統合は入れず Ninja 生成系でビルドする
+      # (ローカル実証済み手順 / docs/research/gpu-backend-options.md)。
+      - uses: Jimver/cuda-toolkit@v0.2.21
+        id: cuda
+        with:
+          cuda: "12.8.0"
+          method: network
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "nvrtc_dev"]'
+
+      - name: Setup MSVC dev env (Ninja+nvcc に cl が必要)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+      - name: Set CUDA build env (Ninja / GPU非搭載ランナーのためアーキ明示)
+        shell: bash
+        run: |
+          {
+            echo "CMAKE_GENERATOR=Ninja"
+            # ランナーにGPUが無いため native 検出不可。Pascal〜Ada を明示(61=GTX10xx/75=RTX20xx/86=RTX30xx/89=RTX40xx)。
+            echo "CMAKE_CUDA_ARCHITECTURES=61;75;86;89"
+          } >> "$GITHUB_ENV"
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Generate icons
+        run: npm run icons
+
+      - name: Generate THIRD-PARTY-NOTICES + NVIDIA CUDA notice (EULA準拠)
+        shell: bash
+        run: |
+          cargo install cargo-about --locked --features cli
+          cd src-tauri
+          cargo about generate about.hbs > THIRD-PARTY-NOTICES.txt
+          {
+            echo ""
+            echo "================================================================"
+            echo "NVIDIA CUDA Runtime / cuBLAS (bundled in the CUDA build variant)"
+            echo "This software contains components (cudart64, cublas64, cublasLt64)"
+            echo "provided by NVIDIA Corporation under the NVIDIA CUDA Toolkit EULA."
+            echo "https://docs.nvidia.com/cuda/eula/index.html"
+            echo "These libraries are distributed for use solely with this application."
+            echo "================================================================"
+          } >> THIRD-PARTY-NOTICES.txt
+          wc -l THIRD-PARTY-NOTICES.txt
+
+      - name: Set version from tag (Cargo.toml = 単一の版ソース)
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          perl -0pi -e 's/^version = "[^"]*"/version = "'"$VERSION"'"/m if !$done++' src-tauri/Cargo.toml
+
+      - name: Stage CUDA runtime DLLs for bundling (インストール先直下へ同梱)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force src-tauri/cuda-dlls | Out-Null
+          $bin = Join-Path $env:CUDA_PATH "bin"
+          Copy-Item "$bin/cudart64_*.dll" src-tauri/cuda-dlls/
+          Copy-Item "$bin/cublas64_*.dll" src-tauri/cuda-dlls/
+          Copy-Item "$bin/cublasLt64_*.dll" src-tauri/cuda-dlls/
+          Get-ChildItem src-tauri/cuda-dlls
+
+      - name: Build CUDA variant (tauri build --features cuda)
+        run: npm run tauri build -- --config src-tauri/tauri.release.conf.json --config src-tauri/tauri.cuda.conf.json --target x86_64-pc-windows-msvc --features cuda
+
+      - name: Rename and upload CUDA installer (*-cuda-setup.exe)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          SRC="src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/QuickScribe_${VERSION}_x64-setup.exe"
+          DST="QuickScribe_${VERSION}_x64-cuda-setup.exe"
+          ls -la "$(dirname "$SRC")"
+          cp "$SRC" "$DST"
+          gh release upload "$TAG" "$DST" --clobber
+
   # リリースノート復旧(#572): tauri-action は既存リリース(release-please作成)の本文を空で
   # 上書きするため、ビルド後に CHANGELOG の当該版節を本文へ戻す。毎回の手動復旧を廃止する恒久対応。
   restore-notes:

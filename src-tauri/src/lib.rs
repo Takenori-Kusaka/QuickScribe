@@ -115,6 +115,9 @@ struct SttSettings {
     model: String,
     api_key: String,
     azure_resource: String,
+    /// GPU実行を無効化する(ユーザー設定 / ADR-0027)。既定 false=環境が許せばGPUを使う(速度最適)。
+    /// 反転フラグなのは Default(false) を「GPU有効」に一致させるため。
+    disable_gpu: bool,
 }
 
 #[derive(Default)]
@@ -139,6 +142,7 @@ fn set_stt_settings(
     model: String,
     api_key: String,
     azure_resource: Option<String>,
+    use_gpu: Option<bool>,
 ) -> Result<(), String> {
     let mut s = state
         .inner
@@ -148,6 +152,8 @@ fn set_stt_settings(
     s.model = model;
     s.api_key = api_key;
     s.azure_resource = azure_resource.unwrap_or_default();
+    // 未指定(旧フロント)は既定=GPU有効のまま。明示 false のときだけ無効化(ADR-0027)。
+    s.disable_gpu = !use_gpu.unwrap_or(true);
     Ok(())
 }
 
@@ -330,12 +336,15 @@ fn transcribe_blocking<R: tauri::Runtime>(
     let app_p = app.clone();
     let app_s = app.clone();
     // STTエンジンを解決して文字起こし（S2.3抽象 / S2.4でクラウド）。
+    // GPU実行(ADR-0027): CUDA変種かつ実行環境にNVIDIAドライバがあり、ユーザーが無効化していないとき。
+    let use_gpu = !stt.disable_gpu && nvidia_driver_present();
     let engine = stt::engine_for(stt::SttConfig {
         provider,
         model: stt.model,
         api_key: stt.api_key,
         azure_resource: stt.azure_resource,
         model_path,
+        use_gpu,
     });
     let text = engine.transcribe(
         audio,
@@ -661,6 +670,40 @@ fn list_audio_sources() -> Result<Vec<record::AudioSource>, String> {
 #[tauri::command]
 fn list_whisper_models() -> Vec<model::ModelInfo> {
     model::list_models()
+}
+
+/// NVIDIAドライバ(nvcuda.dll)が実行環境に存在するか（ADR-0027 の実行時GPU判定）。
+/// CUDA変種でも非搭載機では GPU を使わない（use_gpu=false ならCUDA APIは一切呼ばれない＝安全）。
+/// 64bitプロセスのため System32 は実体を指す。CPUビルド/非Windowsでは常に false。
+fn nvidia_driver_present() -> bool {
+    if !cfg!(feature = "cuda") {
+        return false;
+    }
+    #[cfg(windows)]
+    {
+        let sysroot = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+        return std::path::Path::new(&sysroot).join("System32").join("nvcuda.dll").exists();
+    }
+    #[cfg(not(windows))]
+    false
+}
+
+/// このビルドの文字起こし実行バックエンド（配布変種と実行時GPU判定の可視化 / ADR-0027）。
+/// variant: "cuda"=GPU変種ビルド / "cpu"=既定のCPU版。gpu_available: 実行環境でGPUが使えるか。
+/// 起動時にフロントがこれを読み、既定で速度最適な実行モード(GPU可ならGPU)を選ぶ。
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SttBackendInfo {
+    variant: &'static str,
+    gpu_available: bool,
+}
+
+#[tauri::command]
+fn stt_backend() -> SttBackendInfo {
+    SttBackendInfo {
+        variant: if cfg!(feature = "cuda") { "cuda" } else { "cpu" },
+        gpu_available: nvidia_driver_present(),
+    }
 }
 
 /// マイク録音を開始する（S1.1/S1.2/S1.3）。
@@ -1083,6 +1126,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn stt_backend_reports_build_variant() {
+        // 既定(CPU)ビルドでは variant="cpu"・gpu_available=false。
+        // cuda feature 有効時は variant="cuda"・gpu_available=ドライバ実在に依存（ADR-0027契約）。
+        let info = stt_backend();
+        let expected = if cfg!(feature = "cuda") { "cuda" } else { "cpu" };
+        assert_eq!(info.variant, expected);
+        if !cfg!(feature = "cuda") {
+            assert!(!info.gpu_available, "CPUビルドではGPU利用不可と報告する");
+        }
+    }
+
+    #[test]
     fn check_audio_extension_accepts_supported_rejects_others() {
         use std::path::Path;
         assert!(check_audio_extension(Path::new("a.mp3")).is_ok());
@@ -1275,7 +1330,7 @@ mod tests {
         assert!(s.save_dir.is_none());
         assert_eq!(s.output_format, "md", "None は上書きしない");
 
-        set_stt_settings(app.state(), "azure".into(), "m1".into(), "k1".into(), Some("res".into()))
+        set_stt_settings(app.state(), "azure".into(), "m1".into(), "k1".into(), Some("res".into()), None)
             .unwrap();
         let st = current_stt_settings(app.handle());
         assert_eq!(st.provider, "azure");
@@ -1414,7 +1469,7 @@ mod tests {
             Some("txt".into()),
         )
         .unwrap();
-        set_stt_settings(app.state(), "deepgram".into(), "".into(), "dk".into(), None).unwrap();
+        set_stt_settings(app.state(), "deepgram".into(), "".into(), "dk".into(), None, None).unwrap();
         *app.state::<record::RecorderState>().current.lock().unwrap() =
             Some(record::test_recording(vec![(vec![0.2; 3200], 16000, 1)]));
         tauri::async_runtime::block_on(stop_recording(app.handle().clone(), app.state(), false))
@@ -1498,7 +1553,7 @@ mod tests {
             Some("txt".into()),
         )
         .unwrap();
-        set_stt_settings(app.state(), "deepgram".into(), "".into(), "dk".into(), None).unwrap();
+        set_stt_settings(app.state(), "deepgram".into(), "".into(), "dk".into(), None, None).unwrap();
         // 2 本の録音を連続で停止＝2 ジョブをキュー投入。
         for _ in 0..2 {
             *app.state::<record::RecorderState>().current.lock().unwrap() =
@@ -1564,7 +1619,7 @@ mod tests {
             Some("txt".into()),
         )
         .unwrap();
-        set_stt_settings(app.state(), "deepgram".into(), "".into(), "dk".into(), None).unwrap();
+        set_stt_settings(app.state(), "deepgram".into(), "".into(), "dk".into(), None, None).unwrap();
         let wav = audio_save::save_wav(&vec![0.1; 1600], 16000, 1, &dir, "input").unwrap();
         let text = tauri::async_runtime::block_on(transcribe_file(
             app.handle().clone(),
@@ -1833,6 +1888,7 @@ pub fn run() {
             transcribe_file,
             list_audio_sources,
             list_whisper_models,
+            stt_backend,
             start_recording,
             stop_recording,
             list_jobs,

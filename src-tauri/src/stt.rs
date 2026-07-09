@@ -240,6 +240,7 @@ pub fn transcribe_with<P, S>(
     audio: &[f32],
     lang: Option<&str>,
     timestamps: bool,
+    use_gpu: bool,
     on_progress: P,
     on_segment: S,
 ) -> Result<String, String>
@@ -248,9 +249,22 @@ where
     S: FnMut(String) + Send + 'static,
 {
     let model = model_path.to_str().ok_or(crate::errcode::E_STT_MODEL_PATH)?;
-    // モデル(ctx)は1回だけロードし、各チャンクはそのstateを都度作って回す（再ロード回避）。
-    let ctx = WhisperContext::new_with_params(model, WhisperContextParameters::default())
-        .map_err(|e| crate::errcode::ec(crate::errcode::E_STT_MODEL_LOAD, e))?;
+    // モデル(ctx)は1回だけロードし、各チャンクはそのstateを都度回す（再ロード回避）。
+    // GPU(CUDA変種)は設定・実行環境判定に従う(ADR-0027)。GPU初期化に失敗したら CPU で再試行し、
+    // 「速度は落ちても文字起こしは必ず完了する」を保証する（フォールバック）。
+    let mut ctx_params = WhisperContextParameters::default();
+    ctx_params.use_gpu(use_gpu);
+    let ctx = match WhisperContext::new_with_params(model, ctx_params) {
+        Ok(c) => c,
+        Err(gpu_err) if use_gpu => {
+            eprintln!("[stt] GPU init failed, falling back to CPU: {gpu_err}");
+            let mut cpu_params = WhisperContextParameters::default();
+            cpu_params.use_gpu(false);
+            WhisperContext::new_with_params(model, cpu_params)
+                .map_err(|e| crate::errcode::ec(crate::errcode::E_STT_MODEL_LOAD, e))?
+        }
+        Err(e) => return Err(crate::errcode::ec(crate::errcode::E_STT_MODEL_LOAD, e)),
+    };
     let threads = num_cpus::get_physical().max(1) as i32;
 
     // #600 根治: 長尺を chunk_secs 未満に分割し個別デコードする。whisper.cpp の sequential seek が
@@ -366,7 +380,7 @@ where
 
 /// コールバックなしの簡易版（統合テスト等で使用）。
 pub fn transcribe(model_path: &Path, audio: &[f32], lang: Option<&str>) -> Result<String, String> {
-    transcribe_with(model_path, audio, lang, false, |_| {}, |_| {})
+    transcribe_with(model_path, audio, lang, false, true, |_| {}, |_| {})
 }
 
 /// 文字起こしエンジンの抽象（S2.3 / Strategy・DIP 境界）。
@@ -633,6 +647,8 @@ impl TranscriptionEngine for AzureSttEngine {
 /// ローカル whisper.cpp 実装（既定エンジン / ADR-0002）。
 pub struct LocalWhisperEngine {
     pub model_path: std::path::PathBuf,
+    /// GPUで実行するか（CUDA変種のみ実効。CPUビルドでは無視される / ADR-0027）。
+    pub use_gpu: bool,
 }
 
 impl TranscriptionEngine for LocalWhisperEngine {
@@ -649,6 +665,7 @@ impl TranscriptionEngine for LocalWhisperEngine {
             audio,
             lang,
             timestamps,
+            self.use_gpu,
             on_progress,
             on_segment,
         )
@@ -667,6 +684,8 @@ pub struct SttConfig {
     pub azure_resource: String,
     /// ローカル whisper のモデルファイルパス。
     pub model_path: std::path::PathBuf,
+    /// ローカル whisper をGPUで実行するか（ADR-0027。クラウド/CPUビルドでは未使用）。
+    pub use_gpu: bool,
 }
 
 /// 文字起こしプロバイダ（S2.3/S2.4）。別名解釈・クラウド判定・既定モデル・エンジン生成を
@@ -741,6 +760,7 @@ impl SttProvider {
             }),
             Self::Local => Box::new(LocalWhisperEngine {
                 model_path: cfg.model_path,
+                use_gpu: cfg.use_gpu,
             }),
         }
     }
@@ -906,6 +926,7 @@ mod tests {
             api_key: "k".into(),
             azure_resource: "res".into(),
             model_path: std::path::PathBuf::from("dummy.bin"),
+            use_gpu: false,
         }
     }
 

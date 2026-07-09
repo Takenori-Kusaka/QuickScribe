@@ -97,6 +97,7 @@ describe("readSettings", () => {
 describe("writeSettings", () => {
   const base: AppSettings = {
     provider: "anthropic",
+    sttUseGpu: true,
     resolvedModel: {
       gemini: "",
       anthropic: "",

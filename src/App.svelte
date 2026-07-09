@@ -80,6 +80,11 @@
   let busy = $state(false);
   // アプリのバージョン(release ビルドの実バージョン)。実行結果をどの版で得たか共有できるよう表示する。
   let appVersion = $state<string>("");
+  // このビルドの文字起こし実行バックエンド("cpu"|"cuda")と実行環境のGPU利用可否(ADR-0027)。
+  let sttBackend = $state<string>("");
+  let gpuAvailable = $state(false);
+  // GPUで文字起こしする(ユーザー設定・既定ON=環境が許せば速度最適なGPUを自動選択 / ADR-0027)。
+  let sttUseGpu = $state(true);
 
   // 設定（localStorageに保存。秘密情報はローカル端末内のみ）。
   // 整形プロバイダ: Gemini / Anthropic / OpenAI / ローカル(Ollama) ＋
@@ -261,6 +266,8 @@
         model: isCloud ? sttModel : whisperModel,
         apiKey: isCloud ? (sttKeys[sttProvider] ?? "") : "",
         azureResource: sttProvider === "azure" ? sttAzureResource.trim() : "",
+        // GPU実行(ADR-0027)。環境がGPU不可(CPUビルド/非NVIDIA)ならバックエンド側でも無効化される。
+        useGpu: sttUseGpu,
       });
     } catch (e) {
       console.error("set_stt_settings failed", e);
@@ -321,6 +328,7 @@
     outputLang = s.outputLang;
     openaiBaseUrl = s.openaiBaseUrl;
     sttProvider = s.sttProvider;
+    sttUseGpu = s.sttUseGpu;
     privacy.offlineMode = s.offlineMode;
     sttModel = s.sttModel;
     sttAzureResource = s.sttAzureResource;
@@ -357,6 +365,7 @@
       outputLang,
       openaiBaseUrl,
       sttProvider,
+      sttUseGpu,
       offlineMode: privacy.offlineMode,
       sttModel,
       sttAzureResource,
@@ -873,6 +882,13 @@
     // アプリのバージョンを取得して表示（どの版での実行結果かを共有できるように）。失敗時は空のまま。
     void getVersion()
       .then((v) => (appVersion = v))
+      .catch(() => {});
+    // ビルド変種(CPU/CUDA)と実行環境のGPU判定（ADR-0027）。既定で速度最適なモードを自動選択する。
+    void invoke<{ variant: string; gpuAvailable: boolean }>("stt_backend")
+      .then((b) => {
+        sttBackend = b?.variant ?? "";
+        gpuAvailable = !!b?.gpuAvailable;
+      })
       .catch(() => {});
     loadSettings();
     // 初回起動（未表示）ならオンボーディングを出す（#397）。
@@ -1667,6 +1683,19 @@
               {/each}
             </select>
           </div>
+          <!-- GPU実行(ADR-0027): CUDA変種ビルドのみ表示。既定ON=環境が許せば速度最適なGPUを自動選択。
+               GPUが使えない環境(NVIDIAドライバ未検出)では無効化し、CPU実行である旨を示す。 -->
+          {#if sttProvider === "local" && sttBackend === "cuda"}
+            <label class="check">
+              <input type="checkbox" bind:checked={sttUseGpu} disabled={!gpuAvailable} />
+              {$_("settings.use_gpu")}
+            </label>
+            {#if !gpuAvailable}
+              <p class="tip">{$_("settings.gpu_unavailable")}</p>
+            {:else}
+              <p class="tip">{$_("settings.tip_gpu")}</p>
+            {/if}
+          {/if}
           {#if STT_CLOUD.includes(sttProvider)}
             <label>
               {$_("settings.stt_api_key", {
@@ -2074,7 +2103,11 @@
           <summary class="meta-title">{$_("settings.group_about")}</summary>
           <p class="tip">
             QuickScribe{#if appVersion}
-              <strong>v{appVersion}</strong>{/if} — {$_("settings.about_license")}
+              <strong>v{appVersion}</strong>{/if}{#if sttBackend}
+              ({sttBackend === "cuda"
+                ? $_("settings.backend_cuda")
+                : $_("settings.backend_cpu")}){/if}
+            — {$_("settings.about_license")}
           </p>
           <p class="tip">{$_("settings.about_oss")}</p>
           <p class="tip">{$_("settings.about_repo")}: github.com/Takenori-Kusaka/QuickScribe</p>

@@ -10,6 +10,11 @@ on:
         description: "ビルド対象の branch / tag / SHA"
         required: false
         default: ""
+      cuda:
+        description: "GPU(CUDA)変種をビルドする(ADR-0027)。NVIDIA GPU実機での検証用"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -42,6 +47,36 @@ jobs:
         run: echo "LIBCLANG_PATH=$((Get-Command clang).Source | Split-Path)" >> $env:GITHUB_ENV
         shell: pwsh
 
+      # --- CUDA変種(ADR-0027 / inputs.cuda=true のみ) ---
+      - uses: Jimver/cuda-toolkit@v0.2.21
+        if: ${{ inputs.cuda }}
+        with:
+          cuda: "12.8.0"
+          method: network
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "nvrtc_dev"]'
+      - name: Setup MSVC dev env (CUDA/Ninja)
+        if: ${{ inputs.cuda }}
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+      - name: Set CUDA build env
+        if: ${{ inputs.cuda }}
+        shell: bash
+        run: |
+          {
+            echo "CMAKE_GENERATOR=Ninja"
+            echo "CMAKE_CUDA_ARCHITECTURES=61;75;86;89"
+          } >> "$GITHUB_ENV"
+      - name: Stage CUDA runtime DLLs
+        if: ${{ inputs.cuda }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force src-tauri/cuda-dlls | Out-Null
+          $bin = Join-Path $env:CUDA_PATH "bin"
+          Copy-Item "$bin/cudart64_*.dll" src-tauri/cuda-dlls/
+          Copy-Item "$bin/cublas64_*.dll" src-tauri/cuda-dlls/
+          Copy-Item "$bin/cublasLt64_*.dll" src-tauri/cuda-dlls/
+
       - name: Install npm dependencies
         run: npm ci
 
@@ -63,7 +98,7 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npx tauri build --config src-tauri/tauri.release.conf.json
+        run: npx tauri build --config src-tauri/tauri.release.conf.json ${{ inputs.cuda && '--config src-tauri/tauri.cuda.conf.json --features cuda' || '' }}
 
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v7
