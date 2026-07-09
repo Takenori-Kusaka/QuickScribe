@@ -47,6 +47,7 @@
 
 ## 反証・見直し条件
 
-- Vulkan 変種が GPU 無し環境で安全にフォールバックすると実証されたら、Vulkan を優先変種に昇格（DLL 同梱不要のため）。
+- ~~Vulkan 変種が GPU 無し環境で安全にフォールバックすると実証されたら、Vulkan を優先変種に昇格（DLL 同梱不要のため）。~~
+  → **発火済み（2026-07-09）**。Vulkan が CUDA とほぼ同速（6.1 対 5.5 分）と実測、かつ「GPU初期化はデバイス無しだと C++ abort し実行時フォールバック不可＝起動時のデバイス事前検出が必須」と判明。**既定を単一Vulkanビルドへ一本化**し CUDA は任意 extra に降格する決定を [ADR-0028](0028-single-vulkan-build-startup-gpu-detection.md) に記録（本ADRの CPU既定/CUDA opt-in 配布方針を差し替え。Phase1-2 の CUDA 実装・ドライバ案内UXは extra として存置）。
 - whisper-rs が GGML_BACKEND_DL / GPU feature の実行時選択に対応したら Phase 4 を前倒し。
 - CUDA EULA 改定時は再確認。

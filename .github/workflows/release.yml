@@ -43,10 +43,12 @@ jobs:
             label: linux-x64
             rust_target: ""
             tauri_args: "--config src-tauri/tauri.release.conf.json"
+          # Windows x64 = 既定Vulkanビルド(ADR-0028)。起動時デバイス検出で GPU可→GPU / 無→CPU。
+          # 単一インストーラで CPU〜全GPUをカバー。VULKAN_SDK はビルド前に導入する(下の条件付きstep)。
           - os: windows-latest
             label: windows-x64
             rust_target: x86_64-pc-windows-msvc
-            tauri_args: "--config src-tauri/tauri.release.conf.json --target x86_64-pc-windows-msvc"
+            tauri_args: "--config src-tauri/tauri.release.conf.json --target x86_64-pc-windows-msvc --features vulkan"
           - os: windows-latest
             label: windows-arm64
             rust_target: aarch64-pc-windows-msvc
@@ -96,6 +98,26 @@ jobs:
         shell: pwsh
 
       # 注: whisper(ggml)は vendor patch で GGML_NATIVE=OFF=決定的AVX2(x64)/NEON(ARM64) / ADR-0012。
+
+      # Windows x64 = Vulkan既定ビルド(ADR-0028)。whisper.cpp の GGML_VULKAN ビルドは
+      # Vulkan ヘッダ / vulkan-1.lib / glslc(シェーダコンパイラ)を要する。LunarG公式SDKをサイレント導入。
+      # ランタイムDLLの同梱は不要(Vulkanランタイムはドライバ由来)。test-build.yml と同一手順。
+      - name: Install Vulkan SDK (windows-x64 default Vulkan build)
+        if: matrix.label == 'windows-x64'
+        shell: pwsh
+        run: |
+          # 既知良好版にピン留め(ADR-0012 決定的ビルド / LunarGの破壊的更新でリリースが赤化するのを防ぐ)。
+          # 更新は明示的なPRで(実機Vulkan動作を確認のうえ版を上げる)。test-build.yml と同版を維持。
+          $ver = "1.4.350.0"
+          Write-Host "Vulkan SDK version (pinned): $ver"
+          $url = "https://sdk.lunarg.com/sdk/download/$ver/windows/vulkansdk-windows-X64-$ver.exe"
+          $exe = "$env:RUNNER_TEMP\vulkan-sdk-installer.exe"
+          Invoke-WebRequest -Uri $url -OutFile $exe
+          Start-Process -FilePath $exe -ArgumentList "--accept-licenses","--default-answer","--confirm-command","install" -Wait
+          $sdk = "C:\VulkanSDK\$ver"
+          if (-not (Test-Path $sdk)) { throw "Vulkan SDK not found at $sdk" }
+          "VULKAN_SDK=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$sdk\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Install npm dependencies
         run: npm ci

@@ -15,6 +15,11 @@ on:
         required: false
         type: boolean
         default: false
+      vulkan:
+        description: "GPU(Vulkan)変種をビルドする(ADR-0027 Phase3)。次期既定ビルドの検証用"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -94,6 +99,26 @@ jobs:
           Copy-Item "$bin/cublas64_*.dll" src-tauri/cuda-dlls/
           Copy-Item "$bin/cublasLt64_*.dll" src-tauri/cuda-dlls/
 
+      # --- Vulkan変種(ADR-0027 Phase3 / inputs.vulkan=true のみ) ---
+      # whisper.cpp の GGML_VULKAN ビルドは Vulkan ヘッダ / vulkan-1.lib / glslc(シェーダコンパイラ)を要する。
+      # LunarG 公式インストーラをサイレント導入し VULKAN_SDK を設定する(DLL同梱は不要=ランタイムはドライバ由来)。
+      - name: Install Vulkan SDK (for whisper.cpp vulkan backend build)
+        if: ${{ inputs.vulkan }}
+        shell: pwsh
+        run: |
+          # 既知良好版にピン留め(ADR-0012 決定的ビルド / LunarGの破壊的更新でリリースが赤化するのを防ぐ)。
+          # 更新は明示的なPRで(実機Vulkan動作を確認のうえ版を上げる)。
+          $ver = "1.4.350.0"
+          Write-Host "Vulkan SDK version (pinned): $ver"
+          $url = "https://sdk.lunarg.com/sdk/download/$ver/windows/vulkansdk-windows-X64-$ver.exe"
+          $exe = "$env:RUNNER_TEMP\vulkan-sdk-installer.exe"
+          Invoke-WebRequest -Uri $url -OutFile $exe
+          Start-Process -FilePath $exe -ArgumentList "--accept-licenses","--default-answer","--confirm-command","install" -Wait
+          $sdk = "C:\VulkanSDK\$ver"
+          if (-not (Test-Path $sdk)) { throw "Vulkan SDK not found at $sdk" }
+          "VULKAN_SDK=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$sdk\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
       # updater が公開鍵設定済みのため tauri build は updater 成果物の署名を要求する。
       # ここでは公開リリースも latest.json 発行もしない（成果物アップロードのみ）が、
       # ビルドを完走させるため release.yml と同じ署名鍵を渡す。
@@ -101,7 +126,7 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npx tauri build --config src-tauri/tauri.release.conf.json ${{ inputs.cuda && '--config src-tauri/tauri.cuda.conf.json --features cuda' || '' }}
+        run: npx tauri build --config src-tauri/tauri.release.conf.json ${{ inputs.cuda && '--config src-tauri/tauri.cuda.conf.json --features cuda' || '' }} ${{ inputs.vulkan && '--features vulkan' || '' }}
 
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v7

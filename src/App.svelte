@@ -80,12 +80,12 @@
   let busy = $state(false);
   // アプリのバージョン(release ビルドの実バージョン)。実行結果をどの版で得たか共有できるよう表示する。
   let appVersion = $state<string>("");
-  // このビルドの文字起こし実行バックエンド("cpu"|"cuda")と実行環境のGPU利用可否(ADR-0027)。
+  // このビルドの文字起こし実行バックエンド("cpu"|"vulkan"|"cuda")と実行環境のGPU利用可否(ADR-0027)。
   let sttBackend = $state<string>("");
   let gpuAvailable = $state(false);
   // GPUで文字起こしする(ユーザー設定・既定ON=環境が許せば速度最適なGPUを自動選択 / ADR-0027)。
   let sttUseGpu = $state(true);
-  // NVIDIAドライバ入手ページ(型番非依存の公式入口 / ADR-0027)。
+  // NVIDIAドライバ入手ページ(型番非依存の公式入口 / ADR-0027・CUDA変種のみ使用)。
   const NVIDIA_DRIVER_URL = "https://www.nvidia.com/Download/index.aspx";
 
   // 設定（localStorageに保存。秘密情報はローカル端末内のみ）。
@@ -1688,23 +1688,25 @@
               {/each}
             </select>
           </div>
-          <!-- GPU実行(ADR-0027): CUDA変種ビルドのみ表示。既定ON=環境が許せば速度最適なGPUを自動選択。
-               GPUが使えない環境(NVIDIAドライバ未検出)では無効化し、CPU実行である旨を示す。 -->
-          {#if sttProvider === "local" && sttBackend === "cuda"}
+          <!-- GPU実行(ADR-0027): GPU変種ビルド(vulkan/cuda)で表示。既定ON=起動時にGPUデバイスを検出し
+               使えれば速度最適なGPUを自動選択。デバイス/ドライバ未検出なら無効化しCPU実行である旨を示す。 -->
+          {#if sttProvider === "local" && (sttBackend === "vulkan" || sttBackend === "cuda")}
             <label class="check">
               <input type="checkbox" bind:checked={sttUseGpu} disabled={!gpuAvailable} />
               {$_("settings.use_gpu")}
             </label>
             {#if !gpuAvailable}
-              <!-- ①誘導 ②理由 ③スキップ可(=そのままCPUで動作) を満たす案内(ADR-0027 Phase2)。 -->
+              <!-- ②理由 ③スキップ可(=そのままCPUで動作)。①入手導線はCUDA変種のみ(Vulkanは汎用GPUドライバ)。 -->
               <p class="tip">{$_("settings.gpu_unavailable")}</p>
-              <button
-                type="button"
-                class="btn small ghost"
-                onclick={() => void invoke("open_external", { url: NVIDIA_DRIVER_URL })}
-              >
-                {$_("settings.get_driver")}
-              </button>
+              {#if sttBackend === "cuda"}
+                <button
+                  type="button"
+                  class="btn small ghost"
+                  onclick={() => void invoke("open_external", { url: NVIDIA_DRIVER_URL })}
+                >
+                  {$_("settings.get_driver")}
+                </button>
+              {/if}
             {:else}
               <p class="tip">{$_("settings.tip_gpu")}</p>
             {/if}
@@ -2119,7 +2121,9 @@
               <strong>v{appVersion}</strong>{/if}{#if sttBackend}
               ({sttBackend === "cuda"
                 ? $_("settings.backend_cuda")
-                : $_("settings.backend_cpu")}){/if}
+                : sttBackend === "vulkan"
+                  ? $_("settings.backend_vulkan")
+                  : $_("settings.backend_cpu")}){/if}
             — {$_("settings.about_license")}
           </p>
           <p class="tip">{$_("settings.about_oss")}</p>

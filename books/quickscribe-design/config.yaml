@@ -12,3 +12,4 @@ chapters:
   - physical-trigger
   - accuracy-as-commodity
   - default-model-reversal
+  - speed-floor-gpu-vulkan

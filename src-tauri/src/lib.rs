@@ -5,6 +5,11 @@
 // システム音声ループバック・デバイス切替・Stream Deck連携は後続の縦切りで追加する
 // (ADR-0006 によりスコープからは外さない)。
 
+// GPUバックエンドの相互排他(ADR-0027/0028)。両方有効だと stt_backend の variant 報告
+// (cuda優先) と gpu_backend_available の実判定 (vulkan優先) が食い違うため、コンパイル時に禁止する。
+#[cfg(all(feature = "cuda", feature = "vulkan"))]
+compile_error!("features `cuda` と `vulkan` は排他です。GPUバックエンドは一方のみ有効にしてください。");
+
 pub mod audio_save;
 // AWS SigV4署名(Bedrock / Claude Platform on AWS の整形プロバイダ用 / ADR-0011)。
 pub mod aws_sign;
@@ -370,7 +375,7 @@ fn transcribe_blocking<R: tauri::Runtime>(
     let app_s = app.clone();
     // STTエンジンを解決して文字起こし（S2.3抽象 / S2.4でクラウド）。
     // GPU実行(ADR-0027): CUDA変種かつ実行環境にNVIDIAドライバがあり、ユーザーが無効化していないとき。
-    let use_gpu = !stt.disable_gpu && nvidia_driver_present();
+    let use_gpu = !stt.disable_gpu && gpu_backend_available();
     let engine = stt::engine_for(stt::SttConfig {
         provider,
         model: stt.model,
@@ -705,24 +710,68 @@ fn list_whisper_models() -> Vec<model::ModelInfo> {
     model::list_models()
 }
 
-/// NVIDIAドライバ(nvcuda.dll)が実行環境に存在するか（ADR-0027 の実行時GPU判定）。
-/// CUDA変種でも非搭載機では GPU を使わない（use_gpu=false ならCUDA APIは一切呼ばれない＝安全）。
-/// 64bitプロセスのため System32 は実体を指す。CPUビルド/非Windowsでは常に false。
-fn nvidia_driver_present() -> bool {
-    if !cfg!(feature = "cuda") {
-        return false;
+/// System32 に指定 DLL が存在するか（CUDA変種の実行時GPU判定用 / ADR-0027）。64bitプロセスのため System32 は実体。
+#[cfg(all(windows, feature = "cuda"))]
+fn system32_dll_exists(name: &str) -> bool {
+    let sysroot = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+    std::path::Path::new(&sysroot)
+        .join("System32")
+        .join(name)
+        .exists()
+}
+
+/// Vulkan の物理デバイスが1台以上あるか（起動時の環境認識フェーズで安全に判定 / ADR-0027 Phase3）。
+///
+/// 重要: whisper.cpp の GPU 初期化は、使えるデバイスが無い状態で呼ぶと **C++ 例外で abort** し、
+/// Rust 側では捕捉できない（実測: `Rust cannot catch foreign exceptions` / STATUS_STACK_BUFFER_OVERRUN）。
+/// つまり「GPUを試して失敗したらCPUへ」という実行時フォールバックは**原理的に不可能**。
+/// よって GPU を使う *前* に、Vulkan ローダの安全な C API（vkCreateInstance + vkEnumeratePhysicalDevices・
+/// 戻り値は VkResult で例外を投げない）で物理デバイス数を数え、**1台以上ある時だけ** GPU を使う。
+/// vulkan-1.dll 不在 / ICD(ドライバ)不在 / インスタンス生成失敗 / デバイス0 はすべて false（=CPU実行）。
+/// DLL の存在だけでは不十分（ローダは GPU 無しでも在ることがある）。
+#[cfg(all(windows, feature = "vulkan"))]
+fn vulkan_device_present() -> bool {
+    use ash::vk;
+    // すべて Vulkan ローダの C API 呼び出し（unsafe だが VkResult を返し例外は投げない）。
+    unsafe {
+        // Entry::load は libloading で vulkan-1.dll を実行時に開く（不在なら Err → false）。
+        let entry = match ash::Entry::load() {
+            Ok(e) => e,
+            Err(_) => return false,
+        };
+        let app_info = vk::ApplicationInfo::default().api_version(vk::API_VERSION_1_0);
+        let create_info = vk::InstanceCreateInfo::default().application_info(&app_info);
+        // ICD/ドライバ不在や壊れたローダはここで Err（例外ではなく VkResult）→ false。
+        let instance = match entry.create_instance(&create_info, None) {
+            Ok(i) => i,
+            Err(_) => return false,
+        };
+        let present = matches!(instance.enumerate_physical_devices(), Ok(d) if !d.is_empty());
+        instance.destroy_instance(None);
+        present
     }
-    #[cfg(windows)]
+}
+
+/// この実行環境で GPU バックエンドが実際に使えるか（ADR-0027 の起動時判定）。
+/// Vulkan変種=物理デバイスを列挙し1台以上ある時のみ true（whisperのGPU初期化abortを構造的に回避）。
+/// CUDA変種(当面凍結)=NVIDIAドライバ(nvcuda.dll)存在で判定。CPUビルド/非Windowsは常に false。
+/// gpu_available=false のときは GPU API を一切呼ばず CPU 実行する（安全側）。
+/// pub: 統合テスト(tests/gpu_detect_integration.rs)が空ICD環境での安全なfalse返却を検証するため。
+pub fn gpu_backend_available() -> bool {
+    #[cfg(all(windows, feature = "vulkan"))]
     {
-        let sysroot = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
-        return std::path::Path::new(&sysroot).join("System32").join("nvcuda.dll").exists();
+        return vulkan_device_present();
     }
-    #[cfg(not(windows))]
+    #[cfg(all(windows, feature = "cuda", not(feature = "vulkan")))]
+    {
+        return system32_dll_exists("nvcuda.dll");
+    }
+    #[allow(unreachable_code)]
     false
 }
 
 /// このビルドの文字起こし実行バックエンド（配布変種と実行時GPU判定の可視化 / ADR-0027）。
-/// variant: "cuda"=GPU変種ビルド / "cpu"=既定のCPU版。gpu_available: 実行環境でGPUが使えるか。
+/// variant: "cuda"|"vulkan"=GPU変種ビルド / "cpu"=既定のCPU版。gpu_available: 実行環境でGPUが使えるか。
 /// 起動時にフロントがこれを読み、既定で速度最適な実行モード(GPU可ならGPU)を選ぶ。
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -733,9 +782,16 @@ struct SttBackendInfo {
 
 #[tauri::command]
 fn stt_backend() -> SttBackendInfo {
+    let variant = if cfg!(feature = "cuda") {
+        "cuda"
+    } else if cfg!(feature = "vulkan") {
+        "vulkan"
+    } else {
+        "cpu"
+    };
     SttBackendInfo {
-        variant: if cfg!(feature = "cuda") { "cuda" } else { "cpu" },
-        gpu_available: nvidia_driver_present(),
+        variant,
+        gpu_available: gpu_backend_available(),
     }
 }
 
@@ -1161,11 +1217,19 @@ mod tests {
     #[test]
     fn stt_backend_reports_build_variant() {
         // 既定(CPU)ビルドでは variant="cpu"・gpu_available=false。
-        // cuda feature 有効時は variant="cuda"・gpu_available=ドライバ実在に依存（ADR-0027契約）。
+        // GPU変種は variant="vulkan"|"cuda"・gpu_available=実デバイス/ドライバの実在に依存（ADR-0027契約）。
         let info = stt_backend();
-        let expected = if cfg!(feature = "cuda") { "cuda" } else { "cpu" };
+        let expected = if cfg!(feature = "cuda") {
+            "cuda"
+        } else if cfg!(feature = "vulkan") {
+            "vulkan"
+        } else {
+            "cpu"
+        };
         assert_eq!(info.variant, expected);
-        if !cfg!(feature = "cuda") {
+        // CPUビルドは常にGPU利用不可。GPU変種は実デバイス依存のため断定しない
+        // (CI/GPU無し機では false=安全側=CPU実行 になる契約。abort回避の要)。
+        if !cfg!(any(feature = "cuda", feature = "vulkan")) {
             assert!(!info.gpu_available, "CPUビルドではGPU利用不可と報告する");
         }
     }
