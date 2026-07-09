@@ -164,10 +164,7 @@
     "tip_gpu": "在GPU上运行转写（实测大幅提速）。如遇问题可关闭以使用CPU。",
     "gpu_unavailable": "此环境未找到兼容的GPU（无GPU或驱动不支持）。将使用CPU运行。",
     "backend_cpu": "CPU版",
-    "backend_cuda": "GPU版 CUDA",
-    "backend_vulkan": "GPU版 Vulkan",
-    "cuda_manual_update": "GPU版(CUDA)需手动更新。请从发布页面获取最新的 x64-cuda-setup.exe。",
-    "get_driver": "获取NVIDIA驱动"
+    "backend_vulkan": "GPU版 Vulkan"
   },
   "nudge": {
     "title": "今天的日记写了吗？",
@@ -292,8 +289,6 @@
     "whisper_models": {
       "base": "标准 base（兼顾日语与速度，约142MB / 默认、稳健）",
       "large-v3-turbo": "高精度 large-v3-turbo（日语·对话强／长音频结尾可靠·约547MB·慢 / 日语默认）",
-      "kotoba-q5": "日语特化 kotoba-whisper 量化（日语精度◎，约538MB，日语推荐）",
-      "kotoba": "日语特化 kotoba-whisper 高精度（约1.5GB，较慢）",
       "small": "多语言 small（适合英语，约466MB）",
       "medium": "多语言 medium（适合英语，高精度，约1.5GB，较慢）",
       "tiny": "最快 tiny（英语/草稿用；日语精度低不推荐，约75MB）"

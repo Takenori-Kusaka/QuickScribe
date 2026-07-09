@@ -80,13 +80,11 @@
   let busy = $state(false);
   // アプリのバージョン(release ビルドの実バージョン)。実行結果をどの版で得たか共有できるよう表示する。
   let appVersion = $state<string>("");
-  // このビルドの文字起こし実行バックエンド("cpu"|"vulkan"|"cuda")と実行環境のGPU利用可否(ADR-0027)。
+  // このビルドの文字起こし実行バックエンド("cpu"|"vulkan")と実行環境のGPU利用可否(ADR-0028)。
   let sttBackend = $state<string>("");
   let gpuAvailable = $state(false);
-  // GPUで文字起こしする(ユーザー設定・既定ON=環境が許せば速度最適なGPUを自動選択 / ADR-0027)。
+  // GPUで文字起こしする(ユーザー設定・既定ON=環境が許せば速度最適なGPUを自動選択 / ADR-0028)。
   let sttUseGpu = $state(true);
-  // NVIDIAドライバ入手ページ(型番非依存の公式入口 / ADR-0027・CUDA変種のみ使用)。
-  const NVIDIA_DRIVER_URL = "https://www.nvidia.com/Download/index.aspx";
 
   // 設定（localStorageに保存。秘密情報はローカル端末内のみ）。
   // 整形プロバイダ: Gemini / Anthropic / OpenAI / ローカル(Ollama) ＋
@@ -252,6 +250,16 @@
   // ローカル whisper のモデル選択（S2.2）。クラウドの sttModel とは分離。永続化する。
   // 選択可能なモデル一覧(whisperModels)は device.loadWhisperModels() で列挙する。
   let whisperModel = $state<string>(""); // 空=既定 base
+  // 撤去済みモデル(kotoba等 / ADR-0029)を選択したまま更新した既存ユーザー向けの表示正規化。
+  // 一覧が読み込まれた後、保存済みidがカタログに無ければ base(常に存在する頑健な既定)へ戻す。
+  // バックエンドは model_for で未知id→base に安全マップ済み＝機能は元々問題ないが、選択ドロップ
+  // ダウンに該当optionが無い(selectedIndex=-1)表示を一覧と一致させる。base は条件が偽=再代入せず収束。
+  $effect(() => {
+    const ids = (device.whisperModels ?? []).map((m) => m.id);
+    if (whisperModel && ids.length > 0 && !ids.includes(whisperModel)) {
+      whisperModel = ids.includes("base") ? "base" : ids[0];
+    }
+  });
   // クラウドSTTのAPIキー（プロバイダごと）。keyringに "sttKey:<provider>" で保管。
   let sttKeys = $state<Record<string, string>>({
     groq: "",
@@ -268,7 +276,7 @@
         model: isCloud ? sttModel : whisperModel,
         apiKey: isCloud ? (sttKeys[sttProvider] ?? "") : "",
         azureResource: sttProvider === "azure" ? sttAzureResource.trim() : "",
-        // GPU実行(ADR-0027)。環境がGPU不可(CPUビルド/非NVIDIA)ならバックエンド側でも無効化される。
+        // GPU実行(ADR-0028)。環境がGPU不可(CPUビルド/Vulkanデバイス無し)ならバックエンド側でも無効化される。
         useGpu: sttUseGpu,
       });
     } catch (e) {
@@ -885,14 +893,12 @@
     void getVersion()
       .then((v) => (appVersion = v))
       .catch(() => {});
-    // ビルド変種(CPU/CUDA)と実行環境のGPU判定（ADR-0027）。既定で速度最適なモードを自動選択する。
-    // 更新の自動チェックは変種判定の後に実行: CUDA変種は自動更新なし(Phase1)のためスキップし、
-    // 未発行エンドポイントへの毎起動エラーを出さない。
+    // ビルド変種(CPU/Vulkan)と実行環境のGPU判定（ADR-0028）。既定で速度最適なモードを自動選択する。
     void invoke<{ variant: string; gpuAvailable: boolean }>("stt_backend")
       .then((b) => {
         sttBackend = b?.variant ?? "";
         gpuAvailable = !!b?.gpuAvailable;
-        if (sttBackend !== "cuda") void updater.checkForUpdate();
+        void updater.checkForUpdate();
       })
       .catch(() => void updater.checkForUpdate());
     loadSettings();
@@ -910,7 +916,6 @@
     void syncSaveSettings();
     void syncTrayTexts();
     void resolveCurrentModel();
-    // 更新の自動チェックは stt_backend 解決後に実行(CUDA変種はスキップ / 上のonMount冒頭参照)。
     // 習慣ナッジ（#58）: 起動をアンカーに、継続中ストリークが今日未記録なら1回だけ促す（opt-in）。
     void maybeNudgeOnStartup();
     // トレイ/メニュー/CLI --toggle-record は常にトグル。
@@ -1688,25 +1693,16 @@
               {/each}
             </select>
           </div>
-          <!-- GPU実行(ADR-0027): GPU変種ビルド(vulkan/cuda)で表示。既定ON=起動時にGPUデバイスを検出し
+          <!-- GPU実行(ADR-0028): Vulkan変種ビルドで表示。既定ON=起動時にGPUデバイスを検出し
                使えれば速度最適なGPUを自動選択。デバイス/ドライバ未検出なら無効化しCPU実行である旨を示す。 -->
-          {#if sttProvider === "local" && (sttBackend === "vulkan" || sttBackend === "cuda")}
+          {#if sttProvider === "local" && sttBackend === "vulkan"}
             <label class="check">
               <input type="checkbox" bind:checked={sttUseGpu} disabled={!gpuAvailable} />
               {$_("settings.use_gpu")}
             </label>
             {#if !gpuAvailable}
-              <!-- ②理由 ③スキップ可(=そのままCPUで動作)。①入手導線はCUDA変種のみ(Vulkanは汎用GPUドライバ)。 -->
+              <!-- 理由＋スキップ可(=そのままCPUで動作)。Vulkanは汎用GPUドライバのみで特定の入手導線は不要。 -->
               <p class="tip">{$_("settings.gpu_unavailable")}</p>
-              {#if sttBackend === "cuda"}
-                <button
-                  type="button"
-                  class="btn small ghost"
-                  onclick={() => void invoke("open_external", { url: NVIDIA_DRIVER_URL })}
-                >
-                  {$_("settings.get_driver")}
-                </button>
-              {/if}
             {:else}
               <p class="tip">{$_("settings.tip_gpu")}</p>
             {/if}
@@ -2119,11 +2115,9 @@
           <p class="tip">
             QuickScribe{#if appVersion}
               <strong>v{appVersion}</strong>{/if}{#if sttBackend}
-              ({sttBackend === "cuda"
-                ? $_("settings.backend_cuda")
-                : sttBackend === "vulkan"
-                  ? $_("settings.backend_vulkan")
-                  : $_("settings.backend_cpu")}){/if}
+              ({sttBackend === "vulkan"
+                ? $_("settings.backend_vulkan")
+                : $_("settings.backend_cpu")}){/if}
             — {$_("settings.about_license")}
           </p>
           <p class="tip">{$_("settings.about_oss")}</p>
@@ -2133,15 +2127,9 @@
 
       <div class="settings-actions">
         <button class="btn small" onclick={saveSettings}>{$_("settings.save")}</button>
-        {#if sttBackend === "cuda"}
-          <!-- CUDA変種は自動更新なし(ADR-0027 Phase1)。手動DL(リリースページ)へ誘導し、
-               未発行の latest-cuda.json への更新チェック=常時エラーを出さない。 -->
-          <span class="tip">{$_("settings.cuda_manual_update")}</span>
-        {:else}
-          <button class="btn small ghost" onclick={() => updater.checkForUpdate(true)}
-            >{$_("settings.check_update")}</button
-          >
-        {/if}
+        <button class="btn small ghost" onclick={() => updater.checkForUpdate(true)}
+          >{$_("settings.check_update")}</button
+        >
       </div>
       {#if updater.updateMsg}<p class="muted" role="status" aria-live="polite">
           {updater.updateMsg}

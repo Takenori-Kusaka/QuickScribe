@@ -11,13 +11,7 @@ fn main() {
     if std::env::var("CARGO_CFG_WINDOWS").is_ok() {
         println!("cargo::rustc-link-arg=/DELAYLOAD:comctl32.dll");
         println!("cargo::rustc-link-arg=delayimp.lib");
-        // CUDA変種(ADR-0027): nvcuda.dll はNVIDIAドライバ由来で同梱できない。遅延ロードにより
-        // 非搭載機でもEXEが起動できるようにする(use_gpu=false 判定時はCUDA APIを一切呼ばない設計と
-        // 併せて、CUDA変種がGPU無し環境でもCPU実行で動作する)。cudart/cublas等はインストーラ同梱。
-        if std::env::var("CARGO_FEATURE_CUDA").is_ok() {
-            println!("cargo::rustc-link-arg=/DELAYLOAD:nvcuda.dll");
-        }
-        // Vulkan変種(ADR-0027 Phase3): whisper-rs-sys が vulkan-1.dll を静的インポートするため、
+        // Vulkan変種(ADR-0028): whisper-rs-sys が vulkan-1.dll を静的インポートするため、
         // ローダ未導入(GPUドライバ無しの最小Windows)ではEXEが起動時解決に失敗して起動不能になる。
         // 遅延ロードにすれば解決は最初のVulkan呼び出し時に延び、GPU無し機でも起動できる
         // (起動時の vulkan_device_present()=ash動的ロードでデバイス0を検出→use_gpu=false=Vulkan API不使用。

@@ -157,8 +157,9 @@ jobs:
           if-no-files-found: error
 
   # 日本語精度ベンチ(#26 / #403): 実データ(本人音読のPD作品)に対する CER(文字誤り率)を、
-  # モデル別(tiny/base/kotoba-q5)に計測する。モデルカタログ精選(不要な選択肢を増やさない)と
-  # 精度回帰の検知が目的。ルビ混入により絶対値は悲観側＝相対/回帰指標として扱う(fixtures/README参照)。
+  # モデル別(tiny/base/large-v3-turbo)に計測する。モデルカタログ精選(不要な選択肢を増やさない)と
+  # 精度回帰の検知が目的。turbo は日本語既定(ADR-0025 #4でベンチ対象化)。kotoba は撤去済み(ADR-0029)。
+  # ルビ混入により絶対値は悲観側＝相対/回帰指標として扱う(fixtures/README参照)。
   ja-accuracy:
     name: 日本語精度 CER (Linux)
     runs-on: ubuntu-22.04
@@ -181,15 +182,15 @@ jobs:
         uses: actions/cache@v6
         with:
           path: models
-          key: ja-accuracy-models-tiny-base-kotobaq5-v1
-      - name: Download models (tiny / base / kotoba-q5)
+          key: ja-accuracy-models-tiny-base-turbo-v1
+      - name: Download models (tiny / base / large-v3-turbo)
         if: steps.cache-ja-models.outputs.cache-hit != 'true'
         run: |
           mkdir -p models
           dl() { curl -L --fail --retry 5 --retry-delay 15 --retry-all-errors -o "$1" "$2"; }
           dl models/ggml-tiny.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
           dl models/ggml-base.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
-          dl models/ggml-kotoba-whisper-v2.0-q5_0.bin https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0-q5_0.bin
+          dl models/ggml-large-v3-turbo-q5_0.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin
 
       # tauri のビルドマクロがアイコン(icons/32x32.png)を要求するため、ビルド前に生成する。
       - uses: actions/setup-node@v6
@@ -209,12 +210,12 @@ jobs:
           FIX="$GITHUB_WORKSPACE/src-tauri/tests/fixtures/ja-accuracy"
           MODELS_DIR="$GITHUB_WORKSPACE/models"
           SLUGS="gingatetsudo-no-yoru kumonoito wagahaiha-neko-dearu"
-          MODEL_IDS="tiny base kotoba-q5"
+          MODEL_IDS="tiny base large-v3-turbo"
           model_file() {
             case "$1" in
               tiny) echo "$MODELS_DIR/ggml-tiny.bin";;
               base) echo "$MODELS_DIR/ggml-base.bin";;
-              kotoba-q5) echo "$MODELS_DIR/ggml-kotoba-whisper-v2.0-q5_0.bin";;
+              large-v3-turbo) echo "$MODELS_DIR/ggml-large-v3-turbo-q5_0.bin";;
             esac
           }
           : > cer.tsv
@@ -364,7 +365,7 @@ jobs:
           if-no-files-found: warn
 
   # 日本語CER(公開コーパス / ADR-0024・#578): Common Voice ja(CC0)を CI 実行時に取得し(**非同梱**)、
-  # kotoba-whisper で文字起こし→正規化CER＋ブートストラップ95%CIを算出する。手動 dispatch 限定
+  # large-v3-turbo(日本語既定)で文字起こし→正規化CER＋ブートストラップ95%CIを算出する。手動 dispatch 限定
   # (リリースを重くしない)。既存の ja-accuracy(自前録音)は smoke として別途残す。
   ja-cer-corpus:
     name: 日本語CER 公開コーパス (Common Voice / Linux)
@@ -383,19 +384,19 @@ jobs:
             libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
             libxdo-dev build-essential file clang libclang-dev cmake \
             libasound2-dev pkg-config
-      - name: Cache whisper model (kotoba-q5)
+      - name: Cache whisper model (large-v3-turbo)
         id: cache-corpus-model
         uses: actions/cache@v6
         with:
           path: models
-          key: ja-corpus-model-kotobaq5-v1
-      - name: Download model (kotoba-q5)
+          key: ja-corpus-model-turbo-v1
+      - name: Download model (large-v3-turbo)
         if: steps.cache-corpus-model.outputs.cache-hit != 'true'
         run: |
           mkdir -p models
           curl -L --fail --retry 5 --retry-delay 15 --retry-all-errors \
-            -o models/ggml-kotoba-whisper-v2.0-q5_0.bin \
-            https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0-q5_0.bin
+            -o models/ggml-large-v3-turbo-q5_0.bin \
+            https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin
       - uses: actions/setup-node@v6
         with:
           node-version: 20
@@ -422,9 +423,9 @@ jobs:
             --out-dir "$GITHUB_WORKSPACE/fleurs_ja" --num 50 \
             --dataset google/fleurs --config ja_jp --split test \
             --text-column raw_transcription --prefix fleurs
-      - name: Transcribe + CER per corpus (kotoba-q5)
+      - name: Transcribe + CER per corpus (large-v3-turbo)
         run: |
-          MODEL="$GITHUB_WORKSPACE/models/ggml-kotoba-whisper-v2.0-q5_0.bin"
+          MODEL="$GITHUB_WORKSPACE/models/ggml-large-v3-turbo-q5_0.bin"
           # 1コーパス分を文字起こしする（モデルは各サンプルで再ロード=dispatch限定なので許容）。
           transcribe_corpus() {
             local dir="$1" hyp="$2"
@@ -442,10 +443,10 @@ jobs:
           transcribe_corpus "$GITHUB_WORKSPACE/fleurs_ja" "$GITHUB_WORKSPACE/hyp_fleurs"
           cd scripts/asr_eval
           python report_cer.py --manifest "$GITHUB_WORKSPACE/cv_ja/manifest.tsv" \
-            --hyp-dir "$GITHUB_WORKSPACE/hyp_cv" --label "Common Voice ja (kotoba-q5)" \
+            --hyp-dir "$GITHUB_WORKSPACE/hyp_cv" --label "Common Voice ja (large-v3-turbo)" \
             --report "$GITHUB_WORKSPACE/ja-cer-corpus-report.md"
           python report_cer.py --manifest "$GITHUB_WORKSPACE/fleurs_ja/manifest.tsv" \
-            --hyp-dir "$GITHUB_WORKSPACE/hyp_fleurs" --label "FLEURS ja (kotoba-q5)" \
+            --hyp-dir "$GITHUB_WORKSPACE/hyp_fleurs" --label "FLEURS ja (large-v3-turbo)" \
             --report "$GITHUB_WORKSPACE/ja-cer-corpus-report.md"
           cat "$GITHUB_WORKSPACE/ja-cer-corpus-report.md" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Upload report

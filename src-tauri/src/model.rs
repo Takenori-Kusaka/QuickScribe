@@ -1,5 +1,5 @@
 // whisper モデルの保管・選択・初回自動取得（S2.2）。
-// 標準 whisper.cpp ggml（速度/精度のトレードオフ）に加え、日本語特化 kotoba-whisper を選べる。
+// 標準 whisper.cpp ggml（速度/精度のトレードオフ）から用途に応じて選ぶ。
 // 既定は ggml-base（日本語と速度のバランス）。OSのデータディレクトリ配下に保存する。
 
 use std::io::{Read, Write};
@@ -30,11 +30,11 @@ pub struct WhisperModel {
 }
 
 /// モデルカタログ（カタログ順の先頭 base。日本語の既定は large-v3-turbo / ADR-0025）。
-/// 実録音での実測(ADR-0025)で、**kotoba-q5 は長尺の末尾欠落＋自発発話(会話)で崩壊**が確認され、
-/// 日本語既定を kotoba-q5 → **large-v3-turbo** に変更した。turbo は会話に強く長尺の末尾も確実に取れる
-/// （ただし低速 RTF~1.15）。kotoba-q5 は静音・朗読(in-domain)向けの選択肢に降格。base は速く頑健な
-/// フォールバック（末尾欠落なし）。tiny は日本語で非推奨（実測で base に劣位）。
-/// ADR-0022(削らず用途で導く)＋ADR-0025(実測に基づく既定モデル見直し)。
+/// 実録音での実測(ADR-0025)で、**kotoba-whisper は長尺の末尾欠落＋自発発話(会話)で崩壊**が確認され、
+/// 日本語既定を kotoba → **large-v3-turbo** に変更した。turbo は会話に強く長尺の末尾も確実に取れる
+/// （ただし低速 RTF~1.15）。**kotoba は本プロダクトのコア用途(自発発話)と正面衝突し開発も停止のため
+/// カタログから撤去した(ADR-0029)**。base は速く頑健なフォールバック（末尾欠落なし）。
+/// tiny は日本語で非推奨（実測で base に劣位）。ADR-0022(削らず用途で導く)の例外を ADR-0029 で承認。
 pub const MODELS: &[WhisperModel] = &[
     WhisperModel {
         id: "base",
@@ -52,24 +52,6 @@ pub const MODELS: &[WhisperModel] = &[
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
         sha256: "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
         size: 574041195,
-        speed: "slow",
-    },
-    WhisperModel {
-        id: "kotoba-q5",
-        label: "日本語特化 kotoba-whisper 量子化（静音・朗読向き／会話や長尺は弱い・約538MB）",
-        filename: "ggml-kotoba-whisper-v2.0-q5_0.bin",
-        url: "https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0-q5_0.bin",
-        sha256: "4a3b92192b5d3578ff854a5876213e2e27af0c2d357492c2d14271e82c303658",
-        size: 537819875,
-        speed: "medium",
-    },
-    WhisperModel {
-        id: "kotoba",
-        label: "日本語特化 kotoba-whisper 高精度（約1.5GB・低速）",
-        filename: "ggml-kotoba-whisper-v2.0.bin",
-        url: "https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml/resolve/main/ggml-kotoba-whisper-v2.0.bin",
-        sha256: "eff70a8a236e731abba774ba71e1f6d0fce53302137208c32207e694e0bf4546",
-        size: 1519521155,
         speed: "slow",
     },
     WhisperModel {
@@ -250,12 +232,15 @@ mod tests {
     fn model_for_defaults_to_base() {
         assert_eq!(model_for("").id, "base");
         assert_eq!(model_for("unknown").id, "base");
-        assert_eq!(model_for("kotoba-q5").id, "kotoba-q5");
+        // 撤去済み kotoba(ADR-0029)を選択していた既存ユーザーは既定 base へ安全にフォールバックする。
+        assert_eq!(model_for("kotoba-q5").id, "base");
+        assert_eq!(model_for("kotoba").id, "base");
     }
 
     #[test]
-    fn catalog_has_kotoba_and_unique_ids() {
-        assert!(MODELS.iter().any(|m| m.id == "kotoba-q5"));
+    fn catalog_has_unique_ids_and_no_kotoba() {
+        // kotoba はコア用途(自発発話)で崩壊＋開発停止のため撤去済み(ADR-0029)。
+        assert!(!MODELS.iter().any(|m| m.id.starts_with("kotoba")));
         let mut ids: Vec<&str> = MODELS.iter().map(|m| m.id).collect();
         let n = ids.len();
         ids.sort();
@@ -267,7 +252,7 @@ mod tests {
     fn list_models_includes_default_first() {
         let l = list_models();
         assert_eq!(l[0].id, "base");
-        assert!(l.iter().any(|m| m.id == "kotoba"));
+        assert!(l.iter().any(|m| m.id == "large-v3-turbo"));
     }
 
     #[test]
@@ -276,7 +261,10 @@ mod tests {
         let ids: Vec<&str> = MODELS.iter().map(|m| m.id).collect();
         let pos = |id: &str| ids.iter().position(|x| *x == id).unwrap();
         assert_eq!(ids[0], "base", "既定 base は先頭");
-        assert!(pos("kotoba-q5") < pos("small"), "日本語推奨は英語向きより上位");
+        assert!(
+            pos("large-v3-turbo") < pos("small"),
+            "日本語推奨(turbo)は英語向きより上位"
+        );
         assert_eq!(*ids.last().unwrap(), "tiny", "tiny は末尾へ降格");
         // ラベルで日本語の適否を明示（実測に基づくガイド）。
         let tiny = MODELS.iter().find(|m| m.id == "tiny").unwrap();

@@ -164,10 +164,7 @@
     "tip_gpu": "Ejecuta la transcripción en tu GPU (mucho más rápido según nuestras mediciones). Desactívalo para usar la CPU si hay problemas.",
     "gpu_unavailable": "No se encontró una GPU compatible en este entorno (sin GPU o controlador no compatible). Se ejecuta en CPU.",
     "backend_cpu": "versión CPU",
-    "backend_cuda": "versión GPU CUDA",
-    "backend_vulkan": "versión GPU Vulkan",
-    "cuda_manual_update": "Las actualizaciones de la versión GPU (CUDA) son manuales. Descarga el último x64-cuda-setup.exe desde la página de versiones.",
-    "get_driver": "Obtener el controlador NVIDIA"
+    "backend_vulkan": "versión GPU Vulkan"
   },
   "nudge": {
     "title": "¿Hora del diario de hoy?",
@@ -292,8 +289,6 @@
     "whisper_models": {
       "base": "base estándar (equilibrio entre japonés y velocidad, ~142MB / predeterminado, robusto)",
       "large-v3-turbo": "large-v3-turbo de alta precisión (fuerte en japonés conversacional, final fiable; ~547MB, lento / predeterminado en japonés)",
-      "kotoba-q5": "kotoba-whisper cuantizado especializado en japonés (máxima precisión en japonés, ~538MB, recomendado para japonés)",
-      "kotoba": "kotoba-whisper de alta precisión especializado en japonés (~1.5GB, lento)",
       "small": "small multilingüe (bueno para inglés, ~466MB)",
       "medium": "medium multilingüe (bueno para inglés, alta precisión, ~1.5GB, lento)",
       "tiny": "tiny, el más rápido (inglés/borradores; baja precisión en japonés, no recomendado, ~75MB)"

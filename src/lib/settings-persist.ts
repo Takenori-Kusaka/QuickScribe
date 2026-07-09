@@ -33,7 +33,7 @@ export interface AppSettings {
   /** OpenAI互換エンドポイントの接続先(base_url / #593)。既定は空＝公式 api.openai.com。 */
   openaiBaseUrl: string;
   sttProvider: SttProvider;
-  /** GPUで文字起こし(CUDA変種のみ実効・既定ON=速度最適 / ADR-0027)。 */
+  /** GPUで文字起こし(Vulkan変種のみ実効・既定ON=速度最適 / ADR-0028)。 */
   sttUseGpu: boolean;
   offlineMode: boolean;
   sttModel: string;
@@ -116,7 +116,7 @@ export function readSettings(localeDefault: string): AppSettings {
     sttModel: ls.getItem("sttModel") || "",
     sttAzureResource: ls.getItem("sttAzureResource") || "",
     // ローカルwhisperの既定: 日本語UIは large-v3-turbo、他は汎用 base（ADR-0025・実測に基づく見直し）。
-    // 旧既定 kotoba-q5 は実録音で「長尺の末尾欠落＋自発発話で崩壊」が確認され既定から降格（ADR-0021改訂）。
+    // かつて既定だった kotoba は末尾欠落＋自発発話で崩壊しカタログからも撤去済み（ADR-0029）。
     // モデルは非同梱・初回自動DL（tip_model_download で明示）。保存済みは優先。
     whisperModel:
       ls.getItem("whisperModel") || (localeDefault === "ja" ? "large-v3-turbo" : "base"),

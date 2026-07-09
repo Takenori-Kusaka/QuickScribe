@@ -123,7 +123,7 @@ describe("writeSettings", () => {
     offlineMode: false,
     sttModel: "m",
     sttAzureResource: "r",
-    whisperModel: "kotoba",
+    whisperModel: "large-v3-turbo",
     customStyles: [],
     awsRegion: "eu-west-1",
     awsWorkspaceId: "w",
