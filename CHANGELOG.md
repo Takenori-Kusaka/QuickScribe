@@ -5,6 +5,13 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [1.5.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.4.0...v1.5.0) (2026-07-09)
+
+
+### 🔧 雑務 / Chore
+
+* release 1.5.0 ([e6b5e6c](https://github.com/Takenori-Kusaka/QuickScribe/commit/e6b5e6c56a2b8b4547b158ab31181d0b91fbbff7))
+
 ## [1.4.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.3.0...v1.4.0) (2026-07-09)
 
 
