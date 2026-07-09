@@ -5,11 +5,6 @@
 // システム音声ループバック・デバイス切替・Stream Deck連携は後続の縦切りで追加する
 // (ADR-0006 によりスコープからは外さない)。
 
-// GPUバックエンドの相互排他(ADR-0027/0028)。両方有効だと stt_backend の variant 報告
-// (cuda優先) と gpu_backend_available の実判定 (vulkan優先) が食い違うため、コンパイル時に禁止する。
-#[cfg(all(feature = "cuda", feature = "vulkan"))]
-compile_error!("features `cuda` と `vulkan` は排他です。GPUバックエンドは一方のみ有効にしてください。");
-
 pub mod audio_save;
 // AWS SigV4署名(Bedrock / Claude Platform on AWS の整形プロバイダ用 / ADR-0011)。
 pub mod aws_sign;
@@ -120,7 +115,7 @@ struct SttSettings {
     model: String,
     api_key: String,
     azure_resource: String,
-    /// GPU実行を無効化する(ユーザー設定 / ADR-0027)。既定 false=環境が許せばGPUを使う(速度最適)。
+    /// GPU実行を無効化する(ユーザー設定 / ADR-0028)。既定 false=環境が許せばGPUを使う(速度最適)。
     /// 反転フラグなのは Default(false) を「GPU有効」に一致させるため。
     disable_gpu: bool,
 }
@@ -157,7 +152,7 @@ fn set_stt_settings(
     s.model = model;
     s.api_key = api_key;
     s.azure_resource = azure_resource.unwrap_or_default();
-    // 未指定(旧フロント)は既定=GPU有効のまま。明示 false のときだけ無効化(ADR-0027)。
+    // 未指定(旧フロント)は既定=GPU有効のまま。明示 false のときだけ無効化(ADR-0028)。
     s.disable_gpu = !use_gpu.unwrap_or(true);
     Ok(())
 }
@@ -215,39 +210,6 @@ fn open_vault<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<(), String>
     let dir = resolve_save_dir(&current_settings(&app))?;
     std::fs::create_dir_all(&dir).map_err(|e| errcode::ec(errcode::E_JOURNAL_DIR, e))?;
     open_in_file_manager(&dir)
-}
-
-/// 外部URLを既定ブラウザで開く（ADR-0027: NVIDIAドライバ入手ページ等への誘導）。
-/// 許可は https のみ（任意URL実行の防止）。open_vault と同じ OS ネイティブ起動を使う。
-#[tauri::command]
-fn open_external(url: String) -> Result<(), String> {
-    if !url.starts_with("https://") {
-        return Err(errcode::E_UNSUPPORTED_FORMAT.into());
-    }
-    #[cfg(windows)]
-    let mut cmd = {
-        // `cmd /c start "" <url>` で URL を既定ブラウザで開く（explorer の URL 処理より確実 / レビュー指摘）。
-        // start の第1引数はウィンドウタイトル扱いのため空文字を必ず挟む。url は shell 経由でなく
-        // 引数として渡す（open_external が https 限定・単一引数 spawn＝注入不可）。
-        let mut c = std::process::Command::new("cmd");
-        c.args(["/C", "start", "", &url]);
-        c
-    };
-    #[cfg(target_os = "macos")]
-    let mut cmd = {
-        let mut c = std::process::Command::new("open");
-        c.arg(&url);
-        c
-    };
-    #[cfg(all(unix, not(target_os = "macos")))]
-    let mut cmd = {
-        let mut c = std::process::Command::new("xdg-open");
-        c.arg(&url);
-        c
-    };
-    cmd.spawn()
-        .map(|_| ())
-        .map_err(|e| errcode::ec(errcode::E_FILE_MANAGER, e))
 }
 
 /// OS別にディレクトリをファイルマネージャで開く（待たずに起動）。
@@ -374,7 +336,7 @@ fn transcribe_blocking<R: tauri::Runtime>(
     let app_p = app.clone();
     let app_s = app.clone();
     // STTエンジンを解決して文字起こし（S2.3抽象 / S2.4でクラウド）。
-    // GPU実行(ADR-0027): CUDA変種かつ実行環境にNVIDIAドライバがあり、ユーザーが無効化していないとき。
+    // GPU実行(ADR-0028): Vulkan変種かつ起動時にVulkanデバイスを検出でき、ユーザーが無効化していないとき。
     let use_gpu = !stt.disable_gpu && gpu_backend_available();
     let engine = stt::engine_for(stt::SttConfig {
         provider,
@@ -710,16 +672,6 @@ fn list_whisper_models() -> Vec<model::ModelInfo> {
     model::list_models()
 }
 
-/// System32 に指定 DLL が存在するか（CUDA変種の実行時GPU判定用 / ADR-0027）。64bitプロセスのため System32 は実体。
-#[cfg(all(windows, feature = "cuda"))]
-fn system32_dll_exists(name: &str) -> bool {
-    let sysroot = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
-    std::path::Path::new(&sysroot)
-        .join("System32")
-        .join(name)
-        .exists()
-}
-
 /// Vulkan の物理デバイスが1台以上あるか（起動時の環境認識フェーズで安全に判定 / ADR-0027 Phase3）。
 ///
 /// 重要: whisper.cpp の GPU 初期化は、使えるデバイスが無い状態で呼ぶと **C++ 例外で abort** し、
@@ -752,26 +704,21 @@ fn vulkan_device_present() -> bool {
     }
 }
 
-/// この実行環境で GPU バックエンドが実際に使えるか（ADR-0027 の起動時判定）。
+/// この実行環境で GPU バックエンドが実際に使えるか（ADR-0028 の起動時判定）。
 /// Vulkan変種=物理デバイスを列挙し1台以上ある時のみ true（whisperのGPU初期化abortを構造的に回避）。
-/// CUDA変種(当面凍結)=NVIDIAドライバ(nvcuda.dll)存在で判定。CPUビルド/非Windowsは常に false。
-/// gpu_available=false のときは GPU API を一切呼ばず CPU 実行する（安全側）。
+/// CPUビルド/非Windowsは常に false。gpu_available=false のときは GPU API を一切呼ばず CPU 実行する（安全側）。
 /// pub: 統合テスト(tests/gpu_detect_integration.rs)が空ICD環境での安全なfalse返却を検証するため。
 pub fn gpu_backend_available() -> bool {
     #[cfg(all(windows, feature = "vulkan"))]
     {
         return vulkan_device_present();
     }
-    #[cfg(all(windows, feature = "cuda", not(feature = "vulkan")))]
-    {
-        return system32_dll_exists("nvcuda.dll");
-    }
     #[allow(unreachable_code)]
     false
 }
 
-/// このビルドの文字起こし実行バックエンド（配布変種と実行時GPU判定の可視化 / ADR-0027）。
-/// variant: "cuda"|"vulkan"=GPU変種ビルド / "cpu"=既定のCPU版。gpu_available: 実行環境でGPUが使えるか。
+/// このビルドの文字起こし実行バックエンド（配布変種と実行時GPU判定の可視化 / ADR-0028）。
+/// variant: "vulkan"=GPU変種ビルド / "cpu"=CPUビルド。gpu_available: 実行環境でGPUが使えるか。
 /// 起動時にフロントがこれを読み、既定で速度最適な実行モード(GPU可ならGPU)を選ぶ。
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -782,9 +729,7 @@ struct SttBackendInfo {
 
 #[tauri::command]
 fn stt_backend() -> SttBackendInfo {
-    let variant = if cfg!(feature = "cuda") {
-        "cuda"
-    } else if cfg!(feature = "vulkan") {
+    let variant = if cfg!(feature = "vulkan") {
         "vulkan"
     } else {
         "cpu"
@@ -1217,19 +1162,17 @@ mod tests {
     #[test]
     fn stt_backend_reports_build_variant() {
         // 既定(CPU)ビルドでは variant="cpu"・gpu_available=false。
-        // GPU変種は variant="vulkan"|"cuda"・gpu_available=実デバイス/ドライバの実在に依存（ADR-0027契約）。
+        // Vulkan変種は variant="vulkan"・gpu_available=実デバイスの実在に依存（ADR-0028契約）。
         let info = stt_backend();
-        let expected = if cfg!(feature = "cuda") {
-            "cuda"
-        } else if cfg!(feature = "vulkan") {
+        let expected = if cfg!(feature = "vulkan") {
             "vulkan"
         } else {
             "cpu"
         };
         assert_eq!(info.variant, expected);
-        // CPUビルドは常にGPU利用不可。GPU変種は実デバイス依存のため断定しない
+        // CPUビルドは常にGPU利用不可。Vulkan変種は実デバイス依存のため断定しない
         // (CI/GPU無し機では false=安全側=CPU実行 になる契約。abort回避の要)。
-        if !cfg!(any(feature = "cuda", feature = "vulkan")) {
+        if !cfg!(feature = "vulkan") {
             assert!(!info.gpu_available, "CPUビルドではGPU利用不可と報告する");
         }
     }
@@ -1986,7 +1929,6 @@ pub fn run() {
             list_audio_sources,
             list_whisper_models,
             stt_backend,
-            open_external,
             start_recording,
             stop_recording,
             list_jobs,

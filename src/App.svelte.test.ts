@@ -675,8 +675,8 @@ describe("App.svelte 追加フロー", () => {
   });
 });
 
-// 単一Vulkanビルド(ADR-0028): 起動時に stt_backend で変種と実行環境のGPU可否を解決し、
-// GPU変種(vulkan/cuda)なら文字起こしタブにGPUトグルを出す。NVIDIA入手導線はCUDA変種のみ。
+// 単一Vulkanビルド(ADR-0028/0029): 起動時に stt_backend で変種と実行環境のGPU可否を解決し、
+// Vulkan変種なら文字起こしタブにGPUトグルを出す。GPU不可時はCPU実行の案内のみ(特定の入手導線は無し)。
 describe("App.svelte GPUバックエンド表示(ADR-0028)", () => {
   it("Vulkan変種・GPU利用可: 文字起こしタブにGPUトグル(有効)＋Aboutに GPU版 Vulkan", async () => {
     invokeMock.mockImplementation(async (cmd: string) =>
@@ -692,7 +692,7 @@ describe("App.svelte GPUバックエンド表示(ADR-0028)", () => {
     expect(cb.disabled).toBe(false);
   });
 
-  it("Vulkan変種・GPU利用不可: CPU実行の案内が出て、NVIDIA入手ボタン(cuda限定)は出ない", async () => {
+  it("Vulkan変種・GPU利用不可: トグルは無効化され、CPU実行の案内が出る", async () => {
     invokeMock.mockImplementation(async (cmd: string) =>
       cmd === "stt_backend" ? { variant: "vulkan", gpuAvailable: false } : defaultInvoke(cmd),
     );
@@ -703,7 +703,5 @@ describe("App.svelte GPUバックエンド表示(ADR-0028)", () => {
     const cb = (await screen.findByLabelText(/GPUで文字起こし/)) as HTMLInputElement;
     expect(cb.disabled).toBe(true);
     expect(await screen.findByText(/対応GPUが見つかりません/)).toBeInTheDocument();
-    // NVIDIAドライバ入手ボタンは CUDA変種のみ = Vulkan変種では出ない。
-    expect(screen.queryByRole("button", { name: /NVIDIAドライバを入手/ })).not.toBeInTheDocument();
   });
 });

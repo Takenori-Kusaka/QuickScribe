@@ -33,7 +33,7 @@ export interface AppSettings {
   /** OpenAI互換エンドポイントの接続先(base_url / #593)。既定は空＝公式 api.openai.com。 */
   openaiBaseUrl: string;
   sttProvider: SttProvider;
-  /** GPUで文字起こし(CUDA変種のみ実効・既定ON=速度最適 / ADR-0027)。 */
+  /** GPUで文字起こし(Vulkan変種のみ実効・既定ON=速度最適 / ADR-0028)。 */
   sttUseGpu: boolean;
   offlineMode: boolean;
   sttModel: string;

@@ -164,10 +164,7 @@
     "tip_gpu": "Runs transcription on your GPU (much faster in our measurements). Turn off to run on CPU if you hit issues.",
     "gpu_unavailable": "No compatible GPU found in this environment (no GPU, or driver unsupported). Running on CPU.",
     "backend_cpu": "CPU build",
-    "backend_cuda": "GPU build CUDA",
-    "backend_vulkan": "GPU build Vulkan",
-    "cuda_manual_update": "Updates for the GPU (CUDA) build are manual. Get the latest x64-cuda-setup.exe from the releases page.",
-    "get_driver": "Get NVIDIA driver"
+    "backend_vulkan": "GPU build Vulkan"
   },
   "nudge": {
     "title": "Time for today's journal?",
@@ -292,8 +289,6 @@
     "whisper_models": {
       "base": "Standard base (balanced for Japanese & speed, ~142MB / default, robust)",
       "large-v3-turbo": "High-accuracy large-v3-turbo (strong on conversational Japanese, reliable tail; ~547MB, slow / Japanese default)",
-      "kotoba-q5": "Japanese-specialized kotoba-whisper quantized (best Japanese accuracy, ~538MB, recommended for Japanese)",
-      "kotoba": "Japanese-specialized kotoba-whisper high accuracy (~1.5GB, slow)",
       "small": "Multilingual small (good for English, ~466MB)",
       "medium": "Multilingual medium (good for English, high accuracy, ~1.5GB, slow)",
       "tiny": "Fastest tiny (English/drafts; low accuracy for Japanese, not recommended, ~75MB)"

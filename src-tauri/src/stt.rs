@@ -261,7 +261,7 @@ where
     let progress = std::sync::Arc::new(std::sync::Mutex::new(on_progress));
     let mut on_seg = on_segment;
 
-    // GPU(CUDA変種)は設定・実行環境判定に従う(ADR-0027)。GPUの失敗は「ctx初期化」だけでなく
+    // GPU(Vulkan変種)は設定・実行環境判定に従う(ADR-0028)。GPUの失敗は「ctx初期化」だけでなく
     // 「チャンク実行時(create_state/full)のVRAM不足等」が現実的な失敗面（レビュー指摘）のため、
     // どちらでも CPU で全体を再試行し「速度は落ちても文字起こしは必ず完了する」を保証する。
     // 注: GPU試行で一部チャンクが成功していた場合、プレビューsegmentは再試行で重複しうるが、
@@ -657,7 +657,7 @@ impl TranscriptionEngine for AzureSttEngine {
 /// ローカル whisper.cpp 実装（既定エンジン / ADR-0002）。
 pub struct LocalWhisperEngine {
     pub model_path: std::path::PathBuf,
-    /// GPUで実行するか（CUDA変種のみ実効。CPUビルドでは無視される / ADR-0027）。
+    /// GPUで実行するか（Vulkan変種のみ実効。CPUビルドでは無視される / ADR-0028）。
     pub use_gpu: bool,
 }
 

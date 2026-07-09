@@ -1,6 +1,6 @@
 # ADR-0027: GPUビルド変種（CUDA）の opt-in 配布と実行バックエンドの可視化
 
-- Status: Accepted（Deciders 承認 2026-07-09「起案および実装、テスト、リリースを進めてください」）
+- Status: **Superseded by [ADR-0029](0029-simplify-offering-drop-cuda-and-kotoba.md)**（2026-07-10 CUDA変種を廃止し単一Vulkanへ一本化）。当初 Accepted 2026-07-09。
 - Date: 2026-07-09
 - Deciders: Takenori Kusaka
 - 関連: [ADR-0012 マルチアーキ/SIMD配布](0012-windows-multiarch-multisimd-distribution.md)（CPUガード/変種設計を流用）/ [ADR-0025 日本語既定モデル](0025-japanese-default-model-revision.md)（速度データ要訂正）/ #600 / #569
