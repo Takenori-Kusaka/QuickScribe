@@ -18,8 +18,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 vulkan = ["whisper-rs/vulkan", "dep:ash"]
 # 話者特定(S2.5 / ADR-0031)。sherpa-onnx(pyannote segmentation + 話者埋め込み + クラスタリング)。
 # opt-in ビルド変種: 有効時のみ sherpa-rs(ネイティブ onnxruntime を動的リンク)を取り込む。
-# 配布は「有効時オンデマンドDL + 遅延ロード」で単一バイナリを維持する(ADR-0012 / 選択A)。
-diarization = ["dep:sherpa-rs"]
+# 配布は「有効時オンデマンドDL + 遅延ロード」で単一バイナリを維持する(ADR-0012 / 選択A・R5検証済み)。
+# bzip2-rs/tar は有効時DLLアーカイブ(tar.bz2)の展開に使う(純Rust・C依存なし)。
+diarization = ["dep:sherpa-rs", "dep:bzip2-rs", "dep:tar"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -67,6 +68,10 @@ ash = { version = "0.38", default-features = false, features = ["loaded"], optio
 # 話者特定(S2.5 / ADR-0031・diarization feature 時のみ)。sherpa-onnx の安全ラッパ(MIT)。
 # ネイティブ onnxruntime を動的リンク＝配布はオンデマンドDL+遅延ロードで単一バイナリを保つ。
 sherpa-rs = { version = "0.6", optional = true }
+# 話者特定のネイティブDLLアーカイブ(sherpa-onnx win-x64-shared .tar.bz2)を有効時にオンデマンド展開する。
+# 純Rust(C依存なし)でビルドを単純に保つ。bzip2-rs=復号のみ、tar=アーカイブ読み出し。
+bzip2-rs = { version = "0.1", optional = true }
+tar = { version = "0.4", optional = true }
 # 音声デコード(純Rust)。mp3等の圧縮音声/WAVを読む(S1.6)。外部ffmpeg不要・配布が軽い。
 symphonia = { version = "0.6", default-features = false, features = [
     "mp3",

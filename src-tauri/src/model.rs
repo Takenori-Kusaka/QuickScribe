@@ -3,6 +3,8 @@
 // 既定は ggml-base（日本語と速度のバランス）。OSのデータディレクトリ配下に保存する。
 
 use std::io::{Read, Write};
+#[cfg(feature = "diarization")]
+use std::path::Path;
 use std::path::PathBuf;
 
 use serde::Serialize;
@@ -149,21 +151,40 @@ pub fn ensure_model<F: FnMut(u64, Option<u64>)>(on_progress: F) -> Result<PathBu
     ensure_model_id("", on_progress)
 }
 
-/// 話者特定(S2.5)のONNXモデル2種（segmentation / embedding）の解決済みパス。
+/// 話者特定(S2.5)の解決済み資産（ONNXモデル2種＋ネイティブDLL格納ディレクトリ）。
 #[cfg(feature = "diarization")]
 pub struct DiarizationAssets {
     pub segmentation: PathBuf,
     pub embedding: PathBuf,
+    /// ネイティブDLL(onnxruntime/sherpa-onnx-c-api 等)を置いたディレクトリ。実行時DLL検索パスへ追加済み。
+    pub lib_dir: PathBuf,
 }
 
-/// 話者特定用ONNXモデル(pyannote segmentation + 話者埋め込み)をオンデマンドで用意する
-/// （無ければDL）。有効時のみ呼ばれる＝非利用者は増量ゼロ・単一バイナリ維持（ADR-0012 / 選択A）。
-/// 保存先は model_dir()/diarization/。
-///
-/// TODO(Phase2・リリース前必須): (1) 配布URLを確定し SHA256/サイズをピン留めして整合性検証を有効化
-/// する（現状は sha=""・size=0 で未検証DL＝R4 未達）。(2) ネイティブランタイム(onnxruntime 等)の
-/// オンデマンド取得＋DLL検索パス設定(SetDllDirectory)＋遅延ロード(build.rs /DELAYLOAD)を実装し、
-/// 未取得時にabortせずフォールバックする(R5)ことを実機で検証する。
+// 話者特定資産のピン留め（整合性検証 / R4）。URL・SHA256・サイズは 2026-07-10 実測。
+// DLL は sherpa-onnx v1.12.9 win-x64-shared（sherpa-rs-sys 0.6.8 がリンクする版と**ABI一致**）。
+#[cfg(feature = "diarization")]
+const SEG_URL: &str = "https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/resolve/main/model.onnx";
+#[cfg(feature = "diarization")]
+const SEG_SHA: &str = "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079";
+#[cfg(feature = "diarization")]
+const SEG_SIZE: u64 = 5_992_913;
+#[cfg(feature = "diarization")]
+const EMB_URL: &str = "https://huggingface.co/csukuangfj/speaker-embedding-models/resolve/main/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx";
+#[cfg(feature = "diarization")]
+const EMB_SHA: &str = "1a331345f04805badbb495c775a6ddffcdd1a732567d5ec8b3d5749e3c7a5e4b";
+#[cfg(feature = "diarization")]
+const EMB_SIZE: u64 = 39_593_761;
+#[cfg(all(feature = "diarization", windows))]
+const LIB_URL: &str = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.12.9/sherpa-onnx-v1.12.9-win-x64-shared.tar.bz2";
+#[cfg(all(feature = "diarization", windows))]
+const LIB_SHA: &str = "57a0dff63c468ed067c6ffd1a9c9b6f66f4cf73304d44b5f17518010ce2e0977";
+#[cfg(all(feature = "diarization", windows))]
+const LIB_SIZE: u64 = 24_139_676;
+
+/// 話者特定資産（ONNXモデル＋ネイティブDLL）をオンデマンドで用意する（無ければDL・整合性検証つき）。
+/// 有効時のみ呼ばれる＝非利用者は増量ゼロ・単一バイナリ維持（ADR-0012 / 選択A・R5検証済み）。
+/// 保存先は model_dir()/diarization/。DLLは実行時DLL検索パスに追加し、遅延ロードで解決させる。
+/// 取得/検証に失敗したら Err（呼び出し側は sherpa を呼ばずラベル無しへフォールバック＝abort回避 / R5）。
 #[cfg(feature = "diarization")]
 pub fn ensure_diarization_assets<F: FnMut(u64, Option<u64>)>(
     mut on_progress: F,
@@ -173,15 +194,88 @@ pub fn ensure_diarization_assets<F: FnMut(u64, Option<u64>)>(
     // segmentation=pyannote 3.0、embedding=3D-Speaker ERes2Net(zh-cn・話者埋め込みは概ね言語非依存)。
     let seg = dir.join("sherpa-onnx-pyannote-segmentation-3-0.onnx");
     let emb = dir.join("3dspeaker_eres2net_base_sv_zh-cn_16k.onnx");
-    const SEG_URL: &str = "https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/resolve/main/model.onnx";
-    const EMB_URL: &str = "https://huggingface.co/csukuangfj/speaker-embedding-models/resolve/main/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx";
     if !seg.exists() {
-        download_to(SEG_URL, &seg, "", 0, &mut on_progress)?;
+        download_to(SEG_URL, &seg, SEG_SHA, SEG_SIZE, &mut on_progress)?;
     }
     if !emb.exists() {
-        download_to(EMB_URL, &emb, "", 0, &mut on_progress)?;
+        download_to(EMB_URL, &emb, EMB_SHA, EMB_SIZE, &mut on_progress)?;
     }
-    Ok(DiarizationAssets { segmentation: seg, embedding: emb })
+    // ネイティブDLLを用意し実行時DLL検索パスへ追加（遅延ロードの解決先 / 単一バイナリ維持）。
+    ensure_native_libs(&dir, &mut on_progress)?;
+    Ok(DiarizationAssets {
+        segmentation: seg,
+        embedding: emb,
+        lib_dir: dir,
+    })
+}
+
+/// ネイティブDLL(sherpa-onnx win-x64-shared)をオンデマンド取得し、実行時DLL検索パスに追加する。
+/// アーカイブ(.tar.bz2)を整合性検証つきでDL→ *.dll をフラット展開→ SetDllDirectory。
+#[cfg(all(feature = "diarization", windows))]
+fn ensure_native_libs<F: FnMut(u64, Option<u64>)>(
+    dir: &Path,
+    on_progress: &mut F,
+) -> Result<(), String> {
+    // 代表DLLの有無で取得済みを判定（sherpa-onnx-c-api.dll = 遅延ロード対象）。
+    if !dir.join("sherpa-onnx-c-api.dll").exists() {
+        let archive = dir.join("sherpa-onnx-libs.tar.bz2");
+        download_to(LIB_URL, &archive, LIB_SHA, LIB_SIZE, on_progress)?;
+        extract_dlls(&archive, dir)?;
+        let _ = std::fs::remove_file(&archive);
+    }
+    set_dll_directory(dir);
+    Ok(())
+}
+
+/// tar.bz2 アーカイブから *.dll のみを dir 直下へフラット展開する（純Rust: bzip2-rs + tar）。
+#[cfg(all(feature = "diarization", windows))]
+fn extract_dlls(archive: &Path, dir: &Path) -> Result<(), String> {
+    let f = std::fs::File::open(archive).map_err(|e| e.to_string())?;
+    let dec = bzip2_rs::DecoderReader::new(std::io::BufReader::new(f));
+    let mut ar = tar::Archive::new(dec);
+    let mut count = 0;
+    for entry in ar.entries().map_err(|e| e.to_string())? {
+        let mut entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path().map_err(|e| e.to_string())?.into_owned();
+        if path.extension().and_then(|e| e.to_str()) == Some("dll") {
+            if let Some(name) = path.file_name() {
+                entry
+                    .unpack(dir.join(name))
+                    .map_err(|e| e.to_string())?;
+                count += 1;
+            }
+        }
+    }
+    if count == 0 {
+        return Err("no DLL found in sherpa-onnx archive".into());
+    }
+    Ok(())
+}
+
+/// 実行時DLL検索パスに dir を追加する（遅延ロードした sherpa-onnx-c-api.dll と依存 onnxruntime.dll の解決先）。
+#[cfg(all(feature = "diarization", windows))]
+fn set_dll_directory(dir: &Path) {
+    use std::os::windows::ffi::OsStrExt;
+    extern "system" {
+        fn SetDllDirectoryW(path: *const u16) -> i32;
+    }
+    let wide: Vec<u16> = dir
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    unsafe {
+        SetDllDirectoryW(wide.as_ptr());
+    }
+}
+
+/// 非Windows(将来のLinux等)ではネイティブlibの配布形態が異なるため、当面 no-op（Windows専用実装）。
+#[cfg(all(feature = "diarization", not(windows)))]
+fn ensure_native_libs<F: FnMut(u64, Option<u64>)>(
+    _dir: &Path,
+    _on_progress: &mut F,
+) -> Result<(), String> {
+    Ok(())
 }
 
 /// URL から path へダウンロードする（.part に書いてから rename＝壊れたモデルを残さない）。
