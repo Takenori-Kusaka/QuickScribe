@@ -235,12 +235,16 @@ pub fn chunk_plan(total: usize, sr: u32, chunk_secs: f64, overlap_secs: f64) -> 
 /// 進捗UX(プログレス/逐次表示)を可能にしつつ、全CPUコアで高速化する。
 /// `timestamps` が true のとき、各セグメント行頭に [HH:MM:SS] を付与する
 /// （整形AIが発話の時間関係を解釈できるようにする / whisper-metadata 調査）。
+// 話者区間(S2.5)を含め引数が8個になるが、whisper呼び出しの完全な文脈（モデル/音声/言語/
+// タイムスタンプ/GPU/話者/2コールバック）で意味的にまとまっており、構造体化は可読性を下げる。
+#[allow(clippy::too_many_arguments)]
 pub fn transcribe_with<P, S>(
     model_path: &Path,
     audio: &[f32],
     lang: Option<&str>,
     timestamps: bool,
     use_gpu: bool,
+    speaker_turns: &[crate::diarize::SpeakerSegment],
     on_progress: P,
     on_segment: S,
 ) -> Result<String, String>
@@ -357,13 +361,30 @@ where
                 if abs_t0 < spec.own_start_cs || abs_t0 >= spec.own_end_cs {
                     continue;
                 }
-                // 確定セグメントの逐次通知（プレビュー用）。担当分のみ＝重複プレビューを出さない。
-                on_seg(seg.to_string());
-                if timestamps {
-                    // 絶対時刻を行頭に付与。AI整形が時間関係を解釈できる。
-                    text.push_str(&format!("[{}] {}\n", format_timestamp(abs_t0), seg));
+                // 話者ラベル（diarization 有効時のみ / S2.5）。turns 空＝OFF は完全に従来動作（無回帰）。
+                let label = if speaker_turns.is_empty() {
+                    String::new()
                 } else {
-                    text.push_str(seg);
+                    let t1_local = state.full_get_segment_t1(i).unwrap_or(t0_local);
+                    let abs_t1 = spec.offset_cs + t1_local;
+                    crate::diarize::assign_speaker(abs_t0, abs_t1, speaker_turns)
+                        .map(crate::diarize::speaker_label)
+                        .unwrap_or_default()
+                };
+                // 確定セグメントの逐次通知（プレビュー用）。担当分のみ＝重複プレビューを出さない。
+                on_seg(if label.is_empty() {
+                    seg.to_string()
+                } else {
+                    format!("{label} {seg}")
+                });
+                match (timestamps, label.is_empty()) {
+                    // 絶対時刻を行頭に付与。AI整形が時間関係を解釈できる。
+                    (true, true) => text.push_str(&format!("[{}] {}\n", format_timestamp(abs_t0), seg)),
+                    (true, false) => {
+                        text.push_str(&format!("[{}]{} {}\n", format_timestamp(abs_t0), label, seg))
+                    }
+                    (false, true) => text.push_str(seg),
+                    (false, false) => text.push_str(&format!("{label} {seg}\n")),
                 }
             }
         }
@@ -388,9 +409,9 @@ where
     unreachable!("gpu_attempts は常に1要素以上")
 }
 
-/// コールバックなしの簡易版（統合テスト等で使用）。
+/// コールバックなしの簡易版（統合テスト等で使用）。話者特定なし（turns 空）。
 pub fn transcribe(model_path: &Path, audio: &[f32], lang: Option<&str>) -> Result<String, String> {
-    transcribe_with(model_path, audio, lang, false, true, |_| {}, |_| {})
+    transcribe_with(model_path, audio, lang, false, true, &[], |_| {}, |_| {})
 }
 
 /// 文字起こしエンジンの抽象（S2.3 / Strategy・DIP 境界）。
@@ -659,6 +680,8 @@ pub struct LocalWhisperEngine {
     pub model_path: std::path::PathBuf,
     /// GPUで実行するか（Vulkan変種のみ実効。CPUビルドでは無視される / ADR-0028）。
     pub use_gpu: bool,
+    /// 話者区間（S2.5）。空＝話者特定OFF＝従来動作（無回帰）。事前に diarizer で解決して渡す。
+    pub speaker_turns: Vec<crate::diarize::SpeakerSegment>,
 }
 
 impl TranscriptionEngine for LocalWhisperEngine {
@@ -676,6 +699,7 @@ impl TranscriptionEngine for LocalWhisperEngine {
             lang,
             timestamps,
             self.use_gpu,
+            &self.speaker_turns,
             on_progress,
             on_segment,
         )
@@ -696,6 +720,8 @@ pub struct SttConfig {
     pub model_path: std::path::PathBuf,
     /// ローカル whisper をGPUで実行するか（ADR-0027。クラウド/CPUビルドでは未使用）。
     pub use_gpu: bool,
+    /// 話者区間（S2.5）。空＝話者特定OFF。ローカル whisper のみ使用（クラウドは無視）。
+    pub speaker_turns: Vec<crate::diarize::SpeakerSegment>,
 }
 
 /// 文字起こしプロバイダ（S2.3/S2.4）。別名解釈・クラウド判定・既定モデル・エンジン生成を
@@ -771,6 +797,7 @@ impl SttProvider {
             Self::Local => Box::new(LocalWhisperEngine {
                 model_path: cfg.model_path,
                 use_gpu: cfg.use_gpu,
+                speaker_turns: cfg.speaker_turns,
             }),
         }
     }
@@ -937,6 +964,7 @@ mod tests {
             azure_resource: "res".into(),
             model_path: std::path::PathBuf::from("dummy.bin"),
             use_gpu: false,
+            speaker_turns: Vec::new(),
         }
     }
 

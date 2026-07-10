@@ -149,6 +149,41 @@ pub fn ensure_model<F: FnMut(u64, Option<u64>)>(on_progress: F) -> Result<PathBu
     ensure_model_id("", on_progress)
 }
 
+/// 話者特定(S2.5)のONNXモデル2種（segmentation / embedding）の解決済みパス。
+#[cfg(feature = "diarization")]
+pub struct DiarizationAssets {
+    pub segmentation: PathBuf,
+    pub embedding: PathBuf,
+}
+
+/// 話者特定用ONNXモデル(pyannote segmentation + 話者埋め込み)をオンデマンドで用意する
+/// （無ければDL）。有効時のみ呼ばれる＝非利用者は増量ゼロ・単一バイナリ維持（ADR-0012 / 選択A）。
+/// 保存先は model_dir()/diarization/。
+///
+/// TODO(Phase2・リリース前必須): (1) 配布URLを確定し SHA256/サイズをピン留めして整合性検証を有効化
+/// する（現状は sha=""・size=0 で未検証DL＝R4 未達）。(2) ネイティブランタイム(onnxruntime 等)の
+/// オンデマンド取得＋DLL検索パス設定(SetDllDirectory)＋遅延ロード(build.rs /DELAYLOAD)を実装し、
+/// 未取得時にabortせずフォールバックする(R5)ことを実機で検証する。
+#[cfg(feature = "diarization")]
+pub fn ensure_diarization_assets<F: FnMut(u64, Option<u64>)>(
+    mut on_progress: F,
+) -> Result<DiarizationAssets, String> {
+    let dir = model_dir().join("diarization");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // segmentation=pyannote 3.0、embedding=3D-Speaker ERes2Net(zh-cn・話者埋め込みは概ね言語非依存)。
+    let seg = dir.join("sherpa-onnx-pyannote-segmentation-3-0.onnx");
+    let emb = dir.join("3dspeaker_eres2net_base_sv_zh-cn_16k.onnx");
+    const SEG_URL: &str = "https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/resolve/main/model.onnx";
+    const EMB_URL: &str = "https://huggingface.co/csukuangfj/speaker-embedding-models/resolve/main/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx";
+    if !seg.exists() {
+        download_to(SEG_URL, &seg, "", 0, &mut on_progress)?;
+    }
+    if !emb.exists() {
+        download_to(EMB_URL, &emb, "", 0, &mut on_progress)?;
+    }
+    Ok(DiarizationAssets { segmentation: seg, embedding: emb })
+}
+
 /// URL から path へダウンロードする（.part に書いてから rename＝壊れたモデルを残さない）。
 /// ダウンロード中に SHA256 を逐次計算し、完了後に期待値・サイズと照合する(#391)。
 /// 不一致なら .part を削除してエラーにし、改ざん/破損モデルを残さない。

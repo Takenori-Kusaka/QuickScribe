@@ -25,6 +25,7 @@ describe("readSettings", () => {
     expect(s.taskbarWidget).toBe(true);
     expect(s.inputDeviceKind).toBe("input");
     expect(s.nudgeEnabled).toBe(false); // 習慣ナッジは opt-in（既定OFF / #58）
+    expect(s.sttDiarize).toBe(false); // 話者特定は opt-in（既定OFF / ADR-0031）
     expect(s.customStyles).toEqual([]);
     // 出力言語の既定は引数（起動時UI言語）。
     expect(s.outputLang).toBe("en");
@@ -98,6 +99,7 @@ describe("writeSettings", () => {
   const base: AppSettings = {
     provider: "anthropic",
     sttUseGpu: true,
+    sttDiarize: true,
     resolvedModel: {
       gemini: "",
       anthropic: "",
@@ -144,6 +146,7 @@ describe("writeSettings", () => {
     expect(localStorage.getItem("outputLang")).toBe("es");
     expect(localStorage.getItem("openaiBaseUrl")).toBe("http://localhost:4000");
     expect(localStorage.getItem("nudgeEnabled")).toBe("true");
+    expect(localStorage.getItem("sttDiarize")).toBe("true");
   });
 
   it("write→read のラウンドトリップで主要値が保たれる", () => {
@@ -156,5 +159,6 @@ describe("writeSettings", () => {
     expect(s.sttProvider).toBe("openai");
     expect(s.awsAuthMode).toBe("apikey");
     expect(s.taskbarWidget).toBe(false);
+    expect(s.sttDiarize).toBe(true);
   });
 });

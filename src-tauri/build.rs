@@ -19,6 +19,13 @@ fn main() {
         if std::env::var("CARGO_FEATURE_VULKAN").is_ok() {
             println!("cargo::rustc-link-arg=/DELAYLOAD:vulkan-1.dll");
         }
+        // 話者特定変種(S2.5 / ADR-0031・選択A): sherpa-rs-sys が sherpa-onnx-c-api.dll を静的インポート
+        // するため、同DLLを同梱しない基本インストーラでは起動時解決に失敗する。遅延ロードにすれば
+        // 解決は最初の diarize 呼び出し時に延び、DLL未取得でもEXEは起動できる（有効時にオンデマンドDL
+        // →DLL検索パス設定してから初回呼び出し＝Vulkanと同手法で単一バイナリを維持）。
+        if std::env::var("CARGO_FEATURE_DIARIZATION").is_ok() {
+            println!("cargo::rustc-link-arg=/DELAYLOAD:sherpa-onnx-c-api.dll");
+        }
     }
     tauri_build::build()
 }

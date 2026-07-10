@@ -16,6 +16,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # Vulkan対応ドライバのみ。ビルドに VULKAN_SDK が必要。既定リリースはこの変種で単一配布する。
 # 起動時にVulkan実デバイスを列挙(ash)し、有る時だけGPUを使う=whisperのGPU初期化abort回避。
 vulkan = ["whisper-rs/vulkan", "dep:ash"]
+# 話者特定(S2.5 / ADR-0031)。sherpa-onnx(pyannote segmentation + 話者埋め込み + クラスタリング)。
+# opt-in ビルド変種: 有効時のみ sherpa-rs(ネイティブ onnxruntime を動的リンク)を取り込む。
+# 配布は「有効時オンデマンドDL + 遅延ロード」で単一バイナリを維持する(ADR-0012 / 選択A)。
+diarization = ["dep:sherpa-rs"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -60,6 +64,9 @@ whisper-rs = "0.14"
 # whisperのGPU初期化はデバイス無しだとC++例外でabort(Rust捕捉不可)するため、その前に
 # ローダのC API(vkEnumeratePhysicalDevices)でデバイス数を数える。ashは実行時dlopen(loaded)。
 ash = { version = "0.38", default-features = false, features = ["loaded"], optional = true }
+# 話者特定(S2.5 / ADR-0031・diarization feature 時のみ)。sherpa-onnx の安全ラッパ(MIT)。
+# ネイティブ onnxruntime を動的リンク＝配布はオンデマンドDL+遅延ロードで単一バイナリを保つ。
+sherpa-rs = { version = "0.6", optional = true }
 # 音声デコード(純Rust)。mp3等の圧縮音声/WAVを読む(S1.6)。外部ffmpeg不要・配布が軽い。
 symphonia = { version = "0.6", default-features = false, features = [
     "mp3",

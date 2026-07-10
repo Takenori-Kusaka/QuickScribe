@@ -14,6 +14,8 @@ pub mod model;
 pub mod record;
 pub mod refine;
 pub mod stt;
+// 話者特定（S2.5 / ADR-0031）。純ロジックは常時。実推論は `diarization` feature 配下。
+pub mod diarize;
 // 保管庫エントリの一覧・解析（S4.3 Phase1: アプリ内の横断導線）。
 pub mod vault;
 // 保管庫ドキュメントの本文組み立て・命名(#392 / DDD: lib.rs から抽出)。
@@ -118,6 +120,8 @@ struct SttSettings {
     /// GPU実行を無効化する(ユーザー設定 / ADR-0028)。既定 false=環境が許せばGPUを使う(速度最適)。
     /// 反転フラグなのは Default(false) を「GPU有効」に一致させるため。
     disable_gpu: bool,
+    /// 話者特定(S2.5 / ADR-0031)を有効化する。既定 false(opt-in)。ローカル whisper のみ実効。
+    diarize: bool,
 }
 
 #[derive(Default)]
@@ -143,6 +147,7 @@ fn set_stt_settings(
     api_key: String,
     azure_resource: Option<String>,
     use_gpu: Option<bool>,
+    diarize: Option<bool>,
 ) -> Result<(), String> {
     let mut s = state
         .inner
@@ -154,6 +159,8 @@ fn set_stt_settings(
     s.azure_resource = azure_resource.unwrap_or_default();
     // 未指定(旧フロント)は既定=GPU有効のまま。明示 false のときだけ無効化(ADR-0028)。
     s.disable_gpu = !use_gpu.unwrap_or(true);
+    // 話者特定は opt-in（未指定=無効）。ローカル whisper のみ実効（S2.5 / ADR-0031）。
+    s.diarize = diarize.unwrap_or(false);
     Ok(())
 }
 
@@ -292,6 +299,49 @@ fn save_note<R: tauri::Runtime>(
 /// 16kHz mono 音声を文字起こしし、保存して返す共通処理（録音/ファイル入力で共用）。
 /// 別スレッド(spawn_blocking 内)から呼ぶ前提。モデルが無ければ初回に自動DLする（S2.2）。
 /// 進捗(0-100%)と確定セグメントを逐次通知してUIに進捗UXを提供する。
+/// 話者特定(S2.5)の話者区間を解決する。`diarization` feature 時のみ実推論する。
+/// オンデマンド配布: ネイティブランタイム(onnxruntime等)・ONNXモデルは有効時に初回DL する
+/// （ADR-0012 単一バイナリを維持＝非利用者は増量ゼロ）。失敗（未取得/初期化失敗）は空を返し、
+/// 呼び出し側はラベル無し文字起こしへフォールバックしてクラッシュを避ける(R5)。
+#[cfg(feature = "diarization")]
+fn resolve_speaker_turns<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    audio: &[f32],
+) -> Vec<diarize::SpeakerSegment> {
+    let app_dl = app.clone();
+    match model::ensure_diarization_assets(move |done, total| {
+        let msg = match total {
+            Some(t) if t > 0 => errcode::ec(errcode::S_MODEL_DOWNLOAD_PCT, done * 100 / t),
+            _ => errcode::ec(errcode::S_MODEL_DOWNLOAD_MB, done / 1_048_576),
+        };
+        let _ = app_dl.emit("status", msg);
+    }) {
+        Ok(assets) => {
+            let d = diarize::SherpaDiarizer {
+                segmentation_model: assets.segmentation,
+                embedding_model: assets.embedding,
+            };
+            diarize::Diarizer::diarize(&d, audio, 16000).unwrap_or_else(|e| {
+                eprintln!("[diarize] compute failed, continuing without speaker labels: {e}");
+                Vec::new()
+            })
+        }
+        Err(e) => {
+            eprintln!("[diarize] assets unavailable, continuing without speaker labels: {e}");
+            Vec::new()
+        }
+    }
+}
+
+/// diarization feature 無効ビルドでは話者特定は不発（トグルONでもラベル無し＝安全側）。
+#[cfg(not(feature = "diarization"))]
+fn resolve_speaker_turns<R: tauri::Runtime>(
+    _app: &tauri::AppHandle<R>,
+    _audio: &[f32],
+) -> Vec<diarize::SpeakerSegment> {
+    Vec::new()
+}
+
 fn transcribe_blocking<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     job_id: Option<job::JobId>,
@@ -338,6 +388,13 @@ fn transcribe_blocking<R: tauri::Runtime>(
     // STTエンジンを解決して文字起こし（S2.3抽象 / S2.4でクラウド）。
     // GPU実行(ADR-0028): Vulkan変種かつ起動時にVulkanデバイスを検出でき、ユーザーが無効化していないとき。
     let use_gpu = !stt.disable_gpu && gpu_backend_available();
+    // 話者特定(S2.5 / ADR-0031): 有効かつローカルのとき、事前に話者区間を解決してから文字起こしへ渡す。
+    // 失敗（モデル/DLL未取得・初期化失敗）はラベル無し文字起こしへフォールバック＝クラッシュさせない(R5)。
+    let speaker_turns = if !is_cloud && stt.diarize {
+        resolve_speaker_turns(app, audio)
+    } else {
+        Vec::new()
+    };
     let engine = stt::engine_for(stt::SttConfig {
         provider,
         model: stt.model,
@@ -345,6 +402,7 @@ fn transcribe_blocking<R: tauri::Runtime>(
         azure_resource: stt.azure_resource,
         model_path,
         use_gpu,
+        speaker_turns,
     });
     let text = engine.transcribe(
         audio,
@@ -1370,8 +1428,16 @@ mod tests {
         assert!(s.save_dir.is_none());
         assert_eq!(s.output_format, "md", "None は上書きしない");
 
-        set_stt_settings(app.state(), "azure".into(), "m1".into(), "k1".into(), Some("res".into()), None)
-            .unwrap();
+        set_stt_settings(
+            app.state(),
+            "azure".into(),
+            "m1".into(),
+            "k1".into(),
+            Some("res".into()),
+            None,
+            None,
+        )
+        .unwrap();
         let st = current_stt_settings(app.handle());
         assert_eq!(st.provider, "azure");
         assert_eq!(st.model, "m1");
@@ -1509,7 +1575,8 @@ mod tests {
             Some("txt".into()),
         )
         .unwrap();
-        set_stt_settings(app.state(), "deepgram".into(), "".into(), "dk".into(), None, None).unwrap();
+        set_stt_settings(app.state(), "deepgram".into(), "".into(), "dk".into(), None, None, None)
+            .unwrap();
         *app.state::<record::RecorderState>().current.lock().unwrap() =
             Some(record::test_recording(vec![(vec![0.2; 3200], 16000, 1)]));
         tauri::async_runtime::block_on(stop_recording(app.handle().clone(), app.state(), false))
@@ -1593,7 +1660,8 @@ mod tests {
             Some("txt".into()),
         )
         .unwrap();
-        set_stt_settings(app.state(), "deepgram".into(), "".into(), "dk".into(), None, None).unwrap();
+        set_stt_settings(app.state(), "deepgram".into(), "".into(), "dk".into(), None, None, None)
+            .unwrap();
         // 2 本の録音を連続で停止＝2 ジョブをキュー投入。
         for _ in 0..2 {
             *app.state::<record::RecorderState>().current.lock().unwrap() =
@@ -1659,7 +1727,8 @@ mod tests {
             Some("txt".into()),
         )
         .unwrap();
-        set_stt_settings(app.state(), "deepgram".into(), "".into(), "dk".into(), None, None).unwrap();
+        set_stt_settings(app.state(), "deepgram".into(), "".into(), "dk".into(), None, None, None)
+            .unwrap();
         let wav = audio_save::save_wav(&vec![0.1; 1600], 16000, 1, &dir, "input").unwrap();
         let text = tauri::async_runtime::block_on(transcribe_file(
             app.handle().clone(),

@@ -164,7 +164,16 @@
     "tip_gpu": "Ejecuta la transcripción en tu GPU (mucho más rápido según nuestras mediciones). Desactívalo para usar la CPU si hay problemas.",
     "gpu_unavailable": "No se encontró una GPU compatible en este entorno (sin GPU o controlador no compatible). Se ejecuta en CPU.",
     "backend_cpu": "versión CPU",
-    "backend_vulkan": "versión GPU Vulkan"
+    "backend_vulkan": "versión GPU Vulkan",
+    "diarize": "Distinguir hablantes",
+    "tip_diarize": "Detecta varios hablantes y etiqueta cada uno (descarga datos de reconocimiento de hablante en el primer uso). Para grabaciones de reuniones y entrevistas."
+  },
+  "speakers": {
+    "rename_head": "Nombres de hablantes",
+    "name_label": "Nombre para {speaker}",
+    "apply": "Aplicar",
+    "renamed": "Se reemplazaron {n} nombre(s) de hablante.",
+    "renamed_saved": "Se reemplazaron y guardaron {n} nombre(s) de hablante."
   },
   "nudge": {
     "title": "¿Hora del diario de hoy?",
