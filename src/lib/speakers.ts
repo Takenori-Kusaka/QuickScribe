@@ -35,13 +35,9 @@ export function detectSpeakers(transcript: string, prefix: string = SPEAKER_PREF
  * 話者→名前の割当を一括置換の補正候補へ変換する（仕様 R9）。空欄の名前はスキップ。
  * `[話者N]` → `[入力名]` の全置換になるよう括弧付きで組み立て、applyCorrections に渡す。
  * @param names 話者トークン(例 `話者1`)→ 入力名(例 `田中`) のマップ。
- * @param prefix 話者ラベルの接頭辞（未使用トークンはそのまま original に使う）。
  * @returns applyCorrections に渡せる Correction 配列（名前が空のものは含めない）。
  */
-export function buildSpeakerRenames(
-  names: Record<string, string>,
-  _prefix: string = SPEAKER_PREFIX,
-): Correction[] {
+export function buildSpeakerRenames(names: Record<string, string>): Correction[] {
   const out: Correction[] = [];
   for (const [token, name] of Object.entries(names)) {
     const trimmed = name.trim();
