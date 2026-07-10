@@ -406,7 +406,7 @@ jobs:
         run: npm run icons
       - name: Build test binary (compile excluded from run loop)
         run: cargo test --manifest-path src-tauri/Cargo.toml --test transcribe_integration --no-run
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Install eval deps (CI専用・datasets + neologdn)
