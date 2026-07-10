@@ -5,6 +5,13 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [1.6.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.5.0...v1.6.0) (2026-07-10)
+
+
+### ✨ 新機能 / Features
+
+* **stt:** 話者特定オプション(default-OFF)を追加 ― sherpa-onnx・オンデマンドDL・遅延ロード(ADR-0031) ([#633](https://github.com/Takenori-Kusaka/QuickScribe/issues/633)) ([8d432c5](https://github.com/Takenori-Kusaka/QuickScribe/commit/8d432c506360a91d75f9ddc99cf52b5f869b993f))
+
 ## [1.5.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.4.0...v1.5.0) (2026-07-09)
 
 配布とモデルカタログを簡素化しました（[ADR-0029](https://github.com/Takenori-Kusaka/QuickScribe/blob/main/docs/adr/0029-simplify-offering-drop-cuda-and-kotoba.md)）。GPU文字起こしは v1.4.0 の単一 Vulkan ビルドで CPU〜あらゆる GPU を1つのインストーラでカバーできるため、価値の薄い選択肢を整理しました。
