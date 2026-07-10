@@ -48,7 +48,7 @@ jobs:
           - os: windows-latest
             label: windows-x64
             rust_target: x86_64-pc-windows-msvc
-            tauri_args: "--config src-tauri/tauri.release.conf.json --target x86_64-pc-windows-msvc --features vulkan"
+            tauri_args: "--config src-tauri/tauri.release.conf.json --target x86_64-pc-windows-msvc --features vulkan,diarization"
           - os: windows-latest
             label: windows-arm64
             rust_target: aarch64-pc-windows-msvc

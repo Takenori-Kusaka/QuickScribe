@@ -15,6 +15,11 @@ on:
         required: false
         type: boolean
         default: false
+      diarization:
+        description: "話者特定(S2.5/ADR-0031)を含めてビルドする。ネイティブlibはオンデマンドDLのため同梱されない"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -84,11 +89,23 @@ jobs:
       # updater が公開鍵設定済みのため tauri build は updater 成果物の署名を要求する。
       # ここでは公開リリースも latest.json 発行もしない（成果物アップロードのみ）が、
       # ビルドを完走させるため release.yml と同じ署名鍵を渡す。
+      # 有効化する Cargo feature を合成（vulkan / diarization を独立トグル）。
+      - name: Compute cargo features
+        id: feat
+        shell: pwsh
+        run: |
+          $f = @()
+          if ('${{ inputs.vulkan }}' -eq 'true') { $f += 'vulkan' }
+          if ('${{ inputs.diarization }}' -eq 'true') { $f += 'diarization' }
+          $arg = if ($f.Count -gt 0) { '--features ' + ($f -join ',') } else { '' }
+          "args=$arg" >> $env:GITHUB_OUTPUT
+          Write-Host "features arg: $arg"
+
       - name: Build Windows installer (bundle)
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npx tauri build --config src-tauri/tauri.release.conf.json ${{ inputs.vulkan && '--features vulkan' || '' }}
+        run: npx tauri build --config src-tauri/tauri.release.conf.json ${{ steps.feat.outputs.args }}
 
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v7
