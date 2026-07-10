@@ -164,7 +164,16 @@
     "tip_gpu": "GPUで文字起こしを実行します（実測で大幅に高速）。問題がある場合はOFFにするとCPUで実行します。",
     "gpu_unavailable": "この環境では対応GPUが見つかりません（GPU未搭載またはドライバ未対応）。CPUで実行します。",
     "backend_cpu": "CPU版",
-    "backend_vulkan": "GPU版 Vulkan"
+    "backend_vulkan": "GPU版 Vulkan",
+    "diarize": "話者を区別する",
+    "tip_diarize": "複数話者を検出して発言者ごとに区別します（初回に話者認識用データを取得）。会議やインタビューの録音向け。"
+  },
+  "speakers": {
+    "rename_head": "話者名",
+    "name_label": "{speaker} の名前",
+    "apply": "適用",
+    "renamed": "{n}件の話者名を置換しました。",
+    "renamed_saved": "{n}件の話者名を置換して保存しました。"
   },
   "nudge": {
     "title": "今日のジャーナル、どうですか？",

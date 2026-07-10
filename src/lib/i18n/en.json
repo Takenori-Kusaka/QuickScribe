@@ -164,7 +164,16 @@
     "tip_gpu": "Runs transcription on your GPU (much faster in our measurements). Turn off to run on CPU if you hit issues.",
     "gpu_unavailable": "No compatible GPU found in this environment (no GPU, or driver unsupported). Running on CPU.",
     "backend_cpu": "CPU build",
-    "backend_vulkan": "GPU build Vulkan"
+    "backend_vulkan": "GPU build Vulkan",
+    "diarize": "Distinguish speakers",
+    "tip_diarize": "Detect multiple speakers and label each one (downloads speaker-recognition data on first use). For meeting and interview recordings."
+  },
+  "speakers": {
+    "rename_head": "Speaker names",
+    "name_label": "Name for {speaker}",
+    "apply": "Apply",
+    "renamed": "Replaced {n} speaker name(s).",
+    "renamed_saved": "Replaced and saved {n} speaker name(s)."
   },
   "nudge": {
     "title": "Time for today's journal?",

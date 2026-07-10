@@ -10,6 +10,7 @@
   import { onMount } from "svelte";
   import { estimateRemaining, formatRemaining } from "./lib/note";
   import { parseCorrections, applyCorrections, type Correction } from "./lib/corrections";
+  import { detectSpeakers, buildSpeakerRenames } from "./lib/speakers";
   import { errorText } from "./lib/errors";
   import { modal } from "./lib/a11y";
   import { kindLabel } from "./lib/entry";
@@ -85,6 +86,8 @@
   let gpuAvailable = $state(false);
   // GPUで文字起こしする(ユーザー設定・既定ON=環境が許せば速度最適なGPUを自動選択 / ADR-0028)。
   let sttUseGpu = $state(true);
+  // 話者を区別する(話者特定 / ADR-0031)。既定OFF(opt-in)。ONの初回にDLL/モデルをオンデマンドDL。
+  let sttDiarize = $state(false);
 
   // 設定（localStorageに保存。秘密情報はローカル端末内のみ）。
   // 整形プロバイダ: Gemini / Anthropic / OpenAI / ローカル(Ollama) ＋
@@ -278,6 +281,8 @@
         azureResource: sttProvider === "azure" ? sttAzureResource.trim() : "",
         // GPU実行(ADR-0028)。環境がGPU不可(CPUビルド/Vulkanデバイス無し)ならバックエンド側でも無効化される。
         useGpu: sttUseGpu,
+        // 話者特定(ADR-0031・既定OFF)。ONの初回にネイティブDLL/モデルをオンデマンドDLし遅延ロードで解決。
+        diarize: sttDiarize,
       });
     } catch (e) {
       console.error("set_stt_settings failed", e);
@@ -339,6 +344,7 @@
     openaiBaseUrl = s.openaiBaseUrl;
     sttProvider = s.sttProvider;
     sttUseGpu = s.sttUseGpu;
+    sttDiarize = s.sttDiarize;
     privacy.offlineMode = s.offlineMode;
     sttModel = s.sttModel;
     sttAzureResource = s.sttAzureResource;
@@ -376,6 +382,7 @@
       openaiBaseUrl,
       sttProvider,
       sttUseGpu,
+      sttDiarize,
       offlineMode: privacy.offlineMode,
       sttModel,
       sttAzureResource,
@@ -745,6 +752,37 @@
       }
     } else {
       status = $_("corrections.replaced", { values: { n: applied } });
+    }
+  }
+
+  // 話者名リネーム(話者特定 / ADR-0031 R8-R9)。本文中の [話者N] を本人の名前へ全置換する。
+  // 置換ロジックは新設せず既存の一括置換(applyCorrections)を再利用する(R9)。
+  let speakerNames = $state<Record<string, string>>({});
+  // 本文から検出した話者(昇順・一意)。空ならリネームUIは出さない(R10)。
+  const detectedSpeakers = $derived(detectSpeakers(transcript ?? ""));
+  // 入力した名前で [話者N]→[名前] を全置換し、本文を更新・保存する。
+  async function applySpeakerNames() {
+    if (!transcript) return;
+    const corr = buildSpeakerRenames(speakerNames);
+    if (corr.length === 0) return;
+    const { text, applied } = applyCorrections(transcript, corr);
+    transcript = text;
+    speakerNames = {};
+    if (applied <= 0) {
+      status = "";
+      return;
+    }
+    // 補正済み本文を別ファイルで残す(#599・非破壊 ADR-0017)。keepText=false の意思は尊重。
+    if (keepText) {
+      try {
+        await invoke("save_note", { content: text, kind: "transcript" });
+        status = $_("speakers.renamed_saved", { values: { n: applied } });
+      } catch (e) {
+        status = $_("speakers.renamed", { values: { n: applied } });
+        error = $_("errors.save_corrected_failed", { values: { detail: errorText(e, $_) } });
+      }
+    } else {
+      status = $_("speakers.renamed", { values: { n: applied } });
     }
   }
 
@@ -1334,6 +1372,33 @@
             </div>
           {/if}
         {/if}
+        <!-- 話者名リネーム(話者特定 / ADR-0031): 検出話者に名前を付け [話者N] を全置換。
+             話者ラベルが無い通常の文字起こしには出さない(R10)。 -->
+        {#if detectedSpeakers.length > 0}
+          <div class="corrections">
+            <div class="corrections-head">
+              <span>{$_("speakers.rename_head")}</span>
+            </div>
+            <ul class="correction-list">
+              {#each detectedSpeakers as sp (sp)}
+                <li class="correction-item">
+                  <span class="correction-orig">{sp}</span>
+                  <span class="correction-arrow">→</span>
+                  <input
+                    class="correction-sugg"
+                    type="text"
+                    bind:value={speakerNames[sp]}
+                    placeholder={sp}
+                    aria-label={$_("speakers.name_label", { values: { speaker: sp } })}
+                  />
+                </li>
+              {/each}
+            </ul>
+            <div class="corrections-actions">
+              <button class="btn small" onclick={applySpeakerNames}>{$_("speakers.apply")}</button>
+            </div>
+          </div>
+        {/if}
         <!-- 内省タグ(S4.3): 整形・保存時にメタデータとして付与。後から束ねて見返す入口。 -->
         <div class="tags-row">
           <input
@@ -1763,6 +1828,12 @@
               )}
             </p>
             <p class="tip">{$_("settings.tip_model_download")}</p>
+            <!-- 話者特定(ADR-0031・既定OFF)。ローカルwhisperのみ。ONの初回にネイティブDLL/モデルをオンデマンドDL。 -->
+            <label class="check">
+              <input type="checkbox" bind:checked={sttDiarize} />
+              {$_("settings.diarize")}
+            </label>
+            <p class="tip">{$_("settings.tip_diarize")}</p>
           {/if}
         </details>
 

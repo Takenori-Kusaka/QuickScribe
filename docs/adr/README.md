@@ -30,4 +30,8 @@
 | [0024](0024-evaluation-redesign-cer-and-nuance.md) | 評価基盤の再設計（CER＋ニュアンス計測） | Accepted |
 | [0025](0025-japanese-default-model-revision.md) | 日本語の既定STTを large-v3-turbo へ（実測に基づく） | Accepted |
 | [0026](0026-multi-background-transcription-jobs.md) | 複数バックグラウンド文字起こしジョブの逐次キュー化とジョブ一覧UI | Accepted |
-| [0027](0027-gpu-build-variants.md) | GPUビルド変種（CUDA）の opt-in 配布と実行バックエンド可視化 | Accepted |
+| [0027](0027-gpu-build-variants.md) | GPUビルド変種（CUDA）の opt-in 配布と実行バックエンド可視化 | Superseded（ADR-0029） |
+| [0028](0028-single-vulkan-build-startup-gpu-detection.md) | 単一Vulkanビルドへの一本化と起動時GPUデバイス検出 | Accepted |
+| [0029](0029-simplify-offering-drop-cuda-and-kotoba.md) | オファリングの簡素化（CUDA変種と kotoba モデルの廃止） | Accepted |
+| [0030](0030-no-voice-emotion-metadata.md) | 声由来の感情/情動メタデータを非対応とする（やらない決定） | Accepted |
+| [0031](0031-speaker-diarization-optional-utility.md) | 話者特定を「利用幅拡大の実用オプション」として default-OFF で提供 | Accepted |

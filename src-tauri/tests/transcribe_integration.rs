@@ -35,6 +35,8 @@ fn transcribes_known_audio_when_assets_present() {
         timestamps,
         // GPU使用可否は whisper.cpp 既定に合わせ true（CPUビルドでは無視・VulkanビルドでGPU実測に使う）。
         true,
+        // 話者特定なし（精度ベンチは単一話者・従来動作）。
+        &[],
         |_| {},
         |_| {},
     )

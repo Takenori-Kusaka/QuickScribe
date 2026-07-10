@@ -13,3 +13,5 @@ chapters:
   - accuracy-as-commodity
   - default-model-reversal
   - speed-floor-gpu-vulkan
+  - evaluation-driven-diarization
+  - evaluating-formatting-intelligence

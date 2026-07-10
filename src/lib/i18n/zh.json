@@ -164,7 +164,16 @@
     "tip_gpu": "在GPU上运行转写（实测大幅提速）。如遇问题可关闭以使用CPU。",
     "gpu_unavailable": "此环境未找到兼容的GPU（无GPU或驱动不支持）。将使用CPU运行。",
     "backend_cpu": "CPU版",
-    "backend_vulkan": "GPU版 Vulkan"
+    "backend_vulkan": "GPU版 Vulkan",
+    "diarize": "区分说话人",
+    "tip_diarize": "检测多位说话人并分别标注（首次使用时下载说话人识别数据）。适合会议和访谈录音。"
+  },
+  "speakers": {
+    "rename_head": "说话人名称",
+    "name_label": "{speaker} 的名称",
+    "apply": "应用",
+    "renamed": "已替换 {n} 个说话人名称。",
+    "renamed_saved": "已替换并保存 {n} 个说话人名称。"
   },
   "nudge": {
     "title": "今天的日记写了吗？",
