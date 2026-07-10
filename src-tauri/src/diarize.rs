@@ -67,9 +67,13 @@ impl Diarizer for SherpaDiarizer {
     fn diarize(&self, audio: &[f32], _sr: u32) -> Result<Vec<SpeakerSegment>, String> {
         use sherpa_rs::diarize::{Diarize, DiarizeConfig};
         // 話者数は未知前提: num_clusters<=0 で閾値ベースの自動推定（単一話者は1へ収束）。
+        // 閾値は 0.8（実検証で決定 / 2026-07-10）。sherpa 既定 0.5 は過分割で、4話者テスト音声で
+        // 0.5→7・0.7→5・0.9→4話者と検出された。1人を複数話者に割る偽検出は用途上有害なため、
+        // 分割を抑える高め(0.8)を既定にする。TODO(Phase2): 日本語実音声での最適閾値を実測で確定する
+        // （ADR-0031 が留保。話者数既知なら num_clusters 固定＝4話者で正確一致を確認済み）。
         let config = DiarizeConfig {
             num_clusters: Some(-1),
-            threshold: Some(0.5),
+            threshold: Some(0.8),
             ..Default::default()
         };
         let mut d = Diarize::new(&self.segmentation_model, &self.embedding_model, config)

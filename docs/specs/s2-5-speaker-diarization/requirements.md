@@ -44,6 +44,15 @@
 - **Phase 1（配線・割当・テスト）**: `Diarizer` trait ＋ `SpeakerSegment` 型、whisperX 割当の純関数、`sttDiarize` トグルの端から端まで（settings-persist → App.svelte → `set_stt_settings` → `SttConfig`）、i18n、出力ラベル整形、上記の純ロジック/配線テスト。**ネイティブ非依存でグリーン**。
 - **Phase 2（sherpa-onnx バックエンド）**: `SherpaDiarizer` 実装（Cargo feature `diarization`）、segmentation＋embedding ONNX のカタログ＋`ensure_diarization_models`、`transcribe_with` への前処理挿入、FFI失敗の境界吸収（R5）、Windows ビルド/CI 結合。**先頭で `cargo` ビルドを fail-fast 検証**し、単一Vulkan配布との両立（ADR-0012）を確認してから既定ビルドへ組み込む。
 
+## 技術検証（2026-07-10・Phase2の実機確認）
+
+sherpa-onnx を実機で検証（scratchpad プローブ・4話者テスト音声 `0-four-speakers-zh.wav` 56.9s）:
+
+- **ネイティブ結合は動作**: sherpa-rs 0.6.8 が Windows でビルド・リンク成功（onnxruntime.dll 他5個を動的リンク）。ONNXモデル2種をオンデマンドDL（推測したHF URLは実在＝200/206確認）し、話者分離推論が**貫通実行**（区間＋話者IDを出力）。
+- **モデル精度は良好**: `num_clusters=4`（話者数既知）で**正確に4話者**を検出。
+- **自動閾値の調整が必要**: `num_clusters=-1`（未知）の閾値スイープ = 0.4→8 / 0.5→7 / 0.7→5 / 0.9→4話者。**sherpa 既定 0.5 は過分割**。1人を複数話者に割る偽検出は用途上有害なため、既定を **0.8** に設定（`diarize.rs`）。
+- **未検証（Phase2 継続）**: (1) 日本語実音声での最適閾値・分離精度（ADR-0031 留保）。(2) ネイティブDLLの**オンデマンド取得＋DLL検索パス設定＋遅延ロードの abort 安全性(R5)** を実配布経路で確認（プローブは build 時同梱DLLで検証したため、実行時取得経路は別途要検証）。(3) モデル/DLLの SHA256 ピン留め(R4)。
+
 ## 範囲外（後続 / 別ADR）
 
 - 話者の**役割**同定（医師/患者など）。diarization は話者分離のみ。
