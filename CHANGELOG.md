@@ -5,6 +5,13 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [1.7.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.6.0...v1.7.0) (2026-07-15)
+
+
+### ✨ 新機能 / Features
+
+* **jobs:** ジョブ一覧を直近3件表示＋展開/スクロールで表示エリアの無限拡大を防ぐ ([#644](https://github.com/Takenori-Kusaka/QuickScribe/issues/644)) ([c34098f](https://github.com/Takenori-Kusaka/QuickScribe/commit/c34098fca0155d3010c2583bda82523fe4976874))
+
 ## [1.6.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.5.0...v1.6.0) (2026-07-10)
 
 
