@@ -453,6 +453,8 @@
       "canceled": "Cancelado"
     },
     "done_n": "{n} hechos",
-    "no_speech": "Sin voz"
+    "no_speech": "Sin voz",
+    "show_all": "Mostrar {n} más",
+    "collapse": "Contraer"
   }
 }

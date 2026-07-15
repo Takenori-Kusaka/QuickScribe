@@ -12,6 +12,9 @@ import {
   markOpened,
   unopenedDoneCount,
   pruneFinished,
+  orderedForDisplay,
+  visibleJobs,
+  hiddenJobCount,
   type Job,
 } from "./jobs";
 
@@ -149,5 +152,30 @@ describe("jobs reducers", () => {
     jobs = pruneFinished(jobs, 2);
     // 未読完了は保護され4件すべて残る。
     expect(jobs.length).toBe(4);
+  });
+
+  it("visibleJobs は showAll=false で直近 limit 件のみ・新しい順、隠れ件数を hiddenJobCount で返す", () => {
+    let jobs: Job[] = [];
+    for (let i = 1; i <= 5; i++) jobs = upsertCreated(jobs, created(i));
+    // 折り畳み時: 直近3件(新しい順 5,4,3)のみ表示。
+    expect(visibleJobs(jobs, 3, false).map((j) => j.id)).toEqual([5, 4, 3]);
+    // 隠れている古いジョブ数 = 5 - 3 = 2。
+    expect(hiddenJobCount(jobs, 3)).toBe(2);
+    // 展開時: 全件を新しい順で表示。
+    expect(visibleJobs(jobs, 3, true).map((j) => j.id)).toEqual([5, 4, 3, 2, 1]);
+  });
+
+  it("visibleJobs/hiddenJobCount は件数が limit 以下なら全件表示・隠れ0", () => {
+    let jobs: Job[] = [];
+    for (let i = 1; i <= 2; i++) jobs = upsertCreated(jobs, created(i));
+    expect(visibleJobs(jobs, 3, false).map((j) => j.id)).toEqual([2, 1]);
+    expect(hiddenJobCount(jobs, 3)).toBe(0);
+  });
+
+  it("orderedForDisplay は元配列を破壊しない（新配列を返す）", () => {
+    const jobs = [created(1), created(2)].map((c) => ({ ...c, segments: [] as string[] }));
+    const ordered = orderedForDisplay(jobs);
+    expect(ordered.map((j) => j.id)).toEqual([2, 1]);
+    expect(jobs.map((j) => j.id)).toEqual([1, 2]); // 元は不変。
   });
 });

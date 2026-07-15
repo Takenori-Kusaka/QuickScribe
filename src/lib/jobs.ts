@@ -124,6 +124,24 @@ export function unopenedDoneCount(jobs: Job[]): number {
   return jobs.filter((j) => j.status === "done" && j.text && !j.opened).length;
 }
 
+/** 一覧描画用にジョブを新しい順（直近が先頭）へ並べ替える。表示の主対象は最近のジョブ。 */
+export function orderedForDisplay(jobs: Job[]): Job[] {
+  return [...jobs].reverse();
+}
+
+/** 一覧に実際に表示するジョブ。showAll=false のときは新しい順に最大 limit 件へ絞り、
+ *  表示エリアが無限に伸びないようにする（残りは「他 N 件を表示」で展開）。limit<=0 は 0 件扱い。 */
+export function visibleJobs(jobs: Job[], limit: number, showAll: boolean): Job[] {
+  const ordered = orderedForDisplay(jobs);
+  if (showAll) return ordered;
+  return ordered.slice(0, Math.max(0, limit));
+}
+
+/** 折り畳み時に隠れているジョブ数（「他 N 件を表示」バッジ用）。0 以下は隠れなし。 */
+export function hiddenJobCount(jobs: Job[], limit: number): number {
+  return Math.max(0, jobs.length - Math.max(0, limit));
+}
+
 /** 終了済みジョブを新しい順に最大 keep 件残して掃除する（UI の肥大防止）。
  *  ただし **未読の完了ジョブ（未 open で本文あり）は決して落とさない**（取りこぼさない＝未見の結果を失わない）。
  *  掃除対象は「開いた完了 / error / canceled」のみ。未終了(queued/running)も残す。 */

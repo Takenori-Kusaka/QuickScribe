@@ -453,6 +453,8 @@
       "canceled": "Canceled"
     },
     "done_n": "{n} done",
-    "no_speech": "No speech"
+    "no_speech": "No speech",
+    "show_all": "Show {n} more",
+    "collapse": "Collapse"
   }
 }

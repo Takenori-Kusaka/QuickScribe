@@ -378,11 +378,30 @@ describe("App.svelte バックエンドイベント", () => {
     await emitJobCreated(2);
     await emitJobDone(2, "次のジャーナル本文");
     expect(screen.getByText("最初のジャーナル本文")).toBeInTheDocument();
-    // 未読の完了があるので一覧が自動展開される。job2 を一覧から開く。
+    // 未読の完了があるので一覧が自動展開される。一覧は新しい順なので job2 は先頭の「開く」。
     const openBtns = await screen.findAllByRole("button", { name: "開く" });
     expect(openBtns.length).toBe(2);
-    await fireEvent.click(openBtns[openBtns.length - 1]);
+    await fireEvent.click(openBtns[0]);
     expect(await screen.findByText("次のジャーナル本文")).toBeInTheDocument();
+  });
+
+  it("完了ジョブが増えても一覧は直近3件のみ表示し、「他N件を表示」で全部開ける（表示エリアの無限拡大を防ぐ）", async () => {
+    render(App);
+    await waitForListeners();
+    // 5件完了。1件目は作業領域へ自動読み込み、以降は一覧に積まれ自動展開される。
+    for (let i = 1; i <= 5; i++) {
+      await emitJobCreated(i);
+      await emitJobDone(i, `本文${i}`);
+    }
+    // 折り畳み時は直近3件(job5,4,3)の「開く」のみ。
+    const collapsed = await screen.findAllByRole("button", { name: "開く" });
+    expect(collapsed.length).toBe(3);
+    // 隠れている2件を開くトグルが出る。
+    const showAll = screen.getByRole("button", { name: "他 2 件を表示" });
+    await fireEvent.click(showAll);
+    // 展開後は全5件の「開く」が並ぶ。
+    const expanded = await screen.findAllByRole("button", { name: "開く" });
+    expect(expanded.length).toBe(5);
   });
 
   it("status イベントでステータス文言が表示される", async () => {

@@ -65,6 +65,14 @@
   // ジョブ一覧の展開状態(既定=畳む。控えめ運用)。
   let showJobs = $state(false);
   const JOBS_KEEP = 50;
+  // 一覧展開時に既定で見せる件数(直近 N 件のみ)。残りは「他 N 件を表示」で開く=表示エリアの無限拡大を防ぐ。
+  const JOBS_VISIBLE = 3;
+  // 直近 N 件を超える古いジョブまで全部見せるか(既定=畳む)。
+  let showAllJobs = $state(false);
+  // 実際に描画するジョブ(新しい順・showAllJobs=false なら直近 JOBS_VISIBLE 件)。
+  const visibleJobList = $derived(jobsLib.visibleJobs(jobs, JOBS_VISIBLE, showAllJobs));
+  // 折り畳み時に隠れている古いジョブ数(「他 N 件を表示」ボタンの表示判定)。
+  const hiddenJobs = $derived(jobsLib.hiddenJobCount(jobs, JOBS_VISIBLE));
   // 処理中(queued+running)件数。ヘッダの「処理中N件」バッジ。
   const activeJobs = $derived(jobsLib.activeCount(jobs));
   // 実行中ジョブ(逐次のため高々1件)。進捗バーの対象。
@@ -1271,8 +1279,10 @@
         {/if}
 
         {#if showJobs && jobs.length}
+          <!-- 直近 JOBS_VISIBLE 件のみ描画(新しい順)。古いものは「他 N 件を表示」で展開。
+               さらに CSS の max-height + overflow-y で高さを上限化し、表示エリアが無限に伸びないようにする。 -->
           <ul class="jobs-list">
-            {#each jobs as j (j.id)}
+            {#each visibleJobList as j (j.id)}
               <li class="job-row job-{j.status}">
                 <span class="job-label">{formatJobLabel(j)}</span>
                 <span class="job-state">{$_(`jobs.status.${j.status}`)}</span>
@@ -1288,6 +1298,18 @@
               </li>
             {/each}
           </ul>
+          {#if hiddenJobs > 0}
+            <button
+              type="button"
+              class="jobs-more"
+              onclick={() => (showAllJobs = !showAllJobs)}
+              aria-expanded={showAllJobs}
+            >
+              {showAllJobs
+                ? $_("jobs.collapse")
+                : $_("jobs.show_all", { values: { n: hiddenJobs } })}
+            </button>
+          {/if}
         {/if}
       </div>
     {/if}
@@ -3055,6 +3077,23 @@
     flex-direction: column;
     gap: 0.3rem;
     text-align: left;
+    /* 「すべて表示」でも表示エリアが無限に伸びないよう高さを上限化しスクロール(約6行分)。 */
+    max-height: 15rem;
+    overflow-y: auto;
+  }
+  .jobs-more {
+    margin: 0.4rem 0 0;
+    padding: 0.2rem 0.1rem;
+    background: none;
+    border: none;
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+    cursor: pointer;
+    text-align: left;
+  }
+  .jobs-more:hover {
+    color: var(--color-text);
+    text-decoration: underline;
   }
   .job-row {
     display: flex;

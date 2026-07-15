@@ -453,6 +453,8 @@
       "canceled": "キャンセル"
     },
     "done_n": "完了 {n} 件",
-    "no_speech": "発話なし"
+    "no_speech": "発話なし",
+    "show_all": "他 {n} 件を表示",
+    "collapse": "折りたたむ"
   }
 }
