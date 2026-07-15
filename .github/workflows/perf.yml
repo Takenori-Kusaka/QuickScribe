@@ -36,7 +36,7 @@ jobs:
             libxdo-dev build-essential file clang libclang-dev cmake \
             libasound2-dev pkg-config espeak-ng ffmpeg time
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
@@ -193,7 +193,7 @@ jobs:
           dl models/ggml-large-v3-turbo-q5_0.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin
 
       # tauri のビルドマクロがアイコン(icons/32x32.png)を要求するため、ビルド前に生成する。
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
@@ -295,7 +295,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
@@ -397,7 +397,7 @@ jobs:
           curl -L --fail --retry 5 --retry-delay 15 --retry-all-errors \
             -o models/ggml-large-v3-turbo-q5_0.bin \
             https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
