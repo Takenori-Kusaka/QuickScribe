@@ -453,6 +453,8 @@
       "canceled": "已取消"
     },
     "done_n": "完成 {n} 个",
-    "no_speech": "无语音"
+    "no_speech": "无语音",
+    "show_all": "显示其余 {n} 个",
+    "collapse": "收起"
   }
 }
