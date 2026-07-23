@@ -55,7 +55,7 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
-use entry::{build_document, doc_extension, filename_prefix, DocMeta};
+use entry::{build_document, doc_extension, entry_stem, DocMeta};
 
 /// メモ内容を保存フォルダ(既定: ドキュメント/QuickScribe)へ書き出す。
 ///
@@ -183,21 +183,27 @@ fn resolve_save_dir(settings: &SaveSettings) -> Result<std::path::PathBuf, Strin
         .join("QuickScribe"))
 }
 
-/// タイムスタンプ付きファイル名で dir 配下にエントリを書き出し、パスを返す（S4.1/S4.2）。
-/// 出力形式(txt/md)とメタデータに従って本文を組み立て、同一秒の衝突は一意名にする（非破壊）。
+/// 内容が分かるファイル名で dir 配下にエントリを書き出し、パスを返す（S4.1/S4.2/ADR-0032）。
+/// ファイル名は `{種別}-{yyyymmdd}-{ラベル}`。ラベルは title(整形のAIタイトル)があればそれ、
+/// 無ければ本文冒頭。時刻は含めず、名前衝突は一意名(-2, -3…)にする（非破壊）。
 fn save_document(
     dir: &std::path::Path,
     content: &str,
     format: &str,
     meta: &DocMeta,
+    title: Option<&str>,
 ) -> Result<String, String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let now = chrono::Local::now();
-    let ts = now.format("%Y%m%d-%H%M%S").to_string();
+    let date = now.format("%Y%m%d").to_string();
     let created_iso = now.format("%Y-%m-%dT%H:%M:%S").to_string();
     let body = build_document(content, format, &created_iso, meta);
     let ext = doc_extension(format);
-    let stem = format!("{}-{ts}", filename_prefix(meta.kind));
+    let label = match title.map(str::trim).filter(|t| !t.is_empty()) {
+        Some(t) => t,
+        None => content,
+    };
+    let stem = entry_stem(meta.kind, &date, label);
     let name = next_unique_name(&stem, ext, |n| dir.join(n).exists());
     let path = dir.join(name);
     std::fs::write(&path, body).map_err(|e| e.to_string())?;
@@ -293,6 +299,7 @@ fn save_note<R: tauri::Runtime>(
             style: None,
             tags: &tags,
         },
+        None,
     )
 }
 
@@ -442,6 +449,7 @@ fn transcribe_blocking<R: tauri::Runtime>(
                     style: None,
                     tags: &[],
                 },
+                None,
             );
         }
     }
@@ -994,16 +1002,27 @@ async fn refine_text<R: tauri::Runtime>(
             &m,
             &style,
             &text,
-            aws_cfg,
+            aws_cfg.clone(),
             custom_instruction,
             output_lang,
-            base_url,
+            base_url.clone(),
         )?;
         // 整形結果（ジャーナルの成果物）は保存先へ書き出す（save=false の一時結果は保存しない）。
         let settings = current_settings(&app);
         if save.unwrap_or(true) {
             if let Ok(dir) = resolve_save_dir(&settings) {
                 let tags = tags.unwrap_or_default();
+                // ファイル名用のタイトルを同一プロバイダで生成する(ADR-0032)。
+                // 失敗しても保存は止めず、本文冒頭ラベルへフォールバックする(title=None)。
+                let title = refine::generate_title(
+                    &provider,
+                    &api_key,
+                    &m,
+                    &refined,
+                    aws_cfg.as_ref(),
+                    base_url.as_deref(),
+                )
+                .ok();
                 // 整形結果は構造化Markdownのため常に .md で保存（出力形式設定に依らない）。
                 // 生の文字起こし(transcript)は出力形式設定(txt/md)に従う。
                 let _ = save_document(
@@ -1015,6 +1034,7 @@ async fn refine_text<R: tauri::Runtime>(
                         style: Some(&style),
                         tags: &tags,
                     },
+                    title.as_deref(),
                 );
             }
         }
@@ -1332,7 +1352,7 @@ mod tests {
 
     #[test]
     fn save_document_does_not_overwrite_existing() {
-        // 一時ディレクトリで衝突時の非破壊保存(S4.1 R5)を結合検証。
+        // 一時ディレクトリで衝突時(同日・同一冒頭)の非破壊保存(S4.1 R5)を結合検証。
         let meta = DocMeta {
             kind: "note",
             style: None,
@@ -1341,13 +1361,14 @@ mod tests {
         let mut dir = std::env::temp_dir();
         dir.push(format!("qs-vault-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let p1 = save_document(&dir, "first", "txt", &meta).unwrap();
-        let p2 = save_document(&dir, "second", "txt", &meta).unwrap();
-        // 同一秒なら別名、別秒でも両方残ることを保証（どちらでもファイルは2つ）。
+        let p1 = save_document(&dir, "same head", "txt", &meta, None).unwrap();
+        let p2 = save_document(&dir, "same head", "txt", &meta, None).unwrap();
+        // 同名になる内容でも -2 の一意名で両方残る（上書きしない）。
         assert_ne!(p1, p2);
+        assert!(p2.contains("-2."), "衝突時は index を末尾に付加: {p2}");
         let count = std::fs::read_dir(&dir).unwrap().count();
         assert_eq!(count, 2, "既存エントリが上書きされず2件残る");
-        assert_eq!(std::fs::read_to_string(&p1).unwrap(), "first");
+        assert_eq!(std::fs::read_to_string(&p1).unwrap(), "same head");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1361,10 +1382,62 @@ mod tests {
         let mut dir = std::env::temp_dir();
         dir.push(format!("qs-vault-md-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let p = save_document(&dir, "本文", "md", &meta).unwrap();
+        let p = save_document(&dir, "本文", "md", &meta, None).unwrap();
         assert!(p.ends_with(".md"), "md 拡張子で保存される");
         let body = std::fs::read_to_string(&p).unwrap();
         assert!(body.starts_with("---\n") && body.contains("type: \"refined\""));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_document_names_by_date_and_content_head() {
+        // ADR-0032: ファイル名は {種別}-{yyyymmdd}-{本文冒頭}。時刻(-hhMMss)は含めない。
+        let meta = DocMeta {
+            kind: "transcript",
+            style: None,
+            tags: &[],
+        };
+        let mut dir = std::env::temp_dir();
+        dir.push(format!("qs-vault-name-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let p = save_document(&dir, "今日は朝から雨だった。散歩は中止。", "txt", &meta, None).unwrap();
+        let name = std::path::Path::new(&p)
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let date = chrono::Local::now().format("%Y%m%d").to_string();
+        assert!(
+            name.starts_with(&format!("transcript-{date}-今日は朝から雨だった。散歩は中止")),
+            "日付+本文冒頭で命名される: {name}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_document_prefers_title_over_content_head() {
+        // 整形(refined)はAI生成タイトルをファイル名に使う(ADR-0032)。
+        let meta = DocMeta {
+            kind: "refined",
+            style: Some("構造化"),
+            tags: &[],
+        };
+        let mut dir = std::env::temp_dir();
+        dir.push(format!("qs-vault-title-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let p = save_document(&dir, "# 見出し\n本文…", "md", &meta, Some("仕事の不安の整理")).unwrap();
+        let name = std::path::Path::new(&p)
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        assert!(
+            name.contains("-仕事の不安の整理") && name.starts_with("refined-"),
+            "タイトルが優先される: {name}"
+        );
+        // 空白のみのタイトルは本文冒頭へフォールバック。
+        let p2 = save_document(&dir, "中身テキスト", "md", &meta, Some("   ")).unwrap();
+        assert!(p2.contains("中身テキスト"), "空タイトルは本文冒頭で命名: {p2}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1788,8 +1861,11 @@ mod tests {
             seen.lock().unwrap()[0].contains("gemini-flash-latest"),
             "モデル未指定は既定へフォールバック"
         );
-        // 整形結果は出力形式設定に依らず常に .md で保存。
-        assert!(wait_for_file(&dir, |n| n.starts_with("refined-") && n.ends_with(".md")));
+        // 整形結果は出力形式設定に依らず常に .md で保存。ファイル名にはAI生成タイトルが入る
+        // (モックは整形もタイトル生成も同一応答を返すため、タイトル=整形本文 / ADR-0032)。
+        assert!(wait_for_file(&dir, |n| n.starts_with("refined-")
+            && n.contains("整形結果の本文")
+            && n.ends_with(".md")));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
