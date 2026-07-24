@@ -1749,7 +1749,7 @@ mod tests {
         }
         // 両ジョブの transcript が保存される（1件も失わない）。
         assert!(
-            wait_for_file_count(&dir, 2, |n| n.starts_with("transcript-")
+            wait_for_file_count(&dir, 2, |n| n.contains("-transcript-")
                 && n.ends_with(".txt")),
             "2 ジョブ分の文字起こしが両方保存される"
         );
@@ -1816,7 +1816,7 @@ mod tests {
         .unwrap();
         assert_eq!(text, "ファイル入力の本文");
         assert!(
-            wait_for_file(&dir, |n| n.starts_with("transcript-")),
+            wait_for_file(&dir, |n| n.contains("-transcript-")),
             "keep_text で文字起こしを保存"
         );
         let _ = std::fs::remove_dir_all(&dir);
