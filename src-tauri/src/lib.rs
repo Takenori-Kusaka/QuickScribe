@@ -1413,8 +1413,8 @@ mod tests {
             .into_owned();
         let date = chrono::Local::now().format("%Y%m%d").to_string();
         assert!(
-            name.starts_with(&format!("transcript-{date}-今日は朝から雨だった。散歩は中止")),
-            "日付+本文冒頭で命名される: {name}"
+            name.starts_with(&format!("{date}-transcript-今日は朝から雨だった。散歩は中止")),
+            "日付先頭+種別+本文冒頭で命名される(名前ソート=日付順): {name}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1437,7 +1437,7 @@ mod tests {
             .to_string_lossy()
             .into_owned();
         assert!(
-            name.contains("-仕事の不安の整理") && name.starts_with("refined-"),
+            name.contains("-refined-仕事の不安の整理"),
             "タイトルが優先される: {name}"
         );
         // 空白のみのタイトルは本文冒頭へフォールバック。
@@ -1660,7 +1660,7 @@ mod tests {
         tauri::async_runtime::block_on(stop_recording(app.handle().clone(), app.state(), false))
             .unwrap();
         assert!(
-            wait_for_file(&dir, |n| n.starts_with("transcript-") && n.ends_with(".txt")),
+            wait_for_file(&dir, |n| n.contains("-transcript-") && n.ends_with(".txt")),
             "文字起こしテキストが保存される"
         );
         assert!(
@@ -1868,8 +1868,7 @@ mod tests {
         );
         // 整形結果は出力形式設定に依らず常に .md で保存。ファイル名にはAI生成タイトルが入る
         // (モックは整形もタイトル生成も同一応答を返すため、タイトル=整形本文 / ADR-0032)。
-        assert!(wait_for_file(&dir, |n| n.starts_with("refined-")
-            && n.contains("整形結果の本文")
+        assert!(wait_for_file(&dir, |n| n.contains("-refined-整形結果の本文")
             && n.ends_with(".md")));
         let _ = std::fs::remove_dir_all(&dir);
     }
