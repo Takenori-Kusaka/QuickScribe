@@ -29,12 +29,12 @@ Feature: 保管庫へのエントリ永続化
   Scenario: 既定の保管庫に保存する (R1,R2,R4)
     Given 保管庫の上書き設定が未設定
     When エントリを保存する
-    Then "<ドキュメント>/QuickScribe" が作成され、その中に note-<timestamp>.txt が書き出される
+    Then "<ドキュメント>/QuickScribe" が作成され、その中に note-<yyyymmdd>-<ラベル>.txt が書き出される
 
   Scenario: 保管庫を上書き設定する (R3)
     Given ユーザーが保管庫フォルダに "D:/Journal" を設定
     When エントリを保存する
-    Then "D:/Journal/note-<timestamp>.txt" が書き出される
+    Then "D:/Journal/note-<yyyymmdd>-<ラベル>.txt" が書き出される
 
   Scenario: 同名の衝突で上書きしない (R5)
     Given 保管庫に "note-20260624-今日のメモ.txt" が既に存在

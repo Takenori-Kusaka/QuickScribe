@@ -76,7 +76,7 @@ pub const LABEL_MAX_CHARS: usize = 24;
 
 /// 本文冒頭やAIタイトルをファイル名に安全な1行ラベルへ整える(純粋)。
 /// Windows禁止文字(\\/:*?"<>|)と制御文字を除去し、空白列(改行含む)は単一スペースへ畳み、
-/// max_chars 文字で切る。末尾のドット/空白は除く(Windowsのファイル名末尾制約)。
+/// max_chars 文字で切る。両端のドット/空白は除く(Windowsの末尾制約＋隠しファイル風の見た目回避)。
 pub fn sanitize_label(s: &str, max_chars: usize) -> String {
     let mut collapsed = String::new();
     let mut prev_space = true; // 先頭の空白は捨てる。
@@ -96,7 +96,7 @@ pub fn sanitize_label(s: &str, max_chars: usize) -> String {
         collapsed.push(c);
     }
     let truncated: String = collapsed.chars().take(max_chars).collect();
-    truncated.trim_end_matches([' ', '.']).to_string()
+    truncated.trim_matches([' ', '.']).to_string()
 }
 
 /// エントリのファイル名語幹を組み立てる(純粋)。`{種別}-{yyyymmdd}-{ラベル}`。
@@ -218,10 +218,11 @@ mod tests {
     }
 
     #[test]
-    fn sanitize_label_truncates_by_chars_and_trims_trailing_dots() {
-        // 文字数(バイトでなく)で切る。末尾のドット/空白はWindows制約で落とす。
+    fn sanitize_label_truncates_by_chars_and_trims_edge_dots() {
+        // 文字数(バイトでなく)で切る。両端のドット/空白は落とす(Windows末尾制約＋隠しファイル風回避)。
         assert_eq!(sanitize_label(&"あ".repeat(30), 24), "あ".repeat(24));
         assert_eq!(sanitize_label("title...", 8), "title");
+        assert_eq!(sanitize_label("...これは冒頭", 24), "これは冒頭", "先頭ドットも除く");
         assert_eq!(sanitize_label("???", 24), "", "記号のみは空になる");
     }
 

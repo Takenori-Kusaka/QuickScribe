@@ -324,7 +324,7 @@ pub fn generate_title(
     let raw = engine_for(provider).refine(&req)?;
     let title = title_from_response(&raw);
     if title.is_empty() {
-        Err(crate::errcode::E_REFINE_EMPTY_INPUT.into())
+        Err(crate::errcode::E_REFINE_EMPTY_RESULT.into())
     } else {
         Ok(title)
     }

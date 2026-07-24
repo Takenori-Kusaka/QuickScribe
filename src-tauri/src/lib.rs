@@ -1008,34 +1008,39 @@ async fn refine_text<R: tauri::Runtime>(
             base_url.clone(),
         )?;
         // 整形結果（ジャーナルの成果物）は保存先へ書き出す（save=false の一時結果は保存しない）。
+        // タイトル生成は追加のLLM往復のため、本文の返却(=画面表示)を遅らせないよう
+        // タイトル生成〜保存は別スレッドで行い、本文は即座に返す(ADR-0032)。
         let settings = current_settings(&app);
         if save.unwrap_or(true) {
             if let Ok(dir) = resolve_save_dir(&settings) {
                 let tags = tags.unwrap_or_default();
-                // ファイル名用のタイトルを同一プロバイダで生成する(ADR-0032)。
-                // 失敗しても保存は止めず、本文冒頭ラベルへフォールバックする(title=None)。
-                let title = refine::generate_title(
-                    &provider,
-                    &api_key,
-                    &m,
-                    &refined,
-                    aws_cfg.as_ref(),
-                    base_url.as_deref(),
-                )
-                .ok();
-                // 整形結果は構造化Markdownのため常に .md で保存（出力形式設定に依らない）。
-                // 生の文字起こし(transcript)は出力形式設定(txt/md)に従う。
-                let _ = save_document(
-                    &dir,
-                    &refined,
-                    "md",
-                    &DocMeta {
-                        kind: "refined",
-                        style: Some(&style),
-                        tags: &tags,
-                    },
-                    title.as_deref(),
-                );
+                let refined_bg = refined.clone();
+                std::thread::spawn(move || {
+                    // ファイル名用のタイトルを同一プロバイダで生成する(ADR-0032)。
+                    // 失敗しても保存は止めず、本文冒頭ラベルへフォールバックする(title=None)。
+                    let title = refine::generate_title(
+                        &provider,
+                        &api_key,
+                        &m,
+                        &refined_bg,
+                        aws_cfg.as_ref(),
+                        base_url.as_deref(),
+                    )
+                    .ok();
+                    // 整形結果は構造化Markdownのため常に .md で保存（出力形式設定に依らない）。
+                    // 生の文字起こし(transcript)は出力形式設定(txt/md)に従う。
+                    let _ = save_document(
+                        &dir,
+                        &refined_bg,
+                        "md",
+                        &DocMeta {
+                            kind: "refined",
+                            style: Some(&style),
+                            tags: &tags,
+                        },
+                        title.as_deref(),
+                    );
+                });
             }
         }
         Ok::<String, String>(refined)
