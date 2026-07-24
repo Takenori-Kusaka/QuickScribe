@@ -5,6 +5,13 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [1.8.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.7.0...v1.8.0) (2026-07-24)
+
+
+### ✨ 新機能 / Features
+
+* **vault:** エントリ名を日付+内容由来ラベルに変更 (ADR-0032) ([#657](https://github.com/Takenori-Kusaka/QuickScribe/issues/657)) ([918c443](https://github.com/Takenori-Kusaka/QuickScribe/commit/918c443b254224919a145529b3c7409ca7938d82))
+
 ## [1.7.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.6.0...v1.7.0) (2026-07-15)
 
 
