@@ -14,6 +14,7 @@ use serde_json::json;
 use crate::aws_sign::{sign_post, AwsCreds};
 
 /// AWSプロバイダ(Bedrock / Claude Platform on AWS)の認証方式(両対応 / ADR-0011)。
+#[derive(Clone)]
 pub enum AwsAuth {
     /// APIキー認証(Claude Platform=x-api-key / Bedrock=Authorization Bearer)。
     ApiKey,
@@ -26,6 +27,7 @@ pub enum AwsAuth {
 }
 
 /// AWSプロバイダ固有の設定(region / Claude Platform の workspace_id / 認証)。
+#[derive(Clone)]
 pub struct AwsConfig {
     pub region: String,
     /// Claude Platform on AWS で必須(anthropic-workspace-id ヘッダ)。Bedrock では未使用。
@@ -270,6 +272,62 @@ pub fn refine(
         base_url: base_url.as_deref(),
     };
     engine_for(provider).refine(&req)
+}
+
+/// タイトル生成に渡す本文の最大文字数(冒頭で内容は判別できるためトークンを節約する)。
+const TITLE_INPUT_MAX_CHARS: usize = 1500;
+
+/// モデル応答からタイトル1行を取り出す(純粋・テスト対象)。
+/// 最初の非空行を採り、見出し記号(#)・引用符・かぎ括弧の装飾を剥がす。
+fn title_from_response(raw: &str) -> String {
+    let line = raw
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("");
+    line.trim_start_matches('#')
+        .trim()
+        .trim_matches(['"', '\'', '「', '」', '『', '』'])
+        .trim()
+        .to_string()
+}
+
+/// 整形結果のファイル名に付けるタイトルを同一プロバイダで生成する(ADR-0032)。
+/// 本文の冒頭のみを送り、タイトル1行だけを受け取る。失敗時は呼び出し側が
+/// 本文冒頭ラベルへフォールバックする想定(タイトル生成の失敗で保存は止めない)。
+pub fn generate_title(
+    provider: &str,
+    api_key: &str,
+    model: &str,
+    text: &str,
+    aws: Option<&AwsConfig>,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    if text.trim().is_empty() {
+        return Err(crate::errcode::E_REFINE_EMPTY_INPUT.into());
+    }
+    let head: String = text.chars().take(TITLE_INPUT_MAX_CHARS).collect();
+    let req = RefineRequest {
+        style: RefineStyle::parse(""),
+        api_key,
+        model,
+        transcript: &head,
+        aws,
+        custom_instruction: Some(
+            "- この文章全体の内容を表す簡潔なタイトルを1つだけ考える\n\
+             - 本文と同じ言語で、20文字以内\n\
+             - タイトルの文字列のみを出力する(前置き・引用符・記号装飾なし)",
+        ),
+        output_lang: None,
+        base_url,
+    };
+    let raw = engine_for(provider).refine(&req)?;
+    let title = title_from_response(&raw);
+    if title.is_empty() {
+        Err(crate::errcode::E_REFINE_EMPTY_RESULT.into())
+    } else {
+        Ok(title)
+    }
 }
 
 /// 本文を囲む XML タグ(自由生成のまま境界だけ作らせ、本文をJSONに入れない=品質劣化回避)。
@@ -886,6 +944,21 @@ mod tests {
         // 既定モデル。
         assert_eq!(RefineProvider::Bedrock.default_model(), "anthropic.claude-sonnet-4-6");
         assert_eq!(RefineProvider::Gemini.default_model(), "gemini-flash-latest");
+    }
+
+    #[test]
+    fn title_from_response_takes_first_line_and_strips_decorations() {
+        // 見出し記号・かぎ括弧・引用符の装飾を剥がし、1行のタイトルにする。
+        assert_eq!(title_from_response("# 今日の振り返り"), "今日の振り返り");
+        assert_eq!(title_from_response("「仕事の不安」\n補足行"), "仕事の不安");
+        assert_eq!(title_from_response("\n\n  \"Plan for tomorrow\"  \n"), "Plan for tomorrow");
+        assert_eq!(title_from_response("   "), "");
+    }
+
+    #[test]
+    fn generate_title_rejects_empty_input_without_api_call() {
+        // 空入力はAPIを呼ばずに弾く(refine と同じ規律)。
+        assert!(generate_title("gemini", "k", "m", "  ", None, None).is_err());
     }
 
     #[test]

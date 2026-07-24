@@ -70,6 +70,49 @@ pub fn filename_prefix(kind: &str) -> &'static str {
     }
 }
 
+/// ファイル名ラベルの最大文字数。時刻(-hhMMss)を省いた分を内容由来ラベルに充て、
+/// 一覧で内容を見分けられるようにする(ADR-0032)。
+pub const LABEL_MAX_CHARS: usize = 24;
+
+/// 本文冒頭やAIタイトルをファイル名に安全な1行ラベルへ整える(純粋)。
+/// Windows禁止文字(\\/:*?"<>|)と制御文字を除去し、空白列(改行含む)は単一スペースへ畳み、
+/// max_chars 文字で切る。両端のドット/空白は除く(Windowsの末尾制約＋隠しファイル風の見た目回避)。
+pub fn sanitize_label(s: &str, max_chars: usize) -> String {
+    let mut collapsed = String::new();
+    let mut prev_space = true; // 先頭の空白は捨てる。
+    for c in s.chars() {
+        let c = if c.is_whitespace() { ' ' } else { c };
+        if c.is_control() || matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
+            continue;
+        }
+        if c == ' ' {
+            if prev_space {
+                continue;
+            }
+            prev_space = true;
+        } else {
+            prev_space = false;
+        }
+        collapsed.push(c);
+    }
+    let truncated: String = collapsed.chars().take(max_chars).collect();
+    truncated.trim_matches([' ', '.']).to_string()
+}
+
+/// エントリのファイル名語幹を組み立てる(純粋)。`{種別}-{yyyymmdd}-{ラベル}`。
+/// ラベルは本文冒頭(transcript/note)またはAIタイトル(refined)で、内容を名前で見分ける(ADR-0032)。
+/// 時刻は含めない(タイムスタンプがファイル名を占有しないため)。ラベルが空(記号のみ等)なら
+/// 日付までとし、同名衝突は保存側の一意化(-2, -3…)で吸収する。
+pub fn entry_stem(kind: &str, date: &str, label: &str) -> String {
+    let prefix = filename_prefix(kind);
+    let label = sanitize_label(label, LABEL_MAX_CHARS);
+    if label.is_empty() {
+        format!("{prefix}-{date}")
+    } else {
+        format!("{prefix}-{date}-{label}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,6 +208,42 @@ mod tests {
         };
         let out = build_document("本文", "txt", "2026-06-27T12:00:00", &meta);
         assert_eq!(out, "本文\n\nTags: アイデア");
+    }
+
+    #[test]
+    fn sanitize_label_strips_invalid_chars_and_collapses_whitespace() {
+        // Windows禁止文字は除去、改行/連続空白は単一スペースへ。
+        assert_eq!(sanitize_label("a/b\\c:d*e?f\"g<h>i|j", 24), "abcdefghij");
+        assert_eq!(sanitize_label("  今日は\n晴れ  です  ", 24), "今日は 晴れ です");
+    }
+
+    #[test]
+    fn sanitize_label_truncates_by_chars_and_trims_edge_dots() {
+        // 文字数(バイトでなく)で切る。両端のドット/空白は落とす(Windows末尾制約＋隠しファイル風回避)。
+        assert_eq!(sanitize_label(&"あ".repeat(30), 24), "あ".repeat(24));
+        assert_eq!(sanitize_label("title...", 8), "title");
+        assert_eq!(sanitize_label("...これは冒頭", 24), "これは冒頭", "先頭ドットも除く");
+        assert_eq!(sanitize_label("???", 24), "", "記号のみは空になる");
+    }
+
+    #[test]
+    fn entry_stem_appends_label_after_date() {
+        // 種別-日付-ラベル。時刻は含めない(ADR-0032)。
+        assert_eq!(
+            entry_stem("transcript", "20260724", "今日の振り返り"),
+            "transcript-20260724-今日の振り返り"
+        );
+        assert_eq!(
+            entry_stem("refined", "20260724", "仕事の不安の整理"),
+            "refined-20260724-仕事の不安の整理"
+        );
+    }
+
+    #[test]
+    fn entry_stem_without_label_is_date_only() {
+        // ラベルが空(記号のみ等)なら従来同様プレフィックス+日付。
+        assert_eq!(entry_stem("note", "20260724", ""), "note-20260724");
+        assert_eq!(entry_stem("note", "20260724", "***"), "note-20260724");
     }
 
     #[test]
