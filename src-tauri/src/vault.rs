@@ -137,18 +137,22 @@ fn parse_frontmatter(fm: &str) -> (Option<String>, Option<String>, Vec<String>) 
     (created, kind, tags)
 }
 
-/// ファイル名のプレフィックスから種別を推定する（フロントマター欠落時の補完・主にtxt用）。
-/// transcript-/refined-/note- を見分ける。該当なしは空。
+/// ファイル名から種別を推定する（フロントマター欠落時の補完・主にtxt用）。
+/// 新形式 `{yyyymmdd}-{種別}-…`(ADR-0032) は先頭の日付を読み飛ばして判定し、
+/// 旧形式 `{種別}-…`（既存ファイル）も引き続き見分ける。該当なしは空。
 pub fn kind_from_filename(name: &str) -> &'static str {
-    if name.starts_with("transcript-") {
-        "transcript"
-    } else if name.starts_with("refined-") {
-        "refined"
-    } else if name.starts_with("note-") {
-        "note"
-    } else {
-        ""
+    // 先頭が数字列+ハイフン(日付)なら読み飛ばす（新形式の後方互換判定）。
+    let rest = match name.split_once('-') {
+        Some((head, rest)) if !head.is_empty() && head.chars().all(|c| c.is_ascii_digit()) => rest,
+        _ => name,
+    };
+    for kind in ["transcript", "refined", "note"] {
+        // "{kind}-…" または ラベル無しの "{kind}.ext"。
+        if rest.starts_with(&format!("{kind}-")) || rest.split('.').next() == Some(kind) {
+            return kind;
+        }
     }
+    ""
 }
 
 /// 本文の冒頭を1行・最大 n 文字でプレビューする（純粋）。
@@ -263,10 +267,17 @@ mod tests {
 
     #[test]
     fn kind_from_filename_classifies() {
+        // 旧形式（既存ファイルの後方互換）。
         assert_eq!(kind_from_filename("transcript-20260627-120000.txt"), "transcript");
         assert_eq!(kind_from_filename("refined-20260627-120000.md"), "refined");
         assert_eq!(kind_from_filename("note-x.txt"), "note");
+        // 新形式 {yyyymmdd}-{種別}-{ラベル}（ADR-0032・日付先頭）。
+        assert_eq!(kind_from_filename("20260724-transcript-今日の振り返り.txt"), "transcript");
+        assert_eq!(kind_from_filename("20260724-refined-不安の整理.md"), "refined");
+        assert_eq!(kind_from_filename("20260724-note.txt"), "note", "ラベル無しでも種別を読む");
+        assert_eq!(kind_from_filename("20260724-note-2.txt"), "note", "衝突index付きも判定");
         assert_eq!(kind_from_filename("foo.txt"), "");
+        assert_eq!(kind_from_filename("20260724-foo.txt"), "");
     }
 
     #[test]

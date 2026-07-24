@@ -99,17 +99,18 @@ pub fn sanitize_label(s: &str, max_chars: usize) -> String {
     truncated.trim_matches([' ', '.']).to_string()
 }
 
-/// エントリのファイル名語幹を組み立てる(純粋)。`{種別}-{yyyymmdd}-{ラベル}`。
-/// ラベルは本文冒頭(transcript/note)またはAIタイトル(refined)で、内容を名前で見分ける(ADR-0032)。
+/// エントリのファイル名語幹を組み立てる(純粋)。`{yyyymmdd}-{種別}-{ラベル}`。
+/// 日付を先頭にし、ファイラの名前ソートがそのまま日付順になるようにする(ADR-0032)。
+/// ラベルは本文冒頭(transcript/note)またはAIタイトル(refined)で、内容を名前で見分ける。
 /// 時刻は含めない(タイムスタンプがファイル名を占有しないため)。ラベルが空(記号のみ等)なら
-/// 日付までとし、同名衝突は保存側の一意化(-2, -3…)で吸収する。
+/// 種別までとし、同名衝突は保存側の一意化(-2, -3…)で吸収する。
 pub fn entry_stem(kind: &str, date: &str, label: &str) -> String {
     let prefix = filename_prefix(kind);
     let label = sanitize_label(label, LABEL_MAX_CHARS);
     if label.is_empty() {
-        format!("{prefix}-{date}")
+        format!("{date}-{prefix}")
     } else {
-        format!("{prefix}-{date}-{label}")
+        format!("{date}-{prefix}-{label}")
     }
 }
 
@@ -227,23 +228,23 @@ mod tests {
     }
 
     #[test]
-    fn entry_stem_appends_label_after_date() {
-        // 種別-日付-ラベル。時刻は含めない(ADR-0032)。
+    fn entry_stem_is_date_first_for_name_sort() {
+        // 日付-種別-ラベル。名前ソート=日付順になる。時刻は含めない(ADR-0032)。
         assert_eq!(
             entry_stem("transcript", "20260724", "今日の振り返り"),
-            "transcript-20260724-今日の振り返り"
+            "20260724-transcript-今日の振り返り"
         );
         assert_eq!(
             entry_stem("refined", "20260724", "仕事の不安の整理"),
-            "refined-20260724-仕事の不安の整理"
+            "20260724-refined-仕事の不安の整理"
         );
     }
 
     #[test]
-    fn entry_stem_without_label_is_date_only() {
-        // ラベルが空(記号のみ等)なら従来同様プレフィックス+日付。
-        assert_eq!(entry_stem("note", "20260724", ""), "note-20260724");
-        assert_eq!(entry_stem("note", "20260724", "***"), "note-20260724");
+    fn entry_stem_without_label_is_date_and_kind() {
+        // ラベルが空(記号のみ等)なら日付+種別のみ。
+        assert_eq!(entry_stem("note", "20260724", ""), "20260724-note");
+        assert_eq!(entry_stem("note", "20260724", "***"), "20260724-note");
     }
 
     #[test]
