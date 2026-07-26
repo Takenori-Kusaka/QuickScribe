@@ -60,6 +60,10 @@ perf CI は **ubuntu-22.04 / xvfb** で走る。一方タスクバーウィジ�
 `scripts/perf/measure_idle_cpu.ps1` を使う。Linux ジョブと**同じ定義**（消費CPU秒 / 経過実時間、1コア基準）で算出する。
 
 ```powershell
+# 0. 診断ログを有効にしてから起動する（タイマーが実際に回っていることの確認手段）
+#    #667 以降 taskbar-diag.log は既定 OFF。これを立てないと show/hide 遷移を観測できない。
+$env:QS_TASKBAR_DIAG = "1"
+
 # 1. QuickScribe を起動し、操作せず放置する（＝アイドル状態にする）
 # 2. 観測窓 120 秒で計測する
 powershell -NoProfile -ExecutionPolicy Bypass `
@@ -72,6 +76,7 @@ powershell -NoProfile -ExecutionPolicy Bypass `
   -JsonPath idle-cpu-widget-off.json
 ```
 
+- **`QS_TASKBAR_DIAG=1` を立てずに計測してはならない。** ウィジェットのタイマーが回っていることの唯一の確認手段が `taskbar-diag.log` の `show`/`hide` 遷移であり、#667 でこのログは既定 OFF になった（[troubleshooting.md](../guide/troubleshooting.md)）。立て忘れると「タイマーが動いているつもりで動いていない」数値を掴む。
 - 計測対象は `quickscribe.exe` **とその子孫の `msedgewebview2.exe` 群**（WebView2）。`per_process` にプロセス別内訳が出るので、**タイマーが回るアプリ実体単独の消費**を WebView2 と切り離して読める。
 - ウィジェット ON/OFF の差分が意味を持つのは、設定 OFF 時に `WM_TIMER` ハンドラが `ENABLED` の atomic 読みだけで早期 return するため（`taskbar_widget.rs:475-483`）。**高価な Win32 呼び出し群（`GetForegroundWindow` / `FindWindowW` / `SHAppBarMessage` / `SetWindowPos`）は OFF 時には走らない**＝差分がウィジェットの寄与になる。
 - **CI 化はしていない。** `windows-latest` ランナーで `Shell_TrayWnd`（explorer のタスクバー）が成立する保証がなく、成立しなければウィジェットは配置されず寄与がゼロになって計測の意味が消える。ヘッドレス Windows での成立可否が確認できるまでは、本手順による**実機での手動計測**を一次情報とする。
