@@ -5,6 +5,17 @@ name: perf-bench
 # 手動(workflow_dispatch)＋リリース公開時に実行。CI(PR)は重くしないため分離。
 on:
   workflow_dispatch:
+    inputs:
+      only:
+        # #678 の観測を「待つ」のではなく「買う」ためのバッチ実行用(PO 決定)。
+        # startup-time は 1 本 warm 約 5.5 分 / cold 約 8 分だが、dispatch は既定で
+        # transcribe-rtf / ja-accuracy / ja-cer-corpus も道連れにする(後者2つは
+        # large-v3-turbo や Common Voice を DL する重量ジョブ)。20 本回すなら
+        # startup-time だけに絞れないとコストが桁で変わる。
+        description: "実行するジョブ (all=従来どおり全部 / startup-time=起動時間ジョブのみ)"
+        type: choice
+        options: [all, startup-time]
+        default: all
   release:
     types: [published]
 
@@ -492,12 +503,19 @@ jobs:
               echo ""
               echo "| 項目 | 値 |"
               echo "|---|---|"
-              echo "| runner image | ${ImageOS:-n/a} / ${ImageVersion:-n/a} |"
+              # 注意: $ImageOS/$ImageVersion(env) と、ジョブログ冒頭の "Runner Image" グループが
+              # 出す Image/Version は**別の値**である。同一ランで env が ubuntu22/20260720.234.2、
+              # ジョブログが ubuntu-22.04/20260707.563 になることを実測で確認した(run 30225093258)。
+              # run 1-11 の「イメージ同一」の判定はジョブログ側の値で行っている。
+              # **突き合わせるときは出所を揃えること。** 混ぜると「イメージが変わった」と誤読する。
+              echo "| runner image (env \`ImageOS\`/\`ImageVersion\`) | ${ImageOS:-n/a} / ${ImageVersion:-n/a} |"
               echo "| CPU | $(lscpu 2>/dev/null | sed -n 's/^Model name: *//p' | head -1) |"
               echo "| コア数 | $(nproc 2>/dev/null || echo n/a) |"
               echo "| MemTotal | $(awk '/^MemTotal:/{printf "%.1f GB", $2/1048576}' /proc/meminfo 2>/dev/null || echo n/a) |"
               echo ""
               echo "_Azure Region はワークフローからは取れない。ジョブログ冒頭の \`Azure Region:\` 行を見ること。_"
+              echo ""
+              echo "_**上の runner image は env \`ImageOS\`/\`ImageVersion\` の値で、ジョブログ冒頭の「Runner Image」グループが出す Image/Version とは別の値**（同一ランで env が \`ubuntu22 / 20260720.234.2\`、ジョブログが \`ubuntu-22.04 / 20260707.563\` になる）。run 1–11 の「イメージ同一」判定はジョブログ側で行っている。**突き合わせるときは出所を揃えること。**_"
             } | tee startup-report.md
             cat startup-report.md >> "$GITHUB_STEP_SUMMARY"
           else
