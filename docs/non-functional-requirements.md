@@ -11,6 +11,7 @@
 | 起動時間（プロセス起動→操作可能） | ≤ 2 秒（キャッシュ温時） | `perf.yml` の `startup-time` ジョブ（アプリ計装 `QS_PERF_STARTUP=1`） | 計測済（#554・`startup-report.md` アーティファクトが一次情報・[perf/baseline.md](perf/baseline.md)） |
 | ローカル文字起こし RTF（実時間比, tiny, x64 AVX2） | ≤ 1.0（実時間以内） | 固定音源で計測（`.github/workflows/perf.yml`） | 実測 **0.857**（2026-06-29・[perf/baseline.md](perf/baseline.md)・達成 ✅） |
 | アイドル時メモリ（RSS） | ≤ 300 MB 目安 | `perf.yml` の `startup-time` ジョブ（配布バイナリ実体の RSS サンプリング） | 計測済（#554・`startup-report.md` が一次情報） |
+| アイドル時 CPU 使用率（1コア基準） | ≤ 1 % | Linux: `perf.yml` の `startup-time` ジョブ（アプリ実体＋WebKit子の `utime+stime` 増分 / 経過実時間）／Windows: `scripts/perf/measure_idle_cpu.ps1` による実機計測 | Windows 実測 **0.117 %**（2026-07-26・120秒窓・[perf/baseline.md](perf/baseline.md)・達成 ✅）。Linux は #664 Phase 1 で計測基盤を追加、初回実測は `perf-bench` 実行後 |
 | 日本語精度（CER・相対/回帰指標） | ベースライン比 +5pt 以内（回帰ゲート） | `perf.yml` の「日本語精度 CER」ジョブ（本人音読PD3作品・`scripts/cer_ja.py`） | 実測確定（#26/#403: tiny 56.9% / base 44.0% / kotoba-q5 38.3%・[perf/baseline.md](perf/baseline.md)・[ADR-0022](adr/0022-model-catalog-curation.md)） |
 | 録音→停止→文字起こし開始の体感遅延 | 即時（非同期・UIブロックなし） | 実装で担保（バックグラウンド文字起こし） | 実装済 |
 
