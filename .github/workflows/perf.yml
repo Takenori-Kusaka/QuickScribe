@@ -322,6 +322,19 @@ jobs:
           BIN=$(find src-tauri/target/release -maxdepth 1 -type f -executable -iname 'quickscribe' | head -1)
           if [ -z "$BIN" ]; then echo "::error::app binary not found"; ls -la src-tauri/target/release; exit 1; fi
           echo "binary: $BIN"
+          # アイドルCPU(#664): 常駐対象＝アプリ実体(quickscribe)＋WebKit 子プロセス群の
+          # 累積 CPU 時間(utime+stime, tick)。/proc/<pid>/stat の comm は括弧内で空白を含みうるため
+          # ')' 以降を切り出してから数える（先頭2フィールドを落とすので utime=f[12], stime=f[13]）。
+          app_cpu_ticks() {
+            local total=0 pid t
+            for pid in $(pgrep -x quickscribe 2>/dev/null) \
+                       $(pgrep -f 'WebKit(WebProcess|NetworkProcess)' 2>/dev/null); do
+              [ -r "/proc/$pid/stat" ] || continue
+              t=$(awk '{ s=substr($0, index($0,")")+2); split(s,f," "); print f[12]+f[13] }' "/proc/$pid/stat")
+              total=$((total + t))
+            done
+            echo "$total"
+          }
           LOG="$HOME/.local/share/QuickScribe/logs/perf-startup.txt"
           rm -f "$LOG"
           # ヘッドレス表示で起動 → onMount で report_startup が LOG を書く → 回収 → 終了。
@@ -330,26 +343,41 @@ jobs:
           for _ in $(seq 1 40); do [ -f "$LOG" ] && break; sleep 1; done
           if [ -f "$LOG" ]; then
             MS=$(sed -n 's/^startup_ms=//p' "$LOG")
+            # ready 直後は起動処理の残り(モデル一覧の走査など)が走っているので、
+            # 数秒おいて落ち着かせてから「アイドル」を観測する(#664)。
+            sleep 3
+            CLK_TCK=$(getconf CLK_TCK)
+            CPU_T0=$(app_cpu_ticks); NS0=$(date +%s%N)
             # アイドル時メモリ(#403): ready 後にアプリ実プロセスの RSS を数回サンプルし最大値を採る。
             # xvfb-run の子として動く実体(quickscribe)を名前で拾う（APP_PID は xvfb-run のラッパ）。
             PEAK_RSS_KB=0
-            for _ in $(seq 1 5); do
+            for _ in $(seq 1 10); do
               RSS_KB=$(ps -C quickscribe -o rss= 2>/dev/null | sort -n | tail -1 | tr -d ' ')
               [ -n "$RSS_KB" ] && [ "$RSS_KB" -gt "$PEAK_RSS_KB" ] && PEAK_RSS_KB=$RSS_KB
               sleep 1
             done
+            CPU_T1=$(app_cpu_ticks); NS1=$(date +%s%N)
             kill "$APP_PID" 2>/dev/null || true
             pkill -x quickscribe 2>/dev/null || true
             IDLE_RSS_MB=$(awk -v k="$PEAK_RSS_KB" 'BEGIN{ printf "%.1f", k/1024 }')
+            # 使用率(%) = (消費CPU秒 / 経過実時間秒) * 100。1コア基準（100% = 1コア占有）。
+            IDLE_CPU_PCT=$(awk -v d="$((CPU_T1 - CPU_T0))" -v hz="$CLK_TCK" -v ns="$((NS1 - NS0))" \
+              'BEGIN{ e = ns / 1000000000; if (e <= 0 || hz <= 0) { print "n/a"; exit } printf "%.2f", (d / hz) / e * 100 }')
+            echo "idle cpu: ticks=$((CPU_T1 - CPU_T0)) clk_tck=${CLK_TCK} window_ns=$((NS1 - NS0))"
             {
-              echo "# QuickScribe 起動時間・アイドルメモリ (Linux x64 / xvfb)"
+              echo "# QuickScribe 起動時間・アイドル資源 (Linux x64 / xvfb)"
               echo ""
               echo "| 指標 | 値 |"
               echo "|---|---|"
               echo "| **起動時間 (run()→UI ready)** | **${MS} ms** |"
               echo "| **アイドル時メモリ (アプリ実体 RSS)** | **${IDLE_RSS_MB} MB** |"
+              echo "| **アイドル時 CPU (アプリ実体 + WebKit 子)** | **${IDLE_CPU_PCT} %** |"
               echo ""
-              echo "_注: 起動時間=run 入口→フロント onMount。アイドルRSS=ready 後のアプリ実プロセス(quickscribe)のピーク RSS。ヘッドレス表示(xvfb)。_"
+              echo "_注: 起動時間=run 入口→フロント onMount。アイドルRSS=ready 後のアプリ実プロセス(quickscribe)のピーク RSS。_"
+              echo "_アイドルCPU=ready+3秒後から10秒間の (utime+stime) 増分 / 経過実時間。1コア基準(100%=1コア占有)。_"
+              echo "_計測対象は quickscribe と WebKit(WebProcess|NetworkProcess)。ヘッドレス表示(xvfb)。_"
+              echo ""
+              echo "_Windows 限定コード(タスクバーウィジェット等)は本ジョブに現れない。Windows 側の計測は #664 Phase 2 を参照。_"
             } | tee startup-report.md
             cat startup-report.md >> "$GITHUB_STEP_SUMMARY"
           else
