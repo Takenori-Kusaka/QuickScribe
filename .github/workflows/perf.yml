@@ -424,7 +424,7 @@ jobs:
               cat "$SEG_ROWS"
               echo ""
               echo "_注: 起動時間=run 入口→フロント onMount。アイドルRSS=ready 後のアプリ実プロセス(quickscribe)のピーク RSS。_"
-              echo "_RSS の「定常」は CPU と同じく第1区間を除いたピーク。全窓ピークは N=5 で 150.9〜230.4 MB と 1.5 倍振れ、二峰性を示す（#678・原因未特定）。一次指標をどちらにするかは ADR-0033 と合わせて決める。_"
+              echo "_RSS の「定常」は CPU と同じく第1区間を除いたピーク。全窓ピークは 150.9〜230.4 MB と 1.5 倍振れ、二峰性を示す（#678・原因未特定）。一次指標をどちらにするかは ADR-0033 と合わせて決める。_"
               echo "_アイドルCPU=ready+3秒後から ${SEG_SEC} 秒 × ${SEG_COUNT} 区間の (utime+stime) 増分 / 経過実時間。1コア基準(100%=1コア占有)。CLK_TCK=${CLK_TCK}。_"
               echo "_**回帰の判定には「定常」を使う。** 第1区間は起動処理の残りを掴みうるため参考値（旧 10 秒窓と同じ定義）。_"
               echo "_計測対象は quickscribe と WebKit(WebProcess|NetworkProcess)。ヘッドレス表示(xvfb)。_"
