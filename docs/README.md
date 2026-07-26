@@ -55,6 +55,7 @@
 | 文書 | 内容 |
 |---|---|
 | [guide/physical-triggers.md](guide/physical-triggers.md) | 物理ボタン（トリガー）連携ガイド |
+| [guide/troubleshooting.md](guide/troubleshooting.md) | トラブルシュート（タスクバーウィジェットの診断ログ有効化など） |
 | [planning/3.7-marketing.md](planning/3.7-marketing.md) | マーケティング計画 |
 | [marketing/launch-kit.md](marketing/launch-kit.md) | ローンチキット（Show HN 等の素材） |
 

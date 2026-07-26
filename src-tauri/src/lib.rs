@@ -21,6 +21,8 @@ pub mod vault;
 // 保管庫ドキュメントの本文組み立て・命名(#392 / DDD: lib.rs から抽出)。
 pub mod entry;
 pub mod job;
+// 内部診断ログの追記（#667: サイズ上限＋1世代ローテーション。既定OFF）。
+pub mod diag_log;
 // Windows タスクバーのサムネイルツールバー/オーバーレイ。Windowsのみ。
 #[cfg(windows)]
 mod taskbar;
@@ -468,7 +470,9 @@ const JOB_HISTORY_KEEP: usize = 50;
 /// キュー投入待ちの音声ペイロード（UI に見せる Job メタデータとは分離）。
 struct PendingWork {
     audio: Vec<f32>,
-    raw: Vec<f32>,
+    /// 保存用の原音。音声保存OFF（既定）では録音停止時に切り捨てるので `None`（#663）。
+    /// 原音は 16k mono の約6倍のRAMを占め、キュー滞留中もずっと居座るため。
+    raw: Option<Vec<f32>>,
     sample_rate: u32,
     channels: u16,
     timestamps: bool,
@@ -550,15 +554,17 @@ fn run_job<R: tauri::Runtime>(
         return Ok(String::new());
     }
     // 音声保存は「文字起こし対象があった場合かつ設定ON」のみ。原音を保存。
+    // 原音の有無は録音停止時点の設定で決まる（#663）。停止後に保存をONへ切り替えても、
+    // 既にキューへ載った分は原音を持たないため保存しない（過去の録音を遡って保存はしない）。
     let settings = current_settings(app);
-    if settings.save_audio {
+    if let (true, Some(raw)) = (settings.save_audio, work.raw.as_deref()) {
         if let Ok(dir) = resolve_save_dir(&settings) {
             let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
             let stem = format!("rec-{ts}");
             let r = if settings.audio_format == "opus" {
-                audio_save::save_opus(&work.raw, work.sample_rate, work.channels, &dir, &stem)
+                audio_save::save_opus(raw, work.sample_rate, work.channels, &dir, &stem)
             } else {
-                audio_save::save_wav(&work.raw, work.sample_rate, work.channels, &dir, &stem)
+                audio_save::save_wav(raw, work.sample_rate, work.channels, &dir, &stem)
             };
             if let Err(e) = r {
                 let _ = app.emit("status", errcode::ec(errcode::S_AUDIO_SAVE_FAILED, e));
@@ -849,7 +855,14 @@ async fn stop_recording<R: tauri::Runtime>(
             .map_err(|_| errcode::E_LOCK_RECORD_STATE.to_string())?;
         cur.take().ok_or_else(|| errcode::E_NOT_RECORDING.to_string())?
     };
-    let recorded = recording.finish()?;
+    // 保存用の原音を抱えるかは、この時点の設定で決める（#663）。音声保存OFF（既定）なら
+    // 原音は誰も読まないので保持せず、キュー滞留中の無駄なRSSを丸ごと避ける。
+    let keep_raw = if current_settings(&app).save_audio {
+        record::KeepRaw::Yes
+    } else {
+        record::KeepRaw::No
+    };
+    let recorded = recording.finish(keep_raw)?;
     if recorded.mono16k.is_empty() {
         return Err(errcode::E_EMPTY_RECORDING.into());
     }
@@ -1670,6 +1683,49 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[test]
+    fn stop_recording_saves_no_audio_when_save_audio_off() {
+        // 音声保存OFF（既定）で原音を落とすようにした後も（#663）、貫通の挙動が変わらないこと。
+        // 原音を落としたこと自体は record::tests が保証する（ここからは観測できない）。本テストは
+        // 「文字起こしは従来どおり通る／音声ファイルは1つも作られない」という外形の据え置きを守る。
+        let (base, _) = serve(vec![Route::json(
+            "/v1/listen",
+            200,
+            r#"{"results":{"channels":[{"alternatives":[{"transcript":"クラウド文字起こし"}]}]}}"#,
+        )]);
+        let app = mock_app();
+        let dir = tmp_dir("no-audio");
+        let _g = env_scope(&[("QS_TEST_DEEPGRAM_BASE", base.as_str())], &["QUICKSCRIBE_E2E"]);
+        set_save_settings(
+            app.state(),
+            Some(dir.to_string_lossy().into_owned()),
+            false,
+            "opus".into(),
+            true,
+            Some("txt".into()),
+        )
+        .unwrap();
+        set_stt_settings(app.state(), "deepgram".into(), "".into(), "dk".into(), None, None, None)
+            .unwrap();
+        *app.state::<record::RecorderState>().current.lock().unwrap() =
+            Some(record::test_recording(vec![(vec![0.2; 3200], 16000, 1)]));
+        tauri::async_runtime::block_on(stop_recording(app.handle().clone(), app.state(), false))
+            .unwrap();
+        // transcript の出現を待つことで、ジョブ完了後に音声の有無を判定できる。
+        assert!(
+            wait_for_file(&dir, |n| n.contains("-transcript-") && n.ends_with(".txt")),
+            "文字起こしテキストは従来どおり保存される"
+        );
+        let audio: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".opus") || n.ends_with(".wav"))
+            .collect();
+        assert!(audio.is_empty(), "音声ファイルは保存されない: {audio:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// dir 配下に pred を満たすファイルが少なくとも want 件現れるまで待つ。
     fn wait_for_file_count(dir: &std::path::Path, want: usize, pred: impl Fn(&str) -> bool) -> bool {
         for _ in 0..300 {
@@ -1693,7 +1749,7 @@ mod tests {
         fn work() -> PendingWork {
             PendingWork {
                 audio: vec![0.0; 8],
-                raw: vec![0.0; 8],
+                raw: None,
                 sample_rate: 16000,
                 channels: 1,
                 timestamps: false,

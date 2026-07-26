@@ -46,12 +46,21 @@ pub struct RecorderState {
     pub current: Mutex<Option<Recording>>,
 }
 
+/// 保存用の原音を保持するか（#663）。原音は 16k mono の約6倍のRAMを占めるため、
+/// 音声保存OFF（既定）では誰も読まないまま抱え込まないよう、停止時点で切り捨てる。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum KeepRaw {
+    Yes,
+    No,
+}
+
 /// 録音停止後の音声データ。文字起こし用(16kHz mono)と保存用(原音)を併せ持つ。
 pub struct Recorded {
     /// 文字起こし用に 16kHz mono へ変換済みの音声。
     pub mono16k: Vec<f32>,
     /// 保存用の原音（インターリーブ f32・原サンプルレート/チャンネル）。
-    pub raw: Vec<f32>,
+    /// `KeepRaw::No` なら `None`（保存しないので保持しない）。
+    pub raw: Option<Vec<f32>>,
     pub sample_rate: u32,
     pub channels: u16,
 }
@@ -59,7 +68,8 @@ pub struct Recorded {
 impl Recording {
     /// 録音を停止し、文字起こし用(16kHz mono)と保存用(原音)の音声を返す。
     /// 複数ソース（ミックス）の場合は各々を16k monoへ変換してから加算合成する（S1.3 Phase1）。
-    pub fn finish(self) -> Result<Recorded, String> {
+    /// `keep` が `KeepRaw::No` なら保存用の原音は返さず、この関数を抜けた時点で解放する。
+    pub fn finish(self, keep: KeepRaw) -> Result<Recorded, String> {
         let mut parts: Vec<(Vec<f32>, u32, u16)> = Vec::new();
         for cap in self.captures {
             parts.push(cap.finish()?);
@@ -70,7 +80,10 @@ impl Recording {
             let mono16k = to_mono_16k(&raw, sample_rate, channels);
             return Ok(Recorded {
                 mono16k,
-                raw,
+                raw: match keep {
+                    KeepRaw::Yes => Some(raw),
+                    KeepRaw::No => None,
+                },
                 sample_rate,
                 channels,
             });
@@ -82,7 +95,10 @@ impl Recording {
             .collect();
         let mono16k = mix_16k(&mono_parts);
         Ok(Recorded {
-            raw: mono16k.clone(),
+            raw: match keep {
+                KeepRaw::Yes => Some(mono16k.clone()),
+                KeepRaw::No => None,
+            },
             mono16k,
             sample_rate: WHISPER_SR,
             channels: 1,
@@ -592,8 +608,8 @@ mod tests {
         // 32kHz ステレオの原音を保持しつつ、16k mono へ変換する（保存用と文字起こし用の分離）。
         let raw: Vec<f32> = (0..200).map(|i| (i % 7) as f32 / 10.0).collect();
         let rec = test_recording(vec![(raw.clone(), 32000, 2)]);
-        let out = rec.finish().unwrap();
-        assert_eq!(out.raw, raw, "原音は無変換で保持");
+        let out = rec.finish(KeepRaw::Yes).unwrap();
+        assert_eq!(out.raw.as_deref(), Some(&raw[..]), "原音は無変換で保持");
         assert_eq!(out.sample_rate, 32000);
         assert_eq!(out.channels, 2);
         assert!((out.mono16k.len() as i32 - 50).abs() <= 1, "16k mono へ変換");
@@ -605,12 +621,45 @@ mod tests {
         let a = vec![0.25; 160]; // 16kHz mono
         let b = vec![0.25; 320]; // 32kHz mono → 16k で 160
         let rec = test_recording(vec![(a, WHISPER_SR, 1), (b, 32000, 1)]);
-        let out = rec.finish().unwrap();
+        let out = rec.finish(KeepRaw::Yes).unwrap();
         assert_eq!(out.sample_rate, WHISPER_SR);
         assert_eq!(out.channels, 1);
-        assert_eq!(out.raw, out.mono16k, "ミックス時は保存用も合成後16k mono");
+        assert_eq!(
+            out.raw.as_deref(),
+            Some(&out.mono16k[..]),
+            "ミックス時は保存用も合成後16k mono"
+        );
         assert!((out.mono16k.len() as i32 - 160).abs() <= 1);
         assert!((out.mono16k[10] - 0.5).abs() < 1e-3, "加算合成されている");
+    }
+
+    #[test]
+    fn finish_single_capture_drops_raw_when_not_kept() {
+        // 音声保存OFF（既定）では原音は誰も使わない。保持せず即座に解放する
+        // （録音長に比例した無駄なRSSを避ける / #663）。文字起こし用は変わらず得られる。
+        let raw: Vec<f32> = (0..200).map(|i| (i % 7) as f32 / 10.0).collect();
+        let rec = test_recording(vec![(raw, 32000, 2)]);
+        let out = rec.finish(KeepRaw::No).unwrap();
+        assert!(out.raw.is_none(), "保存しないなら原音は保持しない");
+        assert!(
+            (out.mono16k.len() as i32 - 50).abs() <= 1,
+            "文字起こし用は従来どおり得られる"
+        );
+        // 保存経路が使うメタは、保持有無に関わらず正しく返す（呼び出し側の分岐を単純に保つ）。
+        assert_eq!(out.sample_rate, 32000);
+        assert_eq!(out.channels, 2);
+    }
+
+    #[test]
+    fn finish_multi_capture_drops_raw_when_not_kept() {
+        // ミックス経路の保存用は合成後 16k mono の clone。保存しないなら clone 自体を行わない。
+        let a = vec![0.25; 160];
+        let b = vec![0.25; 320];
+        let rec = test_recording(vec![(a, WHISPER_SR, 1), (b, 32000, 1)]);
+        let out = rec.finish(KeepRaw::No).unwrap();
+        assert!(out.raw.is_none(), "保存しないなら合成音のcloneも作らない");
+        assert!((out.mono16k.len() as i32 - 160).abs() <= 1);
+        assert!((out.mono16k[10] - 0.5).abs() < 1e-3, "合成結果は不変");
     }
 
     /// cpal(ALSA) はヘッドレスCIで segfault しうるため、実オーディオスタックを持つ
@@ -647,7 +696,7 @@ mod tests {
         // 安定コードのエラーになる。いずれもパニックせず、成功時は即停止できる。
         match start(Some("qs-no-such-device".into()), None) {
             Ok(rec) => {
-                let _ = rec.finish();
+                let _ = rec.finish(KeepRaw::No);
             }
             Err(e) => assert!(!e.is_empty(), "エラーは安定コードを持つ: {e}"),
         }
