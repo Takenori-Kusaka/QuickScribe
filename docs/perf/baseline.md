@@ -88,8 +88,9 @@ perf CI は **ubuntu-22.04 / xvfb** で走る。一方タスクバーウィジ�
 | 8 | [30223083551](https://github.com/Takenori-Kusaka/QuickScribe/actions/runs/30223083551) | **0.12 %** | 6 | 1.37 % | 7.61 % | 31140 ms | 151.4 MB（定常 151.0 MB） |
 | 9 | [30223359317](https://github.com/Takenori-Kusaka/QuickScribe/actions/runs/30223359317) | **0.14 %** | 7 | 1.40 % | 7.70 % | 32119 ms | 150.8 MB（定常 146.2 MB） |
 | 10 | [30223708323](https://github.com/Takenori-Kusaka/QuickScribe/actions/runs/30223708323) | **0.20 %** | 10 | 1.15 % | 5.91 % | 31957 ms | 151.0 MB（定常 146.4 MB） |
+| 11 | [30224475460](https://github.com/Takenori-Kusaka/QuickScribe/actions/runs/30224475460) | **0.16 %** | 8 | 0.90 % | 4.64 % | 30964 ms | 150.1 MB（定常 145.5 MB） |
 
-**定常値の幅は 0.08〜0.20 %（絶対幅 0.12 pt / N=10）。** 旧定義の 4.05〜8.78 %（絶対幅 4.73 pt）から**約 39 倍**縮んだ。中央値は 0.14 %。
+**定常値の幅は 0.08〜0.20 %（絶対幅 0.12 pt / N=11）。** 旧定義の 4.05〜8.78 %（絶対幅 4.73 pt）から**約 39 倍**縮んだ。中央値は 0.14 %。
 
 > **0.20 % は 2 本目が出た（run 7 / run 10）。単発の外れ値ではない。** 早期警戒線 0.25 %（13 tick / 50 秒）までの余裕は **1 tick 分（0.02 pt）× 2.5** しかない。**0.26 % 以上が出ても単発では調査に入らない（記録のみ）。連続 2 本、または直近 10 本中 3 本で調査に上げる**（`idle-cpu-baseline.json` の `early_warning_escalation`。理由は後述の「警戒線は動かさない」節）。**そのとき上限を緩めてはならない。**
 
@@ -224,6 +225,8 @@ RTF / CER が相対ゲートなのは、それらが**モデルとハードの�
 - **`perf.yml` 全体に `pull_request` を付けない。** 同ファイルに `ja-accuracy` / `ja-cer-corpus`（large-v3-turbo を DL する重量ジョブ）が同居している。`startup-time` を別ワークフローへ切り出して `workflow_call` 化し、`perf.yml` から呼ぶ（#427 で `release.yml` に採ったのと同じ手法）
 - paths filter: `src-tauri/**` / `src/**` / `package.json` / `package-lock.json` / `src-tauri/Cargo.{toml,lock}` / 当該ワークフロー自身
 - 段 3 で required にすると **paths filter で skip された PR が pending のまま固まる**（GitHub の既知挙動）。`if: always()` の集約ジョブで success を返す形での回避を段 3 の受入基準に含める
+- **`exit 1` にするのは `limit_pct` 超過と `n/a`（計測不能）の 2 つだけ。早期警戒線は `investigate` 判定でも warning のままにする。** 理由: **早期警戒線をゲートにすると「線を上げろ」という圧力が生まれる。** 実測 max 0.20 % が線 0.25 % のすぐ下にある現状で赤くすれば、その力学が直ちに働く。**警戒線は調査の起動条件であってゲートではない**、という設計をここで壊さない
+- **段 1 の受入基準に「`investigate` 判定が出たときに追跡 issue が起きる経路」を含める**（自動でも手順書でも可）。warning のままだと誰も見ない、という問題は残るため。**鳴っても誰も気付かない警告は、鳴っていないのと同じ。**
 
 ## アイドル CPU 使用率 — Windows 実機（#664 Phase 2）
 
