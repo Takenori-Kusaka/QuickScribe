@@ -192,7 +192,9 @@
     "loading": "加载中…",
     "empty": "还没有条目。录音并整理后会保存到日记中。",
     "no_match": "没有符合筛选条件的条目。",
-    "title_viewing": "日记：{name}"
+    "title_viewing": "日记：{name}",
+    "show_all": "显示其余 {n} 个",
+    "collapse": "收起"
   },
   "results": {
     "transcript": "转写",
