@@ -9,7 +9,8 @@
 // 透過方式: クロマキー(LWA_COLORKEY)はアイコンのアンチエイリアス縁がキー色(マゼンタ)と
 // 混ざり「色付きの縁(赤い背景)」が残るため廃止。UpdateLayeredWindow による per-pixel alpha
 // (32bpp プリマルチプライド ARGB)で合成し、アイコン本来の透過をそのまま反映する＝縁の滲み無し。
-// どこで失敗するか切り分けるため、各ステップを診断ログ(%LOCALAPPDATA%\QuickScribe\logs\taskbar-diag.log)へ出力する。
+// どこで失敗するか切り分けるため、各ステップを診断ログ(%LOCALAPPDATA%\QuickScribe\logs\taskbar-diag.log)へ出力できる。
+// 常駐でディスクを消費しないよう既定は無効で、環境変数 QS_TASKBAR_DIAG=1 のときだけ書く(#667)。
 
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicIsize, Ordering};
@@ -58,6 +59,9 @@ static HIDDEN: AtomicBool = AtomicBool::new(false);
 /// ユーザー設定でウィジェット表示が有効か（既定 true。設定でOFFにすると常に隠す）。
 static ENABLED: AtomicBool = AtomicBool::new(true);
 
+/// 診断ログを有効化する環境変数（#667: 既定OFF。トラブルシュート時のみ 1 を設定）。
+const DIAG_ENV: &str = "QS_TASKBAR_DIAG";
+
 const TOOL_RECORD: usize = 1;
 const TOOL_OPEN: usize = 2;
 
@@ -68,19 +72,23 @@ const TIMER_ID: usize = 1;
 /// Linux=~/.local/share/QuickScribe/logs、macOS=~/Library/Application Support/QuickScribe/logs）。
 /// 内部診断ログはユーザーの出力先(ドキュメント)ではなく、ローミングしない Local 領域へ置くのが
 /// 各OSの慣行。旧実装は出力先(ドキュメント/QuickScribe)へ書いていた。
+/// 診断ログの出力先。有効時に一度だけ解決する（無効なら None）。
+static DIAG_PATH: OnceLock<Option<std::path::PathBuf>> = OnceLock::new();
+
 fn diag(msg: &str) {
-    if let Some(base) = dirs::data_local_dir() {
-        let dir = base.join("QuickScribe").join("logs");
-        let _ = std::fs::create_dir_all(&dir);
-        if let Ok(mut f) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(dir.join("taskbar-diag.log"))
-        {
-            use std::io::Write;
-            let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-            let _ = writeln!(f, "[{ts}] {msg}");
+    let path = DIAG_PATH.get_or_init(|| {
+        if !crate::diag_log::enabled_from(std::env::var(DIAG_ENV).ok().as_deref()) {
+            return None;
         }
+        dirs::data_local_dir().map(|base| {
+            base.join("QuickScribe")
+                .join("logs")
+                .join("taskbar-diag.log")
+        })
+    });
+    if let Some(path) = path {
+        let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+        let _ = crate::diag_log::append_line(path, &format!("[{ts}] {msg}"), crate::diag_log::MAX_BYTES);
     }
 }
 
