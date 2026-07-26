@@ -363,6 +363,10 @@ jobs:
             SEG_ROWS=/tmp/idle-cpu-segments.md
             : > "$SEG_ROWS"
             PEAK_RSS_KB=0
+            # 起動処理の残りを含まない RSS も別に採る(#678)。CPU と同じ理由で
+            # 第1区間のピークは「アイドル」ではないため。既存の全窓ピークは定義を変えずに残し、
+            # どちらを一次指標にするかは ADR-0033(RSS の計測対象を見直す PR)と合わせて決める。
+            PEAK_RSS_STEADY_KB=0
             TOTAL_TICKS=0; TOTAL_NS=0
             STEADY_TICKS=0; STEADY_NS=0
             SEG1_PCT="n/a"
@@ -372,7 +376,10 @@ jobs:
               # xvfb-run の子として動く実体(quickscribe)を名前で拾う（APP_PID は xvfb-run のラッパ）。
               for _ in $(seq 1 "$SEG_SEC"); do
                 RSS_KB=$(ps -C quickscribe -o rss= 2>/dev/null | sort -n | tail -1 | tr -d ' ')
-                [ -n "$RSS_KB" ] && [ "$RSS_KB" -gt "$PEAK_RSS_KB" ] && PEAK_RSS_KB=$RSS_KB
+                if [ -n "$RSS_KB" ]; then
+                  if [ "$RSS_KB" -gt "$PEAK_RSS_KB" ]; then PEAK_RSS_KB=$RSS_KB; fi
+                  if [ "$seg" -gt 1 ] && [ "$RSS_KB" -gt "$PEAK_RSS_STEADY_KB" ]; then PEAK_RSS_STEADY_KB=$RSS_KB; fi
+                fi
                 sleep 1
               done
               CPU_T1=$(app_cpu_ticks); NS1=$(date +%s%N)
@@ -392,6 +399,8 @@ jobs:
             kill "$APP_PID" 2>/dev/null || true
             pkill -x quickscribe 2>/dev/null || true
             IDLE_RSS_MB=$(awk -v k="$PEAK_RSS_KB" 'BEGIN{ printf "%.1f", k/1024 }')
+            IDLE_RSS_STEADY_MB=$(awk -v k="$PEAK_RSS_STEADY_KB" 'BEGIN{ printf "%.1f", k/1024 }')
+            echo "idle rss: peak_all=${IDLE_RSS_MB}MB peak_steady=${IDLE_RSS_STEADY_MB}MB"
             IDLE_CPU_PCT=$(cpu_pct "$TOTAL_TICKS" "$CLK_TCK" "$TOTAL_NS")
             IDLE_CPU_STEADY_PCT=$(cpu_pct "$STEADY_TICKS" "$CLK_TCK" "$STEADY_NS")
             echo "idle cpu total: ticks=${TOTAL_TICKS} window_ns=${TOTAL_NS} pct=${IDLE_CPU_PCT}"
@@ -402,7 +411,8 @@ jobs:
               echo "| 指標 | 値 |"
               echo "|---|---|"
               echo "| **起動時間 (run()→UI ready)** | **${MS} ms** |"
-              echo "| **アイドル時メモリ (アプリ実体 RSS)** | **${IDLE_RSS_MB} MB** |"
+              echo "| **アイドル時メモリ (アプリ実体 RSS / 全窓ピーク)** | **${IDLE_RSS_MB} MB** |"
+              echo "| アイドル時メモリ — 定常 (第2〜${SEG_COUNT}区間のピーク) | ${IDLE_RSS_STEADY_MB} MB |"
               echo "| **アイドル時 CPU — 定常 (第2〜${SEG_COUNT}区間 / $(( (SEG_COUNT - 1) * SEG_SEC )) 秒窓)** | **${IDLE_CPU_STEADY_PCT} %** |"
               echo "| アイドル時 CPU — 全窓 ($(( SEG_COUNT * SEG_SEC )) 秒) | ${IDLE_CPU_PCT} % |"
               echo "| アイドル時 CPU — 第1区間 (旧定義・過去比較用) | ${SEG1_PCT} % |"
@@ -414,6 +424,7 @@ jobs:
               cat "$SEG_ROWS"
               echo ""
               echo "_注: 起動時間=run 入口→フロント onMount。アイドルRSS=ready 後のアプリ実プロセス(quickscribe)のピーク RSS。_"
+              echo "_RSS の「定常」は CPU と同じく第1区間を除いたピーク。全窓ピークは起動処理の残りを掴みうる（#678: 第1区間が重かったラン 30221842579 は全窓ピーク 222.8 MB、軽かった 2 本は 153.1 / 153.0 MB）。一次指標をどちらにするかは ADR-0033 と合わせて決める。_"
               echo "_アイドルCPU=ready+3秒後から ${SEG_SEC} 秒 × ${SEG_COUNT} 区間の (utime+stime) 増分 / 経過実時間。1コア基準(100%=1コア占有)。CLK_TCK=${CLK_TCK}。_"
               echo "_**回帰の判定には「定常」を使う。** 第1区間は起動処理の残りを掴みうるため参考値（旧 10 秒窓と同じ定義）。_"
               echo "_計測対象は quickscribe と WebKit(WebProcess|NetworkProcess)。ヘッドレス表示(xvfb)。_"
