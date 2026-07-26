@@ -481,6 +481,23 @@ jobs:
               echo "_計測対象は quickscribe と WebKit(WebProcess|NetworkProcess)。ヘッドレス表示(xvfb)。_"
               echo ""
               echo "_Windows 限定コード(タスクバーウィジェット等)は本ジョブに現れない。Windows 側の計測は #664 Phase 2 を参照。_"
+              echo ""
+              # 計測環境のフィンガープリント(#678)。RSS 全窓ピークの二峰性(~151MB / ~223-230MB)は
+              # アプリ側・計測側の差分では説明できないことが確定している(app のソースは全ランで同一、
+              # 全窓ピークの採取ロジックも f5836a3 以降不変、ランナーイメージも同一)。残る候補は
+              # 実行 VM の個体差なので、突き合わせられるように毎ランで記録する。
+              # 高い峰が出た 2 本はどちらも Azure westus だった(ログの Azure Region による。N=11 中
+              # westus は 3 本で、うち 2 本が高い峰)。**相関の主張ではなく、突き合わせるためのデータ。**
+              echo "## 計測環境（#678 の突き合わせ用）"
+              echo ""
+              echo "| 項目 | 値 |"
+              echo "|---|---|"
+              echo "| runner image | ${ImageOS:-n/a} / ${ImageVersion:-n/a} |"
+              echo "| CPU | $(lscpu 2>/dev/null | sed -n 's/^Model name: *//p' | head -1) |"
+              echo "| コア数 | $(nproc 2>/dev/null || echo n/a) |"
+              echo "| MemTotal | $(awk '/^MemTotal:/{printf "%.1f GB", $2/1048576}' /proc/meminfo 2>/dev/null || echo n/a) |"
+              echo ""
+              echo "_Azure Region はワークフローからは取れない。ジョブログ冒頭の \`Azure Region:\` 行を見ること。_"
             } | tee startup-report.md
             cat startup-report.md >> "$GITHUB_STEP_SUMMARY"
           else
