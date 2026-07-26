@@ -427,8 +427,18 @@ jobs:
             elif awk -v v="$IDLE_CPU_STEADY_PCT" -v w="$IDLE_CPU_WARN" 'BEGIN{ exit !(v+0 > w+0) }'; then
               # 早期警戒線(= 上限の 1/2)。分解能ノイズでは説明が付かない水準なので、
               # 上限を上げずに「何が常駐し始めたか」を調べる合図として出す。
-              IDLE_CPU_VERDICT="⚠️ 早期警戒線超過"
-              echo "::warning title=アイドルCPU早期警戒::定常 ${IDLE_CPU_STEADY_PCT}% が早期警戒線 ${IDLE_CPU_WARN}% を超過。上限を緩めず原因を調べること"
+              # ただし単発では調査に入らない(idle-cpu-baseline.json の early_warning_escalation)。
+              # tick はカウントデータで、現在の散らばり(4〜10 tick/50秒)なら 11〜13 tick が
+              # 何も変わらずに出ることは起こり得る。持続性 —「連続 2 本」または「直近 10 本中 3 本」—
+              # を observations.samples(時系列) + 今回値の系列で判定する。
+              IDLE_CPU_ESC=$(IDLE_CUR="$IDLE_CPU_STEADY_PCT" python3 -c "import json,os;d=json.load(open('docs/perf/idle-cpu-baseline.json',encoding='utf-8'));w=d['early_warning_pct'];s=[x['pct'] for x in d['observations']['samples']]+[float(os.environ['IDLE_CUR'])];o=[v>w for v in s];print('investigate' if ((len(o)>=2 and o[-1] and o[-2]) or sum(o[-10:])>=3) else 'record')")
+              if [ "$IDLE_CPU_ESC" = "investigate" ]; then
+                IDLE_CPU_VERDICT="🚨 早期警戒線超過（調査）"
+                echo "::warning title=アイドルCPU早期警戒(調査)::定常 ${IDLE_CPU_STEADY_PCT}% が早期警戒線 ${IDLE_CPU_WARN}% を超過し、持続性の条件(連続2本 or 直近10本中3本)を満たした。上限を緩めず原因を調べること"
+              else
+                IDLE_CPU_VERDICT="⚠️ 早期警戒線超過（記録のみ）"
+                echo "::warning title=アイドルCPU早期警戒(記録のみ)::定常 ${IDLE_CPU_STEADY_PCT}% が早期警戒線 ${IDLE_CPU_WARN}% を超過。単発のため調査には入らない。observations.samples に追記すること"
+              fi
             else
               IDLE_CPU_VERDICT="✅"
             fi
@@ -457,6 +467,10 @@ jobs:
               echo "| ${IDLE_CPU_STEADY_PCT} % | ${IDLE_CPU_WARN} % | ${IDLE_CPU_LIMIT} % | ${IDLE_CPU_VERDICT} |"
               echo ""
               echo "_過去の観測記録: N=$(python3 -c "import json;print(json.load(open('docs/perf/idle-cpu-baseline.json',encoding='utf-8'))['observations']['n'])") / max ${IDLE_CPU_OBS_MAX} %（参考値。**上限はここから導出しない**）。_"
+              echo ""
+              echo "_早期警戒線 ${IDLE_CPU_WARN} % を超えても、**単発では調査に入らない**（記録のみ）。**連続 2 本**または**直近 10 本中 3 本**で「調査」に上がる。2 つ目の条件は、間欠的な事象（2 回に 1 回だけ跳ねる回帰）を連続条件だけでは永久に拾えないため。**この持続性条件は調査の起動条件であって、0.25 % という水準の意味は変えていない** — 単発が鳴ることを理由に警戒線を上げてはならない。_"
+              echo ""
+              echo "_判定に使う時系列は \`idle-cpu-baseline.json\` の \`observations.samples\`（時系列順）＋今回値。**samples は現状 PR で人が追記する**ため、追記されるまで「連続 2 本」は成立しない。CI 側で系列を自動収集する形は #664 Phase 3 の段1（push:main）を入れる PR で扱う。_"
               echo ""
               echo "_基準は docs/perf/idle-cpu-baseline.json。**上限 ${IDLE_CPU_LIMIT} % は独立した運用値で、実測が動いても付け替えない**（実測 max の上昇は上限を緩める理由にならない）。**観測窓の定義を変えたら必ず再校正すること**（窓が変われば値の意味が変わる）。_"
               echo ""
