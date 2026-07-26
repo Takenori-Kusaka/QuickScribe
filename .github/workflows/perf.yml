@@ -335,6 +335,11 @@ jobs:
             done
             echo "$total"
           }
+          # 使用率(%) = (消費CPU秒 / 経過実時間秒) * 100。1コア基準（100% = 1コア占有）。
+          cpu_pct() {
+            awk -v d="$1" -v hz="$2" -v ns="$3" \
+              'BEGIN{ e = ns / 1000000000; if (e <= 0 || hz <= 0) { print "n/a"; exit } printf "%.2f", (d / hz) / e * 100 }'
+          }
           LOG="$HOME/.local/share/QuickScribe/logs/perf-startup.txt"
           rm -f "$LOG"
           # ヘッドレス表示で起動 → onMount で report_startup が LOG を書く → 回収 → 終了。
@@ -347,23 +352,50 @@ jobs:
             # 数秒おいて落ち着かせてから「アイドル」を観測する(#664)。
             sleep 3
             CLK_TCK=$(getconf CLK_TCK)
-            CPU_T0=$(app_cpu_ticks); NS0=$(date +%s%N)
-            # アイドル時メモリ(#403): ready 後にアプリ実プロセスの RSS を数回サンプルし最大値を採る。
-            # xvfb-run の子として動く実体(quickscribe)を名前で拾う（APP_PID は xvfb-run のラッパ）。
+            # 観測窓を SEG_SEC 秒 × SEG_COUNT 区間に分割して区間ごとに出す(#678)。
+            # 10 秒の1点測りでは同一コミット(c5f2109)で 8.78 / 4.05 / 5.72 % と 2.2 倍振れ、
+            # 回帰ゲートの閾値を置けなかった(同じ窓で RSS は 150.3/150.6/150.7 MB と安定)。
+            # 区間別に出せば「起動処理の残りを窓が掴んでいる(第1区間だけ高い)」のか
+            # 「xvfb の WebKitGTK が定常的に焼いている(全区間横ばい)」のかを1ランで区別できる。
+            # 第1区間は従来と同じ定義(settle 3 秒 + 10 秒窓)なので、過去の実測と直接比較できる。
+            SEG_COUNT=6
+            SEG_SEC=10
+            SEG_ROWS=/tmp/idle-cpu-segments.md
+            : > "$SEG_ROWS"
             PEAK_RSS_KB=0
-            for _ in $(seq 1 10); do
-              RSS_KB=$(ps -C quickscribe -o rss= 2>/dev/null | sort -n | tail -1 | tr -d ' ')
-              [ -n "$RSS_KB" ] && [ "$RSS_KB" -gt "$PEAK_RSS_KB" ] && PEAK_RSS_KB=$RSS_KB
-              sleep 1
+            TOTAL_TICKS=0; TOTAL_NS=0
+            STEADY_TICKS=0; STEADY_NS=0
+            SEG1_PCT="n/a"
+            CPU_T0=$(app_cpu_ticks); NS0=$(date +%s%N)
+            for seg in $(seq 1 "$SEG_COUNT"); do
+              # アイドル時メモリ(#403): 窓全体を通してアプリ実プロセスの RSS をサンプルし最大値を採る。
+              # xvfb-run の子として動く実体(quickscribe)を名前で拾う（APP_PID は xvfb-run のラッパ）。
+              for _ in $(seq 1 "$SEG_SEC"); do
+                RSS_KB=$(ps -C quickscribe -o rss= 2>/dev/null | sort -n | tail -1 | tr -d ' ')
+                [ -n "$RSS_KB" ] && [ "$RSS_KB" -gt "$PEAK_RSS_KB" ] && PEAK_RSS_KB=$RSS_KB
+                sleep 1
+              done
+              CPU_T1=$(app_cpu_ticks); NS1=$(date +%s%N)
+              SEG_TICKS=$((CPU_T1 - CPU_T0)); SEG_NS=$((NS1 - NS0))
+              SEG_PCT=$(cpu_pct "$SEG_TICKS" "$CLK_TCK" "$SEG_NS")
+              echo "idle cpu seg${seg}: ticks=${SEG_TICKS} clk_tck=${CLK_TCK} window_ns=${SEG_NS} pct=${SEG_PCT}"
+              echo "| ${seg} | $(( (seg - 1) * SEG_SEC ))–$(( seg * SEG_SEC )) s | ${SEG_TICKS} | ${SEG_PCT} % |" >> "$SEG_ROWS"
+              TOTAL_TICKS=$((TOTAL_TICKS + SEG_TICKS)); TOTAL_NS=$((TOTAL_NS + SEG_NS))
+              if [ "$seg" -eq 1 ]; then
+                SEG1_PCT="$SEG_PCT"
+              else
+                # 定常値は第2区間以降。起動処理の残りが混じりうる第1区間を除く。
+                STEADY_TICKS=$((STEADY_TICKS + SEG_TICKS)); STEADY_NS=$((STEADY_NS + SEG_NS))
+              fi
+              CPU_T0=$CPU_T1; NS0=$NS1
             done
-            CPU_T1=$(app_cpu_ticks); NS1=$(date +%s%N)
             kill "$APP_PID" 2>/dev/null || true
             pkill -x quickscribe 2>/dev/null || true
             IDLE_RSS_MB=$(awk -v k="$PEAK_RSS_KB" 'BEGIN{ printf "%.1f", k/1024 }')
-            # 使用率(%) = (消費CPU秒 / 経過実時間秒) * 100。1コア基準（100% = 1コア占有）。
-            IDLE_CPU_PCT=$(awk -v d="$((CPU_T1 - CPU_T0))" -v hz="$CLK_TCK" -v ns="$((NS1 - NS0))" \
-              'BEGIN{ e = ns / 1000000000; if (e <= 0 || hz <= 0) { print "n/a"; exit } printf "%.2f", (d / hz) / e * 100 }')
-            echo "idle cpu: ticks=$((CPU_T1 - CPU_T0)) clk_tck=${CLK_TCK} window_ns=$((NS1 - NS0))"
+            IDLE_CPU_PCT=$(cpu_pct "$TOTAL_TICKS" "$CLK_TCK" "$TOTAL_NS")
+            IDLE_CPU_STEADY_PCT=$(cpu_pct "$STEADY_TICKS" "$CLK_TCK" "$STEADY_NS")
+            echo "idle cpu total: ticks=${TOTAL_TICKS} window_ns=${TOTAL_NS} pct=${IDLE_CPU_PCT}"
+            echo "idle cpu steady(seg2-${SEG_COUNT}): ticks=${STEADY_TICKS} window_ns=${STEADY_NS} pct=${IDLE_CPU_STEADY_PCT}"
             {
               echo "# QuickScribe 起動時間・アイドル資源 (Linux x64 / xvfb)"
               echo ""
@@ -371,10 +403,19 @@ jobs:
               echo "|---|---|"
               echo "| **起動時間 (run()→UI ready)** | **${MS} ms** |"
               echo "| **アイドル時メモリ (アプリ実体 RSS)** | **${IDLE_RSS_MB} MB** |"
-              echo "| **アイドル時 CPU (アプリ実体 + WebKit 子)** | **${IDLE_CPU_PCT} %** |"
+              echo "| **アイドル時 CPU — 定常 (第2〜${SEG_COUNT}区間 / $(( (SEG_COUNT - 1) * SEG_SEC )) 秒窓)** | **${IDLE_CPU_STEADY_PCT} %** |"
+              echo "| アイドル時 CPU — 全窓 ($(( SEG_COUNT * SEG_SEC )) 秒) | ${IDLE_CPU_PCT} % |"
+              echo "| アイドル時 CPU — 第1区間 (旧定義・過去比較用) | ${SEG1_PCT} % |"
+              echo ""
+              echo "## アイドル CPU の区間別内訳"
+              echo ""
+              echo "| 区間 | 経過 (settle 後) | Δtick | CPU (1コア基準) |"
+              echo "|---|---|---|---|"
+              cat "$SEG_ROWS"
               echo ""
               echo "_注: 起動時間=run 入口→フロント onMount。アイドルRSS=ready 後のアプリ実プロセス(quickscribe)のピーク RSS。_"
-              echo "_アイドルCPU=ready+3秒後から10秒間の (utime+stime) 増分 / 経過実時間。1コア基準(100%=1コア占有)。_"
+              echo "_アイドルCPU=ready+3秒後から ${SEG_SEC} 秒 × ${SEG_COUNT} 区間の (utime+stime) 増分 / 経過実時間。1コア基準(100%=1コア占有)。CLK_TCK=${CLK_TCK}。_"
+              echo "_**回帰の判定には「定常」を使う。** 第1区間は起動処理の残りを掴みうるため参考値（旧 10 秒窓と同じ定義）。_"
               echo "_計測対象は quickscribe と WebKit(WebProcess|NetworkProcess)。ヘッドレス表示(xvfb)。_"
               echo ""
               echo "_Windows 限定コード(タスクバーウィジェット等)は本ジョブに現れない。Windows 側の計測は #664 Phase 2 を参照。_"
