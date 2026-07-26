@@ -10,13 +10,14 @@
 |---|---|---|---|
 | 起動時間（プロセス起動→操作可能） | ≤ 2 秒（キャッシュ温時） | `perf.yml` の `startup-time` ジョブ（アプリ計装 `QS_PERF_STARTUP=1`） | 計測済（#554・`startup-report.md` アーティファクトが一次情報・[perf/baseline.md](perf/baseline.md)） |
 | ローカル文字起こし RTF（実時間比, tiny, x64 AVX2） | ≤ 1.0（実時間以内） | 固定音源で計測（`.github/workflows/perf.yml`） | 実測 **0.857**（2026-06-29・[perf/baseline.md](perf/baseline.md)・達成 ✅） |
-| アイドル時メモリ（RSS） | ≤ 300 MB 目安 | `perf.yml` の `startup-time` ジョブ（配布バイナリ実体の RSS サンプリング） | 計測済（#554・`startup-report.md` が一次情報） |
+| アイドル時メモリ（RSS・**アプリ実体＋WebView 子プロセス群の合計**） | ≤ 300 MB 目安 | `perf.yml` の `startup-time` ジョブ（RSS サンプリング）。**CI 側の計測対象を合計へ拡張する作業は未了**（現状はアプリ実体のみ） | Windows 実機で暫定確認 **195.3 MB**（実体 29.8 MB ＋ WebView2 165.5 MB・2026-07-26・[perf/baseline.md](perf/baseline.md)）。CI 実測は実体のみのため合計としては未確定（[ADR-0033](adr/0033-keep-webview2-alive-in-tray.md)） |
 | アイドル時 CPU 使用率（1コア基準） | ≤ 1 % | Linux: `perf.yml` の `startup-time` ジョブ（アプリ実体＋WebKit子の `utime+stime` 増分 / 経過実時間）／Windows: `scripts/perf/measure_idle_cpu.ps1` による実機計測 | **Linux CI 初回実測待ち**（達成判定は未確定）。Windows 実機（ローカル release ビルド・実機1台・120秒窓）で**暫定確認 0.117 %**（2026-07-26・[perf/baseline.md](perf/baseline.md)）。他行と異なり CI アーティファクトを一次情報にしていないため「達成 ✅」は付けない。Linux は #664 Phase 1 で計測基盤を追加済、初回実測は `perf-bench` 実行後 |
 | 日本語精度（CER・相対/回帰指標） | ベースライン比 +5pt 以内（回帰ゲート） | `perf.yml` の「日本語精度 CER」ジョブ（本人音読PD3作品・`scripts/cer_ja.py`） | 実測確定（#26/#403: tiny 56.9% / base 44.0% / kotoba-q5 38.3%・[perf/baseline.md](perf/baseline.md)・[ADR-0022](adr/0022-model-catalog-curation.md)） |
 | 録音→停止→文字起こし開始の体感遅延 | 即時（非同期・UIブロックなし） | 実装で担保（バックグラウンド文字起こし） | 実装済 |
 
 - 文字起こしは別スレッド＋イベント通知で UI をブロックしない（`transcribe-done`/`progress`）。
 - whisper は決定的 AVX2 ベースライン（[ADR-0012](adr/0012-windows-multiarch-multisimd-distribution.md)）。AVX512最適化は将来の別ビルドで。
+- **アイドル時メモリの計測対象は「アプリ実体のみ」ではなく「合計」**（[ADR-0033](adr/0033-keep-webview2-alive-in-tray.md)）。Windows 実機の内訳は実体 29.8 MB に対し WebView2 が 165.5 MB で、**常駐メモリの約 85 % は WebView 側**。実体だけを見ると「30 MB / 300 MB で大幅に余裕」と読めてしまい、常駐実態を 10 分の 1 に見誤る。この非対称は CPU 指標が既に採った定義（WebView 側を取りこぼすと意味を成さない）と揃えたものである。
 - 日本語精度（CER）ベンチは再現可能化済み（#26/#403）。fixtures は本人音読のパブリックドメイン3作品（`src-tauri/tests/fixtures/ja-accuracy`）、回帰ゲート基準は `docs/perf/ja-cer-baseline.json`。
 
 ## 2. 可用性・信頼性 (Reliability)

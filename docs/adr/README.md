@@ -36,3 +36,4 @@
 | [0030](0030-no-voice-emotion-metadata.md) | 声由来の感情/情動メタデータを非対応とする（やらない決定） | Accepted |
 | [0031](0031-speaker-diarization-optional-utility.md) | 話者特定を「利用幅拡大の実用オプション」として default-OFF で提供 | Accepted |
 | [0032](0032-content-based-entry-filenames.md) | エントリのファイル名を「日付＋内容由来ラベル」にする（時刻を廃止） | Accepted |
+| [0033](0033-keep-webview2-alive-in-tray.md) | トレイ常駐時に WebView2 を破棄せず保持する（常駐メモリ約195MBの受容） | Proposed |
