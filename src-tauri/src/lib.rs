@@ -21,6 +21,8 @@ pub mod vault;
 // 保管庫ドキュメントの本文組み立て・命名(#392 / DDD: lib.rs から抽出)。
 pub mod entry;
 pub mod job;
+// 内部診断ログの追記（#667: サイズ上限＋1世代ローテーション。既定OFF）。
+pub mod diag_log;
 // Windows タスクバーのサムネイルツールバー/オーバーレイ。Windowsのみ。
 #[cfg(windows)]
 mod taskbar;
