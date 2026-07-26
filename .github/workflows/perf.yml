@@ -405,14 +405,17 @@ jobs:
             IDLE_CPU_STEADY_PCT=$(cpu_pct "$STEADY_TICKS" "$CLK_TCK" "$STEADY_NS")
             echo "idle cpu total: ticks=${TOTAL_TICKS} window_ns=${TOTAL_NS} pct=${IDLE_CPU_PCT}"
             echo "idle cpu steady(seg2-${SEG_COUNT}): ticks=${STEADY_TICKS} window_ns=${STEADY_NS} pct=${IDLE_CPU_STEADY_PCT}"
-            # 回帰ゲート(#664 Phase 3): 定常 CPU が baseline+margin を超えたら警告する。
+            # 回帰ゲート(#664 Phase 3): 定常 CPU が上限を超えたら警告する。
             # 閾値は workflow にハードコードせず docs/perf/idle-cpu-baseline.json に置く
             # (ja-cer-baseline.json と同じ運用。更新は PR で明示する)。
-            # 相対ゲートを使わない理由: 定常の Δtick は 50 秒で 4〜8 と 1 tick=10ms の分解能の底にあり、
+            # limit_pct は独立した運用値であり、実測(observations)から導出しない。
+            # 「実測 max が上がった」は limit_pct を上げる理由にならない — それはゲートが
+            # 仕事をしている状態であって、緩める根拠ではない(idle-cpu-baseline.json の limit_policy)。
+            # 相対ゲートを使わない理由: 定常の Δtick は 50 秒で 4〜10 と 1 tick=10ms の分解能の底にあり、
             # 4→8 が「+100% 悪化」として発火するが実際は 0.08%→0.16% で何も悪化していない。
-            IDLE_CPU_BASE=$(python3 -c "import json;print(json.load(open('docs/perf/idle-cpu-baseline.json',encoding='utf-8'))['baseline_pct'])")
-            IDLE_CPU_MARGIN=$(python3 -c "import json;print(json.load(open('docs/perf/idle-cpu-baseline.json',encoding='utf-8'))['margin_pt'])")
-            IDLE_CPU_LIMIT=$(awk -v b="$IDLE_CPU_BASE" -v m="$IDLE_CPU_MARGIN" 'BEGIN{ printf "%.2f", b+m }')
+            IDLE_CPU_LIMIT=$(python3 -c "import json;print(json.load(open('docs/perf/idle-cpu-baseline.json',encoding='utf-8'))['limit_pct'])")
+            IDLE_CPU_WARN=$(python3 -c "import json;print(json.load(open('docs/perf/idle-cpu-baseline.json',encoding='utf-8'))['early_warning_pct'])")
+            IDLE_CPU_OBS_MAX=$(python3 -c "import json;print(json.load(open('docs/perf/idle-cpu-baseline.json',encoding='utf-8'))['observations']['max_pct'])")
             if ! echo "$IDLE_CPU_STEADY_PCT" | grep -qE '^[0-9]+(\.[0-9]+)?$'; then
               # cpu_pct が n/a を返した場合（経過時間や CLK_TCK が取れない）。
               # awk の v+0 は n/a を 0 に潰すので、明示的に弾かないとゲートが黙って通る。
@@ -421,6 +424,11 @@ jobs:
             elif awk -v v="$IDLE_CPU_STEADY_PCT" -v l="$IDLE_CPU_LIMIT" 'BEGIN{ exit !(v+0 > l+0) }'; then
               IDLE_CPU_VERDICT="⚠️ 回帰"
               echo "::warning title=アイドルCPU回帰::定常 ${IDLE_CPU_STEADY_PCT}% が上限 ${IDLE_CPU_LIMIT}% を超過"
+            elif awk -v v="$IDLE_CPU_STEADY_PCT" -v w="$IDLE_CPU_WARN" 'BEGIN{ exit !(v+0 > w+0) }'; then
+              # 早期警戒線(= 上限の 1/2)。分解能ノイズでは説明が付かない水準なので、
+              # 上限を上げずに「何が常駐し始めたか」を調べる合図として出す。
+              IDLE_CPU_VERDICT="⚠️ 早期警戒線超過"
+              echo "::warning title=アイドルCPU早期警戒::定常 ${IDLE_CPU_STEADY_PCT}% が早期警戒線 ${IDLE_CPU_WARN}% を超過。上限を緩めず原因を調べること"
             else
               IDLE_CPU_VERDICT="✅"
             fi
@@ -442,13 +450,15 @@ jobs:
               echo "|---|---|---|---|"
               cat "$SEG_ROWS"
               echo ""
-              echo "## 回帰チェック（定常アイドル CPU vs baseline）"
+              echo "## 回帰チェック（定常アイドル CPU）"
               echo ""
-              echo "| 実測 (定常) | baseline | 上限 (=+margin ${IDLE_CPU_MARGIN}pt) | 判定 |"
+              echo "| 実測 (定常) | 早期警戒線 | 上限 | 判定 |"
               echo "|---|---|---|---|"
-              echo "| ${IDLE_CPU_STEADY_PCT} % | ${IDLE_CPU_BASE} % | ${IDLE_CPU_LIMIT} % | ${IDLE_CPU_VERDICT} |"
+              echo "| ${IDLE_CPU_STEADY_PCT} % | ${IDLE_CPU_WARN} % | ${IDLE_CPU_LIMIT} % | ${IDLE_CPU_VERDICT} |"
               echo ""
-              echo "_基準は docs/perf/idle-cpu-baseline.json。**観測窓の定義を変えたら閾値を再校正すること**（窓が変われば値の意味が変わる）。_"
+              echo "_過去の観測記録: N=$(python3 -c "import json;print(json.load(open('docs/perf/idle-cpu-baseline.json',encoding='utf-8'))['observations']['n'])") / max ${IDLE_CPU_OBS_MAX} %（参考値。**上限はここから導出しない**）。_"
+              echo ""
+              echo "_基準は docs/perf/idle-cpu-baseline.json。**上限 ${IDLE_CPU_LIMIT} % は独立した運用値で、実測が動いても付け替えない**（実測 max の上昇は上限を緩める理由にならない）。**観測窓の定義を変えたら必ず再校正すること**（窓が変われば値の意味が変わる）。_"
               echo ""
               echo "_注: 起動時間=run 入口→フロント onMount。アイドルRSS=ready 後のアプリ実プロセス(quickscribe)のピーク RSS。_"
               echo "_RSS の一次指標は「定常」（第1区間を除いたピーク）。起動処理中の一過性ピークを NFR の判定に使うと、CPU で起きたのと同じ誤りを繰り返すため。全窓ピークは「起動時ピーク」として併記し、150.9〜230.4 MB と 1.5 倍振れる二峰性（#678・原因未特定）の調査データに使う。**RSS の回帰ゲートは #678 の解決後に置く**（原因未解明の振れの上に置けば偽陽性になる）。_"

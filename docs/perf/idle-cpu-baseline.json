@@ -1,23 +1,38 @@
 {
-  "_comment": "アイドルCPUの回帰ゲート基準(#664 Phase 3 / #678)。perf.yml の起動時間ジョブが「定常」使用率をこれと比較する。ベースラインは CI(perf.yml / ubuntu-22.04 / xvfb) 実測 N=8 の最大値。閾値 = baseline_pct + margin_pt = 0.50%(PO 決定値・据え置き)。観測窓の定義を変えたら再校正すること(窓が変われば値の意味が変わる)。",
+  "_comment": "アイドルCPUの回帰ゲート基準(#664 Phase 3 / #678)。perf.yml の起動時間ジョブが「定常」使用率を limit_pct と比較する。limit_pct は独立した運用値であり、observations から導出しない。observations は観測記録であって基準ではない — 実測が動いても更新されるのは observations だけで limit_pct は動かない。",
   "metric": "idle_cpu_steady_pct",
   "window": "seg2-6 (ready+3s の後 10s x 6 区間のうち第2〜6区間 / 合計50秒)",
   "unit": "percent of one core",
-  "baseline_pct": 0.2,
-  "margin_pt": 0.3,
-  "samples": {
+
+  "limit_pct": 0.5,
+  "limit_policy": {
+    "_comment": "limit_pct を変更してよい条件。「実測 max が上がったから」は理由にならない(それはゲートが仕事をしている状態であって、ゲートを緩める根拠ではない)。",
+    "change_requires": "PR で理由を明示すること",
+    "not_a_reason": "実測値(observations)が動いたこと",
+    "valid_reasons": [
+      "観測窓の定義を変えた(窓が変われば値の意味が変わるため必ず再校正する)",
+      "計測対象プロセス集合を変えた(ADR-0033)",
+      "分布が安定し、より厳しい上限へ引き締める(#664 Phase 3 の 0.30% 検討)"
+    ],
+    "derivation_note": "0.50% は決定時に『N=6 の実測 max 0.16% + 絶対マージン 0.34pt』として導出した。これは導出の説明であって運用値の定義ではない。N=7 で実測 max が 0.20% へ動いた際も limit_pct は 0.50% のまま据え置いた。"
+  },
+
+  "early_warning_pct": 0.25,
+  "early_warning_policy": "実測 max が early_warning_pct (= limit_pct の 1/2) を超えたら、ゲートを緩めずに原因を調べる。0.25% = 13 tick / 50 秒 は 1 tick=10ms の分解能ノイズでは説明が付かない水準で、『何かが常駐し始めた』可能性が実在する。ここで limit_pct を上げるのはゲートを捨てるのと同じ。",
+
+  "observations": {
+    "_comment": "観測記録。基準ではない。サンプルを足したらここだけ更新する。",
     "n": 8,
+    "min_pct": 0.08,
+    "max_pct": 0.2,
+    "median_pct": 0.14,
+    "values_pct": [0.08, 0.1, 0.12, 0.14, 0.14, 0.16, 0.16, 0.2],
     "runs": [
-      30221643741,
-      30221838765,
-      30221842579,
-      30221898310,
-      30221904413,
-      30222252075,
-      30222288927,
+      30221643741, 30221838765, 30221842579, 30221898310, 30221904413, 30222252075, 30222288927,
       30223083551
     ],
-    "observed_pct": [0.1, 0.08, 0.16, 0.14, 0.14, 0.16, 0.2, 0.12],
-    "base_sha": "c5f2109"
+    "environment": "perf.yml / ubuntu-22.04 / xvfb",
+    "base_sha": "c5f2109",
+    "measured_on": "2026-07-26"
   }
 }
