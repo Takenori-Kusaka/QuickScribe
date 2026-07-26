@@ -167,6 +167,101 @@ pub fn preview_of(body: &str, n: usize) -> String {
     }
 }
 
+/// 一覧プレビューの最大文字数。
+const PREVIEW_CHARS: usize = 140;
+/// 要約のために読む先頭バイト数。フロントマターとプレビュー分の本文を賄う。
+const SUMMARY_HEAD_BYTES: u64 = 8 * 1024;
+/// 要約のために読む末尾バイト数。txt の末尾 `Tags:` 行を拾う分。
+const SUMMARY_TAIL_BYTES: u64 = 4 * 1024;
+
+/// バイト列を UTF-8 として解釈する。末尾が文字の途中で切れていれば切り捨てる。
+fn decode_trim_end(buf: Vec<u8>) -> String {
+    match String::from_utf8(buf) {
+        Ok(s) => s,
+        Err(e) => {
+            let valid = e.utf8_error().valid_up_to();
+            let mut b = e.into_bytes();
+            b.truncate(valid);
+            String::from_utf8(b).unwrap_or_default()
+        }
+    }
+}
+
+/// 末尾側チャンクを UTF-8 として解釈する。先頭が文字の途中なら継続バイトを読み飛ばす。
+fn decode_trim_both(buf: Vec<u8>) -> String {
+    let start = buf
+        .iter()
+        .position(|b| (b & 0xC0) != 0x80)
+        .unwrap_or(buf.len());
+    decode_trim_end(buf[start..].to_vec())
+}
+
+/// ファイルの指定範囲を読む。
+fn read_range(path: &Path, offset: u64, len: u64) -> std::io::Result<Vec<u8>> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = std::fs::File::open(path)?;
+    f.seek(SeekFrom::Start(offset))?;
+    let mut buf = vec![0u8; len as usize];
+    let mut filled = 0usize;
+    while filled < buf.len() {
+        match f.read(&mut buf[filled..])? {
+            0 => break,
+            n => filled += n,
+        }
+    }
+    buf.truncate(filled);
+    Ok(buf)
+}
+
+/// 一覧要約に必要な範囲だけを読んで解析する。返り値は (解析結果, 実際に読んだバイト数)。
+///
+/// 小さいファイルは従来どおり全文を読む。大きいファイルは先頭 [`SUMMARY_HEAD_BYTES`]
+/// （＋txt形式なら末尾 [`SUMMARY_TAIL_BYTES`]）だけを読み、プレビューとメタを組み立てる。
+/// 先頭窓だけでは従来と同じ結果を保証できない場合（フロントマターが窓をまたぐ・
+/// プレビュー分の文字が取れない）は全文読み込みへフォールバックする。
+fn read_summary_source(path: &Path) -> std::io::Result<(Parsed, u64)> {
+    let size = std::fs::metadata(path)?.len();
+    let read_all = |size: u64| -> std::io::Result<(Parsed, u64)> {
+        let content = std::fs::read_to_string(path)?;
+        Ok((parse_entry(&content), size))
+    };
+    if size <= SUMMARY_HEAD_BYTES + SUMMARY_TAIL_BYTES {
+        return read_all(size);
+    }
+
+    let head_bytes = read_range(path, 0, SUMMARY_HEAD_BYTES)?;
+    let head_len = head_bytes.len() as u64;
+    let head = decode_trim_end(head_bytes);
+    let text = head.trim_start_matches(['\u{feff}']);
+
+    // md フロントマター形式: 終端 `---` が先頭窓に収まっていれば先頭だけで足りる
+    // （この形式では末尾 Tags: 行を見ないため、末尾は不要）。
+    if let Some(rest) = text
+        .strip_prefix("---\n")
+        .or_else(|| text.strip_prefix("---\r\n"))
+    {
+        // 終端が窓の外にあると txt 扱いへ落ちてメタを失うため、そのときは全文を読む。
+        if rest.contains("\n---") {
+            let parsed = parse_entry(&head);
+            if preview_of(&parsed.body, PREVIEW_CHARS).ends_with('…') {
+                return Ok((parsed, head_len));
+            }
+        }
+        return read_all(size);
+    }
+
+    // txt 形式: プレビューは先頭から、タグは末尾から。
+    let mut parsed = parse_entry(&head);
+    if !preview_of(&parsed.body, PREVIEW_CHARS).ends_with('…') {
+        // 先頭が空白ばかり等でプレビューを賄えないときだけ全文へ。
+        return read_all(size);
+    }
+    let tail_bytes = read_range(path, size - SUMMARY_TAIL_BYTES, SUMMARY_TAIL_BYTES)?;
+    let tail_len = tail_bytes.len() as u64;
+    parsed.tags = parse_entry(&decode_trim_both(tail_bytes)).tags;
+    Ok((parsed, head_len + tail_len))
+}
+
 /// 保管庫ディレクトリのエントリ(.txt/.md)を一覧する。created 降順。
 pub fn list_entries(dir: &Path) -> Result<Vec<EntrySummary>, String> {
     let mut out: Vec<EntrySummary> = Vec::new();
@@ -185,11 +280,10 @@ pub fn list_entries(dir: &Path) -> Result<Vec<EntrySummary>, String> {
         if ext != "txt" && ext != "md" {
             continue;
         }
-        let content = match std::fs::read_to_string(&path) {
-            Ok(c) => c,
+        let parsed = match read_summary_source(&path) {
+            Ok((p, _)) => p,
             Err(_) => continue,
         };
-        let parsed = parse_entry(&content);
         let created = parsed.created.unwrap_or_else(|| file_mtime_iso(&path));
         let name = path
             .file_name()
@@ -206,7 +300,7 @@ pub fn list_entries(dir: &Path) -> Result<Vec<EntrySummary>, String> {
             created,
             kind,
             tags: parsed.tags,
-            preview: preview_of(&parsed.body, 140),
+            preview: preview_of(&parsed.body, PREVIEW_CHARS),
         });
     }
     // created(ISO文字列)で降順。新しいものが上。
@@ -337,6 +431,132 @@ mod tests {
         assert_eq!(entries[1].kind, "refined");
         assert_eq!(entries[1].created, "2026-07-02T10:00:00");
         assert_eq!(entries[1].preview, "新しい方の本文");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// テスト用の空ディレクトリを作る。
+    fn tmp_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("qs_vault_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn summary_source_avoids_reading_whole_file() {
+        // 巨大エントリでも要約に必要な先頭/末尾だけを読む（全文読み込みをしない）。
+        let dir = tmp_dir("partial");
+        let path = dir.join("20260726-note-big.txt");
+        let filler = "あ".repeat(200_000); // 本文だけで約600KB(UTF-8)
+        std::fs::write(&path, format!("先頭の本文\n{filler}\n\nTags: 仕事, 内省")).unwrap();
+        let size = std::fs::metadata(&path).unwrap().len();
+
+        let (parsed, read) = read_summary_source(&path).unwrap();
+
+        assert!(read < size / 4, "全文({size}B)ではなく一部({read}B)だけを読む");
+        assert_eq!(parsed.tags, vec!["仕事", "内省"], "末尾のタグ行は取りこぼさない");
+        let pv = preview_of(&parsed.body, PREVIEW_CHARS);
+        assert!(pv.starts_with("先頭の本文"), "プレビューは先頭から: {pv}");
+        assert!(pv.ends_with('…'), "切り詰め済みの印が付く");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn summary_source_parses_frontmatter_that_exceeds_head_window() {
+        // フロントマターが先頭読み込み窓をまたぐ場合は全文へフォールバックし、メタを取りこぼさない。
+        let dir = tmp_dir("bigfm");
+        let path = dir.join("20260726-refined-bigfm.md");
+        let filler: String = (0..600)
+            .map(|i| format!("note{i}: \"{}\"\n", "x".repeat(40)))
+            .collect();
+        std::fs::write(
+            &path,
+            format!(
+                "---\ncreated: \"2026-07-26T10:00:00\"\n{filler}type: \"refined\"\ntags: [\"仕事\"]\n---\n本文ここ"
+            ),
+        )
+        .unwrap();
+
+        let (parsed, _) = read_summary_source(&path).unwrap();
+
+        assert_eq!(parsed.created.as_deref(), Some("2026-07-26T10:00:00"));
+        assert_eq!(parsed.kind.as_deref(), Some("refined"), "窓の外の type も読む");
+        assert_eq!(parsed.tags, vec!["仕事"]);
+        assert_eq!(parsed.body, "本文ここ");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn summary_source_falls_back_when_head_yields_too_little_preview() {
+        // 先頭が空白ばかりでプレビュー分の文字が取れないときは全文を読む（プレビューを空にしない）。
+        let dir = tmp_dir("latebody");
+        let path = dir.join("20260726-note-late.txt");
+        let pad = " ".repeat(20_000);
+        std::fs::write(&path, format!("{pad}遅れて始まる本文\n\nTags: x")).unwrap();
+
+        let (parsed, _) = read_summary_source(&path).unwrap();
+
+        assert_eq!(preview_of(&parsed.body, PREVIEW_CHARS), "遅れて始まる本文");
+        assert_eq!(parsed.tags, vec!["x"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn summary_source_handles_multibyte_char_on_window_boundary() {
+        // 読み込み境界がマルチバイト文字の途中でも壊れた文字を混ぜない。
+        let dir = tmp_dir("boundary");
+        // 3バイト文字を敷き詰めると 8KB 境界は必ず文字の途中に落ちる。
+        for pad in 0..3usize {
+            let path = dir.join(format!("20260726-note-b{pad}.txt"));
+            let filler = format!("{}{}", "a".repeat(pad), "あ".repeat(100_000));
+            std::fs::write(&path, format!("{filler}\n\nTags: t")).unwrap();
+            let (parsed, _) = read_summary_source(&path).unwrap();
+            assert!(!parsed.body.contains('\u{fffd}'), "置換文字を混ぜない(pad={pad})");
+            assert_eq!(parsed.tags, vec!["t"]);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_entries_summarizes_large_entry_without_full_read() {
+        // 一覧の外形（プレビュー・タグ・種別）は巨大エントリでも従来どおり。
+        let dir = tmp_dir("largelist");
+        let filler = "あ".repeat(200_000);
+        std::fs::write(
+            dir.join("20260726-transcript-big.txt"),
+            format!("先頭の本文\n{filler}\n\nTags: 仕事"),
+        )
+        .unwrap();
+
+        let entries = list_entries(&dir).unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].kind, "transcript");
+        assert_eq!(entries[0].tags, vec!["仕事"]);
+        assert!(entries[0].preview.starts_with("先頭の本文"));
+        assert!(entries[0].preview.ends_with('…'));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 1000件規模での所要時間を見るための計測用（CI では時間依存を避けるため既定で除外）。
+    /// `cargo test -p quickscribe --lib vault::tests::bench_list_entries -- --ignored --nocapture`
+    #[test]
+    #[ignore = "ベンチ用: 時間依存のため既定では実行しない"]
+    fn bench_list_entries_1000_entries() {
+        let dir = tmp_dir("bench");
+        let body = "あ".repeat(20_000); // 1件あたり約60KB
+        for i in 0..1000 {
+            std::fs::write(
+                dir.join(format!("2026072{}-note-{i}.md", i % 10)),
+                format!("---\ncreated: \"2026-07-2{}T10:00:00\"\ntype: \"note\"\ntags: [\"t\"]\n---\n{body}", i % 10),
+            )
+            .unwrap();
+        }
+        let t0 = std::time::Instant::now();
+        let entries = list_entries(&dir).unwrap();
+        let elapsed = t0.elapsed();
+        assert_eq!(entries.len(), 1000);
+        println!("list_entries(1000 entries, ~60KB each): {elapsed:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
