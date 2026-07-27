@@ -53,6 +53,7 @@
 - **S7.3 E2E(tauri-driver+WebdriverIO)**: Linux+xvfbで実起動UI操作。**前回欠落の是正**。
 - **S7.4 CI必須ゲート化**: lint/型/単体/結合/E2E/セキュリティを必須。
 - **S7.5 セキュリティ**: CodeQL/Dependabot/cargo-audit/cargo-deny/npm audit。
+- **S7.6 エージェント並行セッションの排他**: 同一マシンで複数 ACP セッションが並走する前提での worktree 分離＋lock（[ADR-0035](../adr/0035-agent-session-concurrency-control.md) / [仕様](../specs/agent-session-concurrency/requirements.md)）。**検証結果の汚染（負荷が偽の red を作る）と二重着手を機械的に防ぐ。** _Tasks_: 判定 pure function＋lock 実体＋単体テスト（段1） / PreToolUse・PostToolUse hook 配線（段2） / 検証手順の文書化（段3）。
 
 ## E8. Release / Ops
 - **S8.1 release-please導入**: Cargo.toml+tauri.conf版同期、Release PRゲート。
