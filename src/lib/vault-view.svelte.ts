@@ -3,7 +3,12 @@
 // コンポーネントは薄いオーケストレータに保つ。横断発見(discovery)は整形設定に依存するため
 // App 側に残し、本モジュールは filteredEntries を公開して連携する。
 import { invoke } from "@tauri-apps/api/core";
-import { filterEntries } from "./entry";
+import {
+  filterEntries,
+  visibleEntries as pickVisible,
+  hiddenEntryCount as countHidden,
+} from "./entry";
+import { ENTRY_SEARCH_DEBOUNCE_MS, ENTRY_VISIBLE } from "./constants";
 import { computeStreak } from "./streak";
 import { errorText, type Translator } from "./errors";
 
@@ -31,8 +36,40 @@ export function createVaultView(deps: VaultViewDeps) {
   let entries = $state<EntrySummary[]>([]);
   let entriesLoading = $state(false);
   let entrySearch = $state<string>("");
+  // 実際に絞り込みへ反映されている検索語（#666）。入力欄(entrySearch)とは分離し、
+  // 打鍵ごとの全件再フィルタ＋一覧の再描画を避けるためデバウンス後にだけ更新する。
+  let appliedSearch = $state<string>("");
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
   let selectedTags = $state<string[]>([]);
+  let showAllEntries = $state(false);
   let viewingEntry = $state<{ name: string; content: string } | null>(null);
+
+  function cancelPendingSearch() {
+    if (searchTimer !== null) {
+      clearTimeout(searchTimer);
+      searchTimer = null;
+    }
+  }
+
+  /** 絞り込み条件が変わったら折り畳みへ戻す。前の条件での展開が次の結果に残ると、
+   *  意図せず大量の行を描画してしまうため（#666）。 */
+  function collapse() {
+    showAllEntries = false;
+  }
+
+  function scheduleSearch() {
+    cancelPendingSearch();
+    searchTimer = setTimeout(() => {
+      searchTimer = null;
+      appliedSearch = entrySearch;
+      collapse();
+    }, ENTRY_SEARCH_DEBOUNCE_MS);
+  }
+
+  /** 保留中のデバウンスを破棄する。パネル破棄時に呼び、閉じた後の発火を防ぐ。 */
+  function dispose() {
+    cancelPendingSearch();
+  }
 
   // 全エントリのタグ集合（絞り込みチップ用・出現頻度降順）。
   const allTags = $derived.by(() => {
@@ -40,8 +77,11 @@ export function createVaultView(deps: VaultViewDeps) {
     for (const e of entries) for (const t of e.tags) count.set(t, (count.get(t) ?? 0) + 1);
     return [...count.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
   });
-  // 検索語(name/preview/tags)＋選択タグ(AND)で絞り込んだ一覧。
-  const filteredEntries = $derived.by(() => filterEntries(entries, entrySearch, selectedTags));
+  // 検索語(name/preview/tags)＋選択タグ(AND)で絞り込んだ一覧（件数表示・横断発見はこちらを見る）。
+  const filteredEntries = $derived.by(() => filterEntries(entries, appliedSearch, selectedTags));
+  // 実際に DOM 化する行（#666）。既定は先頭 ENTRY_VISIBLE 件で、残りは展開で辿れる。
+  const visible = $derived.by(() => pickVisible(filteredEntries, ENTRY_VISIBLE, showAllEntries));
+  const hiddenCount = $derived.by(() => countHidden(filteredEntries, ENTRY_VISIBLE));
   // 習慣ナッジ: 記録日の寛容ストリーク(1日サボりまで許容 / #58)。
   const journalStreak = $derived(
     computeStreak(
@@ -65,6 +105,7 @@ export function createVaultView(deps: VaultViewDeps) {
   function openPanel() {
     showEntries = true;
     viewingEntry = null;
+    collapse();
     void load();
   }
 
@@ -72,6 +113,7 @@ export function createVaultView(deps: VaultViewDeps) {
     selectedTags = selectedTags.includes(tag)
       ? selectedTags.filter((t) => t !== tag)
       : [...selectedTags, tag];
+    collapse();
   }
 
   async function openEntry(e: EntrySummary) {
@@ -101,9 +143,16 @@ export function createVaultView(deps: VaultViewDeps) {
     },
     set entrySearch(v: string) {
       entrySearch = v;
+      scheduleSearch();
     },
     get selectedTags() {
       return selectedTags;
+    },
+    get showAllEntries() {
+      return showAllEntries;
+    },
+    set showAllEntries(v: boolean) {
+      showAllEntries = v;
     },
     get viewingEntry() {
       return viewingEntry;
@@ -117,6 +166,12 @@ export function createVaultView(deps: VaultViewDeps) {
     get filteredEntries() {
       return filteredEntries;
     },
+    get visibleEntries() {
+      return visible;
+    },
+    get hiddenEntryCount() {
+      return hiddenCount;
+    },
     get journalStreak() {
       return journalStreak;
     },
@@ -124,6 +179,7 @@ export function createVaultView(deps: VaultViewDeps) {
     openPanel,
     toggleTag,
     openEntry,
+    dispose,
   };
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { kindLabel, parseTags, filterEntries } from "./entry";
+import { kindLabel, parseTags, filterEntries, visibleEntries, hiddenEntryCount } from "./entry";
 
 const E = (name: string, preview: string, tags: string[]) => ({ name, preview, tags });
 const sample = [
@@ -55,5 +55,49 @@ describe("parseTags", () => {
   });
   it("空文字列は空配列", () => {
     expect(parseTags("   ")).toEqual([]);
+  });
+});
+
+describe("visibleEntries / hiddenEntryCount", () => {
+  const rows = Array.from({ length: 5 }, (_, i) => E(`n${i}`, "", []));
+
+  it("showAll=false なら先頭 limit 件だけを返す", () => {
+    expect(visibleEntries(rows, 2, false).map((e) => e.name)).toEqual(["n0", "n1"]);
+  });
+
+  it("並び順を変えない（一覧は既に新しい順で渡される）", () => {
+    expect(visibleEntries(rows, 5, false).map((e) => e.name)).toEqual([
+      "n0",
+      "n1",
+      "n2",
+      "n3",
+      "n4",
+    ]);
+  });
+
+  it("showAll=true なら limit を無視して全件返す", () => {
+    expect(visibleEntries(rows, 2, true)).toHaveLength(5);
+  });
+
+  it("limit が件数以上なら全件返す（切り詰めない）", () => {
+    expect(visibleEntries(rows, 99, false)).toHaveLength(5);
+  });
+
+  it("limit<=0 は 0 件扱い", () => {
+    expect(visibleEntries(rows, 0, false)).toEqual([]);
+    expect(visibleEntries(rows, -1, false)).toEqual([]);
+  });
+
+  it("入力配列を破壊しない", () => {
+    const src = [...rows];
+    visibleEntries(src, 2, false);
+    expect(src.map((e) => e.name)).toEqual(rows.map((e) => e.name));
+  });
+
+  it("hiddenEntryCount は隠れている件数を返す", () => {
+    expect(hiddenEntryCount(rows, 2)).toBe(3);
+    expect(hiddenEntryCount(rows, 5)).toBe(0);
+    expect(hiddenEntryCount(rows, 99)).toBe(0);
+    expect(hiddenEntryCount(rows, -1)).toBe(5);
   });
 });

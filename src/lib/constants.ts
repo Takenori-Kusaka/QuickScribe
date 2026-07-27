@@ -137,5 +137,13 @@ export const DEFAULT_SHORTCUT = "CommandOrControl+Shift+R";
 // 入力ファイルのサイズ上限(MB)。Rust側 lib.rs::MAX_INPUT_BYTES と一致させること（#397）。
 export const MAX_INPUT_MB = 500;
 
+// 保管庫の一覧で一度に描画するエントリ数の上限（#666）。エントリは単調増加するため、
+// 折り畳み既定にして初期描画の DOM 量を一定に保つ。残りは「他 N 件を表示」で全件へ到達できる。
+export const ENTRY_VISIBLE = 50;
+
+// 保管庫の検索入力を絞り込みへ反映するまでの待ち時間(ms)（#666）。
+// 打鍵ごとの全件再フィルタ＋一覧の再描画を抑える。入力欄の表示自体は即時。
+export const ENTRY_SEARCH_DEBOUNCE_MS = 150;
+
 // 対応する音声ファイル形式（ファイル選択フィルタ・UI通知で共用 / S1.6）。
 export const SUPPORTED_AUDIO_EXTS = ["mp3", "wav", "m4a", "flac", "ogg", "opus", "aac"];
