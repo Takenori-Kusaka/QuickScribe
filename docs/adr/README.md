@@ -37,3 +37,4 @@
 | [0031](0031-speaker-diarization-optional-utility.md) | 話者特定を「利用幅拡大の実用オプション」として default-OFF で提供 | Accepted |
 | [0032](0032-content-based-entry-filenames.md) | エントリのファイル名を「日付＋内容由来ラベル」にする（時刻を廃止） | Accepted |
 | [0034](0034-dependency-vulnerability-release-criteria.md) | 依存脆弱性のリリース判定基準（4ソース判定・到達可能性の2軸・受容記録） | **Proposed** |
+| [0035](0035-agent-session-concurrency-control.md) | エージェント並行セッションの排他（worktree 分離＋マシン単位 lock） | **Proposed** |
