@@ -42,6 +42,7 @@ Buzz は**チャンネルごとに ACP セッションを作る**。同じエー
 |---|---|
 | 置き場 | `~/.buzz/.locks/<key>.lock`（**repo の外**。checkout / worktree が複数あっても同じマシンなら同じ lock を見る。ganbari-quest と共有する） |
 | 強制点 | `PreToolUse` hook で取得 / `PostToolUse` hook で解放。matcher は **`Bash|PowerShell`**（PowerShell 経由の実行を素通ししないため） |
+| 登録点 | **オーナー領域 `~/.buzz/.claude/settings.json` に絶対パスで登録**（§4.4）。repo 側 `.claude/settings.json` は補助であり、それだけでは発火しない |
 | 環境変数 | `AGENT_LOCK_DIR` で置き場を差し替え可（テストが実 lock を壊さないため） |
 
 | key | 対象 | 粒度 | TTL |
@@ -61,13 +62,30 @@ Rust: `cargo test` / `cargo build` / `cargo clippy` / `npm run tauri build`
 
 ### §4.3 保持者の生存判定
 
-lock の持ち主は Claude セッションのプロセス（hook から見た `process.ppid`）。
+lock の持ち主は Claude セッションのプロセス。**hook から見た `process.ppid` をそのまま使ってはいけない** — hook は呼び出しごとに終了する短命プロセスであり、その ppid を生存判定に使うと lock が即 stale になる（実測済み）。**重い検証が走っている間ずっと生存しているプロセスの pid を書く**（ADR-0035 D6）。
 
 - 持ち主が死んでいれば lock は stale として**奪える**。セッション断で lock が残り続けることはない
 - TTL は「プロセスは生きているが処理が終わらない」場合の保険であり、生存判定の代替ではない
 - 同じセッションからの再取得は成功する（再入可能）
 
-### §4.4 判定できないときは通さない（fail closed）
+**`heavy.lock` は ganbari-quest の独立実装と同じファイルを共有している。** ganbari-quest 側は `ownerPid` の生存**だけ**で stale を判定する。短命 pid を書くと、**こちらが保持している最中に向こうから奪われる**（＝重い検証が並走する）。lock の書式・失効判定を変えるときは、**必ず両方向を実測する**（[受入基準 R20](../specs/agent-session-concurrency/requirements.md)）。
+
+### §4.4 登録点 — リポジトリに置くだけでは効かない
+
+**Buzz エージェントのセッションの cwd は `C:\Users\kokor\.buzz` であり、リポジトリ root ではない。** そのため:
+
+- `E:/Github/QuickScribe/.claude/settings.json` は project 設定として**読まれない**
+- 相対パス登録（`node .claude/hooks/heavy-run-lock.mjs`）は `~/.buzz` 基準で解決され、**存在しないファイルを指す**
+
+→ **登録の正はオーナー領域 `~/.buzz/.claude/settings.json`**、コマンドは**絶対パス**。repo 側にも置くが、それは cwd が repo root になる起動経路（人間の直接起動）のための補助である。
+
+**帰結として、この仕組みは merge では有効化されない。** オーナーがオーナー領域の設定を更新し、絶対パスの指す本体クローン（`E:/Github/QuickScribe`）を最新にした時点で初めて効く。**「PR が merge された = 効いている」と読まないこと。**
+
+**判定パターンや hook を更新したときも同じ。** worktree や branch を更新しただけでは登録先の実体は変わらない。**本体クローンを更新するまで、古い hook が動き続ける。**
+
+**影響範囲は QuickScribe を超える。** オーナー領域の登録は cwd が `~/.buzz` である**全 Buzz セッション**（ganbari-quest 系エージェントを含む）で発火する。QuickScribe の hook の不具合が他プロダクトのエージェントを止めうるため、**変更時は ganbari-quest 形状のコマンドでの誤爆も確認する。**
+
+### §4.5 判定できないときは通さない（fail closed）
 
 lock ディレクトリが読めない、lock ファイルが壊れている等、**排他が成立しているか判定できない**状態では block する。判定できないまま重い検証を走らせると、汚染された結果を根拠に使ってしまう。
 
