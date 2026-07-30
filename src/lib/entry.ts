@@ -48,6 +48,25 @@ export function filterEntries<T extends FilterableEntry>(
 }
 
 /**
+ * 一覧に実際に描画するエントリ（純粋 / #666）。showAll=false のときは先頭 limit 件へ絞り、
+ * エントリが単調増加しても初期描画の DOM 量が一定に保たれるようにする（残りは「他 N 件を表示」で展開）。
+ * 並び順は変えない（呼び出し側が既に新しい順で渡す契約）。limit<=0 は 0 件扱い。
+ * @param entries 絞り込み済みのエントリ配列（破壊しない）。
+ * @param limit 折り畳み時に描画する最大件数。
+ * @param showAll true なら limit を無視して全件返す。
+ * @returns 描画対象のエントリを含む新しい配列。
+ */
+export function visibleEntries<T>(entries: T[], limit: number, showAll: boolean): T[] {
+  if (showAll) return [...entries];
+  return entries.slice(0, Math.max(0, limit));
+}
+
+/** 折り畳み時に隠れているエントリ数（「他 N 件を表示」バッジ用 / #666）。0 以下は隠れなし。 */
+export function hiddenEntryCount<T>(entries: T[], limit: number): number {
+  return Math.max(0, entries.length - Math.max(0, limit));
+}
+
+/**
  * 入力文字列をタグ配列へ変換する。
  * カンマ/全角カンマ/空白区切り、前後空白除去、先頭の # 除去、空・重複は除く。
  * @param s ユーザー入力のタグ文字列。
