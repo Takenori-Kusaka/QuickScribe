@@ -35,6 +35,8 @@ multiple-versions = "allow"
 [advisories]
 # RUSTSEC-2024-0429: glib 0.18 の unsoundness 警告。Tauri の Webkit2GTK 依存（GTK3）が
 # glib 0.18 を必要とするためアップグレード不可。Issue #686 にて計画的追跡中。再評価期限 2026-10-31。
+unmaintained = "none"
+notice = "none"
 ignore = [
     "RUSTSEC-2024-0429",
 ]
