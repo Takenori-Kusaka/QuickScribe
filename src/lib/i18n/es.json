@@ -192,7 +192,9 @@
     "loading": "Cargando…",
     "empty": "Aún no hay entradas. Grabar y refinar las guardará en tu diario.",
     "no_match": "Ninguna entrada coincide con tu filtro.",
-    "title_viewing": "Diario: {name}"
+    "title_viewing": "Diario: {name}",
+    "show_all": "Mostrar {n} más",
+    "collapse": "Contraer"
   },
   "results": {
     "transcript": "Transcripción",

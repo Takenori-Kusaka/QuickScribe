@@ -311,7 +311,8 @@ describe("App.svelte ジャーナル検索", () => {
     expect(await screen.findByText("プレビュー本文")).toBeInTheDocument();
     const search = (await screen.findByLabelText(/検索/)) as HTMLInputElement;
     await fireEvent.input(search, { target: { value: "存在しない語XYZ" } });
-    expect(screen.queryByText("プレビュー本文")).not.toBeInTheDocument();
+    // 絞り込みはデバウンス後に反映される(#666)。打鍵直後ではなく反映を待って検証する。
+    await waitFor(() => expect(screen.queryByText("プレビュー本文")).not.toBeInTheDocument());
   });
 });
 
