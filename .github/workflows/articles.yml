@@ -1,30 +1,28 @@
 name: Articles
 
 # 技術記事の校正・図生成の品質ゲート（発信は Zenn 一本。Qiita は不採用）。
-# - textlint（preset-ja-technical-writing）で books/（連載＝Zenn Book の章）の日本語校正を
-#   ゼロエラー必須にする。単発記事を置く場合は articles/ も対象。
+# - textlint（preset-ja-technical-writing）で zenn-content/books/（連載＝Zenn Book の章）の日本語校正を
+#   ゼロエラー必須にする。単発記事を置く場合は zenn-content/articles/ も対象。
 # - C4 図（docs/architecture/*.dsl）を Structurizr CLI → C4-PlantUML → 決定的 PNG に書き出し、
-#   Zenn 作法で参照する images/c4/ を最新化する（決定的なので通常は差分ゼロ＝churnしない）。
+#   Zenn 作法で参照する zenn-content/images/c4/ を最新化する（決定的なので通常は差分ゼロ＝churnしない）。
 # - クラス図・ER 図は Mermaid をインラインで書き、Zenn/GitHub が直接描画する（画像生成は不要）。
 # 方針の詳細: docs/process/article-publishing-policy.md
 
 on:
   pull_request:
     paths:
-      - "books/**"
-      - "articles/**"
+      - "zenn-content/books/quickscribe-design/**"
       - "docs/architecture/**"
-      - "images/c4/**"
+      - "zenn-content/images/c4/**"
       - "scripts/render-structurizr.mjs"
       - ".textlintrc.json"
       - ".github/workflows/articles.yml"
   push:
     branches: [main]
     paths:
-      - "books/**"
-      - "articles/**"
+      - "zenn-content/books/quickscribe-design/**"
       - "docs/architecture/**"
-      - "images/c4/**"
+      - "zenn-content/images/c4/**"
       - "scripts/render-structurizr.mjs"
       - ".github/workflows/articles.yml"
   workflow_dispatch:
@@ -39,6 +37,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
       - uses: actions/setup-node@v6
         with:
           node-version: 20
@@ -56,18 +56,16 @@ jobs:
     # sebastienfi/structurizr-github-actions-demo.
     #   structurizr.sh export -format plantuml  ->  plantuml -tpng  ->  DETERMINISTIC PNG
     # PNGs are byte-identical for unchanged DSL (Graphviz layout, no random IDs), so we
-    # render on both PR and main and commit ONLY when the bytes actually change => no churn.
-    # The job goes red only when a .dsl fails to render (e.g. a DSL syntax error).
+    # render on both PR and main and fail if there is any uncommitted change in the submodule.
+    # The job goes red only when a .dsl fails to render or diagrams are out of sync.
     container: ghcr.io/sebastienfi/structurizr-cli-with-bonus:latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v7
         with:
-          # Check out the PR branch itself (not the detached merge ref) so we can push
-          # regenerated images back to it. On main pushes this resolves to main.
+          # Check out the PR branch itself (not the detached merge ref)
           ref: ${{ github.head_ref || github.ref_name }}
           token: ${{ secrets.GITHUB_TOKEN }}
+          submodules: recursive
       - uses: actions/setup-node@v6
         with:
           node-version: 20
@@ -85,20 +83,20 @@ jobs:
       - name: Render DSL to deterministic PNGs (structurizr -> plantuml)
         # A DSL syntax error makes this exit non-zero -> the check goes red.
         run: npm run structurizr
-      - name: Commit images when they changed (deterministic => usually no-op)
+      - name: Check for image changes
         run: |
           # The container's structurizr.sh is at /usr/local/structurizr-cli; the checkout
           # dir is owned by a different uid, so mark it safe for git.
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Stage first, then test the STAGED diff so brand-new (untracked) images count.
+          
+          # Check for changes in the zenn-content submodule
+          cd zenn-content
           git add images/c4/
           if git diff --cached --quiet; then
-            echo "No image change (deterministic PNGs unchanged); nothing to commit."
+            echo "All C4 diagrams are up to date!"
           else
-            # No [skip ci]: this image-only commit re-triggers CI, whose render is
-            # deterministic and produces no further diff, so checks go green on HEAD.
-            git commit -m "docs(diagrams): regenerate structurizr C4 diagrams"
-            git push
+            echo "ERROR: C4 diagrams are out of sync with the docs/architecture/*.dsl changes!"
+            echo "Please run 'npm run structurizr' locally, commit the updated images inside the zenn-content submodule, and commit the updated submodule reference in this repository."
+            git diff --cached --stat
+            exit 1
           fi

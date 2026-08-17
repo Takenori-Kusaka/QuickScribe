@@ -58,6 +58,14 @@ updates:
           - "vite"
           - "vitest"
           - "svelte*"
+    ignore:
+      # TypeScript 7.0+ (major bump) は、Svelte-check、Viteプラグイン、typescript-eslint などの
+      # 主要開発ツールのバージョン制約と非互換なため、ビルドおよび型チェックを破損させます。
+      # このため、typescript のメジャーバージョンアップを抑止します。
+      # ★解除条件: 主要エコシステムツールが TypeScript 7.x への対応を公表した時点で、この ignore を解除します。
+      - dependency-name: "typescript"
+        update-types:
+          - "version-update:semver-major"
 
   # GitHub Actions（ワークフローのアクション更新）
   - package-ecosystem: "github-actions"

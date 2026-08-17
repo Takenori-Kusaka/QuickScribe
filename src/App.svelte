@@ -7,7 +7,7 @@
   import { createDeviceStatus } from "./lib/device-status.svelte";
   import { createCustomStyles } from "./lib/custom-styles.svelte";
   import { createPrivacy } from "./lib/privacy.svelte";
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { estimateRemaining, formatRemaining } from "./lib/note";
   import { parseCorrections, applyCorrections, type Correction } from "./lib/corrections";
   import { detectSpeakers, buildSpeakerRenames } from "./lib/speakers";
@@ -129,6 +129,8 @@
   // lib/vault-view.svelte.ts へ集約(#392)。App は error への書き戻しのみ受け持つ。
   // 横断発見(discovery)は整形設定に依存するため下記で App 側に残す。
   const vault = createVaultView({ t: $_, onError: (m) => (error = m) });
+  // 検索デバウンスの保留タイマーを破棄する(#666)。破棄後に発火させない。
+  onDestroy(() => vault.dispose());
 
   // 横断発見（S4.3 Phase2）。絞り込んだ過去エントリ群をAIで読み解く。
   const DISCOVERY_INSTRUCTION = [
@@ -1590,8 +1592,11 @@
             {vault.entries.length === 0 ? $_("vault.empty") : $_("vault.no_match")}
           </p>
         {:else}
+          <!-- 既定は先頭 ENTRY_VISIBLE 件のみ描画(#666)。エントリは単調増加するため、
+               全件を一度に DOM 化すると使い込むほど初期描画が重くなる。残りは「他 N 件を表示」で辿れる。
+               キー(e.path)を与えて絞り込み変更時の DOM 差分を最小化する。 -->
           <ul class="entry-list">
-            {#each vault.filteredEntries as e}
+            {#each vault.visibleEntries as e (e.path)}
               <li>
                 <button type="button" class="entry-item" onclick={() => vault.openEntry(e)}>
                   <div class="entry-meta">
@@ -1600,7 +1605,7 @@
                   </div>
                   {#if e.tags.length > 0}
                     <div class="entry-tags">
-                      {#each e.tags as t}<span class="entry-tag">#{t}</span>{/each}
+                      {#each e.tags as t (t)}<span class="entry-tag">#{t}</span>{/each}
                     </div>
                   {/if}
                   <div class="entry-preview">{e.preview}</div>
@@ -1608,6 +1613,18 @@
               </li>
             {/each}
           </ul>
+          {#if vault.hiddenEntryCount > 0}
+            <button
+              type="button"
+              class="jobs-more"
+              onclick={() => (vault.showAllEntries = !vault.showAllEntries)}
+              aria-expanded={vault.showAllEntries}
+            >
+              {vault.showAllEntries
+                ? $_("vault.collapse")
+                : $_("vault.show_all", { values: { n: vault.hiddenEntryCount } })}
+            </button>
+          {/if}
         {/if}
       {/if}
     </div>
