@@ -5,6 +5,35 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [1.10.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.9.0...v1.10.0) (2026-08-17)
+
+
+### ✨ 新機能 / Features
+
+* **perf:** アイドルCPU使用率を計測指標として追加 (Linux CI + Windows実機手順) ([#669](https://github.com/Takenori-Kusaka/QuickScribe/issues/669)) ([c5f2109](https://github.com/Takenori-Kusaka/QuickScribe/commit/c5f21092d55f4243ce23b440dc7e27f66a099501))
+
+
+### 🐛 修正 / Bug Fixes
+
+* **perf:** アイドルCPUの観測窓を10秒1点から10秒×6区間に分割する ([#678](https://github.com/Takenori-Kusaka/QuickScribe/issues/678)) ([#679](https://github.com/Takenori-Kusaka/QuickScribe/issues/679)) ([2662430](https://github.com/Takenori-Kusaka/QuickScribe/commit/2662430b600372d796da339cefb8db82c86d9ec4))
+
+
+### ⚡ パフォーマンス / Performance
+
+* **record:** 音声保存OFF時に未使用の原音をRAMへ抱えない ([#663](https://github.com/Takenori-Kusaka/QuickScribe/issues/663)) ([#668](https://github.com/Takenori-Kusaka/QuickScribe/issues/668)) ([77bd6ed](https://github.com/Takenori-Kusaka/QuickScribe/commit/77bd6ed01ccd9d624b477c1eb544abde1b76b25a))
+* **vault:** list_entries でエントリ全文を読まない ([#665](https://github.com/Takenori-Kusaka/QuickScribe/issues/665)) ([#670](https://github.com/Takenori-Kusaka/QuickScribe/issues/670)) ([23b2e8a](https://github.com/Takenori-Kusaka/QuickScribe/commit/23b2e8a2c2f8a37f688645bc22f610ed437fdddb))
+* **vault:** エントリ一覧を段階表示にし検索をデバウンスする ([#673](https://github.com/Takenori-Kusaka/QuickScribe/issues/673)) ([eeeb85b](https://github.com/Takenori-Kusaka/QuickScribe/commit/eeeb85be3a5913e0b933a047997cd8aad19416bc))
+
+
+### 📝 ドキュメント / Docs
+
+* **adr:** ADR-0033 トレイ常駐時に WebView2 を保持する決定を明文化 ([#675](https://github.com/Takenori-Kusaka/QuickScribe/issues/675)) ([21b12c8](https://github.com/Takenori-Kusaka/QuickScribe/commit/21b12c8b76242868b82b35f71b79c911a603aa78))
+* **adr:** ADR-0034 に「写してよい数字と写してはいけない数字」を足す ([#526](https://github.com/Takenori-Kusaka/QuickScribe/issues/526)) ([cb32e8b](https://github.com/Takenori-Kusaka/QuickScribe/commit/cb32e8b6a26f67e233987a00d88353b6bebc0dc8))
+* **adr:** ADR-0034 依存脆弱性のリリース判定基準を起草する ([#526](https://github.com/Takenori-Kusaka/QuickScribe/issues/526)) ([3bda351](https://github.com/Takenori-Kusaka/QuickScribe/commit/3bda351499fc3ab1165e34320117a5cc350783e7))
+* **adr:** ADR-0034 実装項目 a に npm override の実例を足す ([#683](https://github.com/Takenori-Kusaka/QuickScribe/issues/683)) ([f1119a2](https://github.com/Takenori-Kusaka/QuickScribe/commit/f1119a2178d397c427397a00897c545b343018ed)), closes [#526](https://github.com/Takenori-Kusaka/QuickScribe/issues/526)
+* **adr:** ADR-0035 エージェント並行セッションの排他を起草する ([#680](https://github.com/Takenori-Kusaka/QuickScribe/issues/680)) ([#681](https://github.com/Takenori-Kusaka/QuickScribe/issues/681)) ([5705b06](https://github.com/Takenori-Kusaka/QuickScribe/commit/5705b06b76bc7ec5abb2dfd82e971e048dbf7db8))
+* **migration:** migrate Zenn content to zenn-content submodule ([#691](https://github.com/Takenori-Kusaka/QuickScribe/issues/691)) ([892a4d7](https://github.com/Takenori-Kusaka/QuickScribe/commit/892a4d7371249fccea8a1999dfcbc9142ca2d6fb))
+
 ## [1.11.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.9.0...v1.11.0) (2026-07-30)
 
 
