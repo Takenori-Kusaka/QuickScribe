@@ -37,8 +37,8 @@ multiple-versions = "allow"
 # bundler/ビルド系)経由の推移的依存で、QuickScribe は実行時に未信頼XML/plistを解析しない
 # ため攻撃経路に非該当。再評価期限は 2026-10-31 (ADR-0034)。
 vulnerability = "deny"
-unmaintained = "warn"
-notice = "warn"
+unmaintained = "all"
+notice = "all"
 ignore = [
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",
