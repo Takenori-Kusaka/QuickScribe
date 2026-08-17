@@ -88,7 +88,7 @@ jobs:
           # The container's structurizr.sh is at /usr/local/structurizr-cli; the checkout
           # dir is owned by a different uid, so mark it safe for git.
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          
+
           # Check for changes in the zenn-content submodule
           cd zenn-content
           git add images/c4/

@@ -23,6 +23,7 @@
     "screenshots": "playwright test",
     "demo:gif": "node scripts/make-demo-gif.mjs",
     "licenses": "node scripts/generate-frontend-notices.cjs",
+    "lint:ci": "npm run lint && npm run lint:css && npm run format:check && npm run docs:check && npm run licenses && git diff --exit-code THIRD-PARTY-NOTICES-frontend.md",
     "metrics": "node scripts/release-metrics.mjs",
     "icons": "tauri icon assets/brand/icon-source.png",
     "tauri": "tauri"
