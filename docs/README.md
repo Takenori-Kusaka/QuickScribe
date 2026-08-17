@@ -49,6 +49,7 @@
 | [process/distribution-and-signing.md](process/distribution-and-signing.md) | 配布とコード署名 |
 | [process/windows-local-rust-build.md](process/windows-local-rust-build.md) | Windows ローカル Rust ビルド手順 |
 | [process/demo-screenshot.md](process/demo-screenshot.md) | デモ GIF・スクリーンショット生成 |
+| [process/agent-session-concurrency.md](process/agent-session-concurrency.md) | エージェント並行セッションの分離と排他（worktree 規約・lock 運用） |
 
 ## 6. ユーザー向けガイド・マーケティング
 

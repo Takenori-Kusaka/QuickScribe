@@ -25,6 +25,7 @@ QuickScribe は **思考整理・自己理解のためのローカル完結ボ�
 - 低リスクな計画/ドキュメントは `main` へ直接コミット可。
 - コミットは Conventional Commits（`feat:` `fix:` `docs:` `test:` `refactor:` `chore:`）。
 - すべてのコミット末尾に Co-Authored-By トレーラを付与。
+- **複数の AI セッションが同一マシンで並走する前提**で作業する。ファイルを変更する作業はチャンネル専用 worktree で行い、重い検証は排他する（[docs/process/agent-session-concurrency.md](docs/process/agent-session-concurrency.md) / [ADR-0035](docs/adr/0035-agent-session-concurrency-control.md)）。
 
 ## 駆動開発の方針（形だけにしない）
 

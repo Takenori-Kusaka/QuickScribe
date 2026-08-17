@@ -38,3 +38,4 @@
 | [0032](0032-content-based-entry-filenames.md) | エントリのファイル名を「日付＋内容由来ラベル」にする（時刻を廃止） | Accepted |
 | [0033](0033-keep-webview2-alive-in-tray.md) | トレイ常駐時に WebView2 を破棄せず保持する（常駐メモリ約195MBの受容） | Proposed |
 | [0034](0034-dependency-vulnerability-release-criteria.md) | 依存脆弱性のリリース判定基準（4ソース判定・到達可能性の2軸・受容記録） | **Proposed** |
+| [0035](0035-agent-session-concurrency-control.md) | エージェント並行セッションの排他（worktree 分離＋マシン単位 lock） | **Proposed** |

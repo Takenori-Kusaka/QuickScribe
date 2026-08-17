@@ -37,7 +37,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC_DIR = join(repoRoot, "docs", "architecture");
-const OUT_DIR = join(repoRoot, "images", "c4");
+const OUT_DIR = join(repoRoot, "zenn-content", "images", "c4");
 
 const check = process.argv.includes("--check");
 

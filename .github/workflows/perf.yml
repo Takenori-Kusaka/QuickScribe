@@ -5,6 +5,17 @@ name: perf-bench
 # 手動(workflow_dispatch)＋リリース公開時に実行。CI(PR)は重くしないため分離。
 on:
   workflow_dispatch:
+    inputs:
+      only:
+        # #678 の観測を「待つ」のではなく「買う」ためのバッチ実行用(PO 決定)。
+        # startup-time は 1 本 warm 約 5.5 分 / cold 約 8 分だが、dispatch は既定で
+        # transcribe-rtf / ja-accuracy / ja-cer-corpus も道連れにする(後者2つは
+        # large-v3-turbo や Common Voice を DL する重量ジョブ)。20 本回すなら
+        # startup-time だけに絞れないとコストが桁で変わる。
+        description: "実行するジョブ (all=従来どおり全部 / startup-time=起動時間ジョブのみ)"
+        type: choice
+        options: [all, startup-time]
+        default: all
   release:
     types: [published]
 
@@ -335,6 +346,11 @@ jobs:
             done
             echo "$total"
           }
+          # 使用率(%) = (消費CPU秒 / 経過実時間秒) * 100。1コア基準（100% = 1コア占有）。
+          cpu_pct() {
+            awk -v d="$1" -v hz="$2" -v ns="$3" \
+              'BEGIN{ e = ns / 1000000000; if (e <= 0 || hz <= 0) { print "n/a"; exit } printf "%.2f", (d / hz) / e * 100 }'
+          }
           LOG="$HOME/.local/share/QuickScribe/logs/perf-startup.txt"
           rm -f "$LOG"
           # ヘッドレス表示で起動 → onMount で report_startup が LOG を書く → 回収 → 終了。
@@ -347,37 +363,159 @@ jobs:
             # 数秒おいて落ち着かせてから「アイドル」を観測する(#664)。
             sleep 3
             CLK_TCK=$(getconf CLK_TCK)
-            CPU_T0=$(app_cpu_ticks); NS0=$(date +%s%N)
-            # アイドル時メモリ(#403): ready 後にアプリ実プロセスの RSS を数回サンプルし最大値を採る。
-            # xvfb-run の子として動く実体(quickscribe)を名前で拾う（APP_PID は xvfb-run のラッパ）。
+            # 観測窓を SEG_SEC 秒 × SEG_COUNT 区間に分割して区間ごとに出す(#678)。
+            # 10 秒の1点測りでは同一コミット(c5f2109)で 8.78 / 4.05 / 5.72 % と 2.2 倍振れ、
+            # 回帰ゲートの閾値を置けなかった。
+            # 区間別に出せば「起動処理の残りを窓が掴んでいる(第1区間だけ高い)」のか
+            # 「xvfb の WebKitGTK が定常的に焼いている(全区間横ばい)」のかを1ランで区別できる。
+            # 第1区間は従来と同じ定義(settle 3 秒 + 10 秒窓)なので、過去の実測と直接比較できる。
+            SEG_COUNT=6
+            SEG_SEC=10
+            SEG_ROWS=/tmp/idle-cpu-segments.md
+            : > "$SEG_ROWS"
             PEAK_RSS_KB=0
-            for _ in $(seq 1 10); do
-              RSS_KB=$(ps -C quickscribe -o rss= 2>/dev/null | sort -n | tail -1 | tr -d ' ')
-              [ -n "$RSS_KB" ] && [ "$RSS_KB" -gt "$PEAK_RSS_KB" ] && PEAK_RSS_KB=$RSS_KB
-              sleep 1
+            # 起動処理の残りを含まない RSS も別に採る(#678)。CPU と同じ理由で
+            # 第1区間のピークは「アイドル」ではないため。既存の全窓ピークは定義を変えずに残し、
+            # どちらを一次指標にするかは ADR-0033(RSS の計測対象を見直す PR)と合わせて決める。
+            PEAK_RSS_STEADY_KB=0
+            TOTAL_TICKS=0; TOTAL_NS=0
+            STEADY_TICKS=0; STEADY_NS=0
+            SEG1_PCT="n/a"
+            CPU_T0=$(app_cpu_ticks); NS0=$(date +%s%N)
+            for seg in $(seq 1 "$SEG_COUNT"); do
+              # アイドル時メモリ(#403): 窓全体を通してアプリ実プロセスの RSS をサンプルし最大値を採る。
+              # xvfb-run の子として動く実体(quickscribe)を名前で拾う（APP_PID は xvfb-run のラッパ）。
+              for _ in $(seq 1 "$SEG_SEC"); do
+                RSS_KB=$(ps -C quickscribe -o rss= 2>/dev/null | sort -n | tail -1 | tr -d ' ')
+                if [ -n "$RSS_KB" ]; then
+                  if [ "$RSS_KB" -gt "$PEAK_RSS_KB" ]; then PEAK_RSS_KB=$RSS_KB; fi
+                  if [ "$seg" -gt 1 ] && [ "$RSS_KB" -gt "$PEAK_RSS_STEADY_KB" ]; then PEAK_RSS_STEADY_KB=$RSS_KB; fi
+                fi
+                sleep 1
+              done
+              CPU_T1=$(app_cpu_ticks); NS1=$(date +%s%N)
+              SEG_TICKS=$((CPU_T1 - CPU_T0)); SEG_NS=$((NS1 - NS0))
+              SEG_PCT=$(cpu_pct "$SEG_TICKS" "$CLK_TCK" "$SEG_NS")
+              echo "idle cpu seg${seg}: ticks=${SEG_TICKS} clk_tck=${CLK_TCK} window_ns=${SEG_NS} pct=${SEG_PCT}"
+              echo "| ${seg} | $(( (seg - 1) * SEG_SEC ))–$(( seg * SEG_SEC )) s | ${SEG_TICKS} | ${SEG_PCT} % |" >> "$SEG_ROWS"
+              TOTAL_TICKS=$((TOTAL_TICKS + SEG_TICKS)); TOTAL_NS=$((TOTAL_NS + SEG_NS))
+              if [ "$seg" -eq 1 ]; then
+                SEG1_PCT="$SEG_PCT"
+              else
+                # 定常値は第2区間以降。起動処理の残りが混じりうる第1区間を除く。
+                STEADY_TICKS=$((STEADY_TICKS + SEG_TICKS)); STEADY_NS=$((STEADY_NS + SEG_NS))
+              fi
+              CPU_T0=$CPU_T1; NS0=$NS1
             done
-            CPU_T1=$(app_cpu_ticks); NS1=$(date +%s%N)
             kill "$APP_PID" 2>/dev/null || true
             pkill -x quickscribe 2>/dev/null || true
             IDLE_RSS_MB=$(awk -v k="$PEAK_RSS_KB" 'BEGIN{ printf "%.1f", k/1024 }')
-            # 使用率(%) = (消費CPU秒 / 経過実時間秒) * 100。1コア基準（100% = 1コア占有）。
-            IDLE_CPU_PCT=$(awk -v d="$((CPU_T1 - CPU_T0))" -v hz="$CLK_TCK" -v ns="$((NS1 - NS0))" \
-              'BEGIN{ e = ns / 1000000000; if (e <= 0 || hz <= 0) { print "n/a"; exit } printf "%.2f", (d / hz) / e * 100 }')
-            echo "idle cpu: ticks=$((CPU_T1 - CPU_T0)) clk_tck=${CLK_TCK} window_ns=$((NS1 - NS0))"
+            IDLE_RSS_STEADY_MB=$(awk -v k="$PEAK_RSS_STEADY_KB" 'BEGIN{ printf "%.1f", k/1024 }')
+            echo "idle rss: peak_all=${IDLE_RSS_MB}MB peak_steady=${IDLE_RSS_STEADY_MB}MB"
+            IDLE_CPU_PCT=$(cpu_pct "$TOTAL_TICKS" "$CLK_TCK" "$TOTAL_NS")
+            IDLE_CPU_STEADY_PCT=$(cpu_pct "$STEADY_TICKS" "$CLK_TCK" "$STEADY_NS")
+            echo "idle cpu total: ticks=${TOTAL_TICKS} window_ns=${TOTAL_NS} pct=${IDLE_CPU_PCT}"
+            echo "idle cpu steady(seg2-${SEG_COUNT}): ticks=${STEADY_TICKS} window_ns=${STEADY_NS} pct=${IDLE_CPU_STEADY_PCT}"
+            # 回帰ゲート(#664 Phase 3): 定常 CPU が上限を超えたら警告する。
+            # 閾値は workflow にハードコードせず docs/perf/idle-cpu-baseline.json に置く
+            # (ja-cer-baseline.json と同じ運用。更新は PR で明示する)。
+            # limit_pct は独立した運用値であり、実測(observations)から導出しない。
+            # 「実測 max が上がった」は limit_pct を上げる理由にならない — それはゲートが
+            # 仕事をしている状態であって、緩める根拠ではない(idle-cpu-baseline.json の limit_policy)。
+            # 相対ゲートを使わない理由: 定常の Δtick は 50 秒で 4〜10 と 1 tick=10ms の分解能の底にあり、
+            # 4→8 が「+100% 悪化」として発火するが実際は 0.08%→0.16% で何も悪化していない。
+            IDLE_CPU_LIMIT=$(python3 -c "import json;print(json.load(open('docs/perf/idle-cpu-baseline.json',encoding='utf-8'))['limit_pct'])")
+            IDLE_CPU_WARN=$(python3 -c "import json;print(json.load(open('docs/perf/idle-cpu-baseline.json',encoding='utf-8'))['early_warning_pct'])")
+            IDLE_CPU_OBS_MAX=$(python3 -c "import json;print(json.load(open('docs/perf/idle-cpu-baseline.json',encoding='utf-8'))['observations']['max_pct'])")
+            if ! echo "$IDLE_CPU_STEADY_PCT" | grep -qE '^[0-9]+(\.[0-9]+)?$'; then
+              # cpu_pct が n/a を返した場合（経過時間や CLK_TCK が取れない）。
+              # awk の v+0 は n/a を 0 に潰すので、明示的に弾かないとゲートが黙って通る。
+              IDLE_CPU_VERDICT="⚠️ 計測不能"
+              echo "::warning title=アイドルCPU計測不能::定常値が数値でない (${IDLE_CPU_STEADY_PCT})。ゲート判定を行えない"
+            elif awk -v v="$IDLE_CPU_STEADY_PCT" -v l="$IDLE_CPU_LIMIT" 'BEGIN{ exit !(v+0 > l+0) }'; then
+              IDLE_CPU_VERDICT="⚠️ 回帰"
+              echo "::warning title=アイドルCPU回帰::定常 ${IDLE_CPU_STEADY_PCT}% が上限 ${IDLE_CPU_LIMIT}% を超過"
+            elif awk -v v="$IDLE_CPU_STEADY_PCT" -v w="$IDLE_CPU_WARN" 'BEGIN{ exit !(v+0 > w+0) }'; then
+              # 早期警戒線(= 上限の 1/2)。分解能ノイズでは説明が付かない水準なので、
+              # 上限を上げずに「何が常駐し始めたか」を調べる合図として出す。
+              # ただし単発では調査に入らない(idle-cpu-baseline.json の early_warning_escalation)。
+              # tick はカウントデータで、現在の散らばり(4〜10 tick/50秒)なら 11〜13 tick が
+              # 何も変わらずに出ることは起こり得る。持続性 —「連続 2 本」または「直近 10 本中 3 本」—
+              # を observations.samples(時系列) + 今回値の系列で判定する。
+              IDLE_CPU_ESC=$(IDLE_CUR="$IDLE_CPU_STEADY_PCT" python3 -c "import json,os;d=json.load(open('docs/perf/idle-cpu-baseline.json',encoding='utf-8'));w=d['early_warning_pct'];s=[x['pct'] for x in d['observations']['samples']]+[float(os.environ['IDLE_CUR'])];o=[v>w for v in s];print('investigate' if ((len(o)>=2 and o[-1] and o[-2]) or sum(o[-10:])>=3) else 'record')")
+              if [ "$IDLE_CPU_ESC" = "investigate" ]; then
+                IDLE_CPU_VERDICT="🚨 早期警戒線超過（調査）"
+                echo "::warning title=アイドルCPU早期警戒(調査)::定常 ${IDLE_CPU_STEADY_PCT}% が早期警戒線 ${IDLE_CPU_WARN}% を超過し、持続性の条件(連続2本 or 直近10本中3本)を満たした。上限を緩めず原因を調べること"
+              else
+                IDLE_CPU_VERDICT="⚠️ 早期警戒線超過（記録のみ）"
+                echo "::warning title=アイドルCPU早期警戒(記録のみ)::定常 ${IDLE_CPU_STEADY_PCT}% が早期警戒線 ${IDLE_CPU_WARN}% を超過。単発のため調査には入らない。observations.samples に追記すること"
+              fi
+            else
+              IDLE_CPU_VERDICT="✅"
+            fi
             {
               echo "# QuickScribe 起動時間・アイドル資源 (Linux x64 / xvfb)"
               echo ""
               echo "| 指標 | 値 |"
               echo "|---|---|"
               echo "| **起動時間 (run()→UI ready)** | **${MS} ms** |"
-              echo "| **アイドル時メモリ (アプリ実体 RSS)** | **${IDLE_RSS_MB} MB** |"
-              echo "| **アイドル時 CPU (アプリ実体 + WebKit 子)** | **${IDLE_CPU_PCT} %** |"
+              echo "| **アイドル時メモリ — 定常 (第2〜${SEG_COUNT}区間のピーク / 一次指標)** | **${IDLE_RSS_STEADY_MB} MB** |"
+              echo "| アイドル時メモリ — 起動時ピーク (全窓 / 参考・#678 調査用) | ${IDLE_RSS_MB} MB |"
+              echo "| **アイドル時 CPU — 定常 (第2〜${SEG_COUNT}区間 / $(( (SEG_COUNT - 1) * SEG_SEC )) 秒窓)** | **${IDLE_CPU_STEADY_PCT} %** |"
+              echo "| アイドル時 CPU — 全窓 ($(( SEG_COUNT * SEG_SEC )) 秒) | ${IDLE_CPU_PCT} % |"
+              echo "| アイドル時 CPU — 第1区間 (旧定義・過去比較用) | ${SEG1_PCT} % |"
+              echo ""
+              echo "## アイドル CPU の区間別内訳"
+              echo ""
+              echo "| 区間 | 経過 (settle 後) | Δtick | CPU (1コア基準) |"
+              echo "|---|---|---|---|"
+              cat "$SEG_ROWS"
+              echo ""
+              echo "## 回帰チェック（定常アイドル CPU）"
+              echo ""
+              echo "| 実測 (定常) | 早期警戒線 | 上限 | 判定 |"
+              echo "|---|---|---|---|"
+              echo "| ${IDLE_CPU_STEADY_PCT} % | ${IDLE_CPU_WARN} % | ${IDLE_CPU_LIMIT} % | ${IDLE_CPU_VERDICT} |"
+              echo ""
+              echo "_過去の観測記録: N=$(python3 -c "import json;print(json.load(open('docs/perf/idle-cpu-baseline.json',encoding='utf-8'))['observations']['n'])") / max ${IDLE_CPU_OBS_MAX} %（参考値。**上限はここから導出しない**）。_"
+              echo ""
+              echo "_早期警戒線 ${IDLE_CPU_WARN} % を超えても、**単発では調査に入らない**（記録のみ）。**連続 2 本**または**直近 10 本中 3 本**で「調査」に上がる。2 つ目の条件は、間欠的な事象（2 回に 1 回だけ跳ねる回帰）を連続条件だけでは永久に拾えないため。**この持続性条件は調査の起動条件であって、0.25 % という水準の意味は変えていない** — 単発が鳴ることを理由に警戒線を上げてはならない。_"
+              echo ""
+              echo "_判定に使う時系列は \`idle-cpu-baseline.json\` の \`observations.samples\`（時系列順）＋今回値。**samples は現状 PR で人が追記する**ため、追記されるまで「連続 2 本」は成立しない。CI 側で系列を自動収集する形は #664 Phase 3 の段1（push:main）を入れる PR で扱う。_"
+              echo ""
+              echo "_基準は docs/perf/idle-cpu-baseline.json。**上限 ${IDLE_CPU_LIMIT} % は独立した運用値で、実測が動いても付け替えない**（実測 max の上昇は上限を緩める理由にならない）。**観測窓の定義を変えたら必ず再校正すること**（窓が変われば値の意味が変わる）。_"
               echo ""
               echo "_注: 起動時間=run 入口→フロント onMount。アイドルRSS=ready 後のアプリ実プロセス(quickscribe)のピーク RSS。_"
-              echo "_アイドルCPU=ready+3秒後から10秒間の (utime+stime) 増分 / 経過実時間。1コア基準(100%=1コア占有)。_"
+              echo "_RSS の一次指標は「定常」（第1区間を除いたピーク）。起動処理中の一過性ピークを NFR の判定に使うと、CPU で起きたのと同じ誤りを繰り返すため。全窓ピークは「起動時ピーク」として併記し、150.9〜230.4 MB と 1.5 倍振れる二峰性（#678・原因未特定）の調査データに使う。**RSS の回帰ゲートは #678 の解決後に置く**（原因未解明の振れの上に置けば偽陽性になる）。_"
+              echo "_アイドルCPU=ready+3秒後から ${SEG_SEC} 秒 × ${SEG_COUNT} 区間の (utime+stime) 増分 / 経過実時間。1コア基準(100%=1コア占有)。CLK_TCK=${CLK_TCK}。_"
+              echo "_**回帰の判定には「定常」を使う。** 第1区間は起動処理の残りを掴みうるため参考値（旧 10 秒窓と同じ定義）。_"
               echo "_計測対象は quickscribe と WebKit(WebProcess|NetworkProcess)。ヘッドレス表示(xvfb)。_"
               echo ""
               echo "_Windows 限定コード(タスクバーウィジェット等)は本ジョブに現れない。Windows 側の計測は #664 Phase 2 を参照。_"
+              echo ""
+              # 計測環境のフィンガープリント(#678)。RSS 全窓ピークの二峰性(~151MB / ~223-230MB)は
+              # アプリ側・計測側の差分では説明できないことが確定している(app のソースは全ランで同一、
+              # 全窓ピークの採取ロジックも f5836a3 以降不変、ランナーイメージも同一)。残る候補は
+              # 実行 VM の個体差なので、突き合わせられるように毎ランで記録する。
+              # 高い峰が出た 2 本はどちらも Azure westus だった(ログの Azure Region による。N=11 中
+              # westus は 3 本で、うち 2 本が高い峰)。**相関の主張ではなく、突き合わせるためのデータ。**
+              echo "## 計測環境（#678 の突き合わせ用）"
+              echo ""
+              echo "| 項目 | 値 |"
+              echo "|---|---|"
+              # 注意: $ImageOS/$ImageVersion(env) と、ジョブログ冒頭の "Runner Image" グループが
+              # 出す Image/Version は**別の値**である。同一ランで env が ubuntu22/20260720.234.2、
+              # ジョブログが ubuntu-22.04/20260707.563 になることを実測で確認した(run 30225093258)。
+              # run 1-11 の「イメージ同一」の判定はジョブログ側の値で行っている。
+              # **突き合わせるときは出所を揃えること。** 混ぜると「イメージが変わった」と誤読する。
+              echo "| runner image (env \`ImageOS\`/\`ImageVersion\`) | ${ImageOS:-n/a} / ${ImageVersion:-n/a} |"
+              echo "| CPU | $(lscpu 2>/dev/null | sed -n 's/^Model name: *//p' | head -1) |"
+              echo "| コア数 | $(nproc 2>/dev/null || echo n/a) |"
+              echo "| MemTotal | $(awk '/^MemTotal:/{printf "%.1f GB", $2/1048576}' /proc/meminfo 2>/dev/null || echo n/a) |"
+              echo ""
+              echo "_Azure Region はワークフローからは取れない。ジョブログ冒頭の \`Azure Region:\` 行を見ること。_"
+              echo ""
+              echo "_**上の runner image は env \`ImageOS\`/\`ImageVersion\` の値で、ジョブログ冒頭の「Runner Image」グループが出す Image/Version とは別の値**（同一ランで env が \`ubuntu22 / 20260720.234.2\`、ジョブログが \`ubuntu-22.04 / 20260707.563\` になる）。run 1–11 の「イメージ同一」判定はジョブログ側で行っている。**突き合わせるときは出所を揃えること。**_"
             } | tee startup-report.md
             cat startup-report.md >> "$GITHUB_STEP_SUMMARY"
           else
