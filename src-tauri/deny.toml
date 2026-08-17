@@ -33,10 +33,8 @@ confidence-threshold = 0.8
 multiple-versions = "allow"
 
 [advisories]
-# RUSTSEC-2026-0194/0195: quick-xml の XML パース DoS。quick-xml は plist(macOS向け
-# bundler/ビルド系)経由の推移的依存で、QuickScribe は実行時に未信頼XML/plistを解析しない
-# ため攻撃経路に非該当。再評価期限は 2026-10-31 (ADR-0034)。
+# RUSTSEC-2024-0429: glib 0.18 の unsoundness 警告。Tauri の Webkit2GTK 依存（GTK3）が
+# glib 0.18 を必要とするためアップグレード不可。Issue #686 にて計画的追跡中。再評価期限 2026-10-31。
 ignore = [
-    "RUSTSEC-2026-0194",
-    "RUSTSEC-2026-0195",
+    "RUSTSEC-2024-0429",
 ]
