@@ -2040,6 +2040,33 @@ mod tests {
             Err(e) => assert!(e.starts_with(errcode::E_SECRET_DELETE), "{e}"),
         }
     }
+
+    #[test]
+    fn cli_argument_parsing_works() {
+        let args = vec![
+            "quickscribe".to_string(),
+            "--transcribe".to_string(),
+            "audio.wav".to_string(),
+            "--model".to_string(),
+            "large-v3-turbo".to_string(),
+            "--timestamps".to_string(),
+            "--refine".to_string(),
+            "refine-text.txt".to_string(),
+            "--provider".to_string(),
+            "openai".to_string(),
+            "--style".to_string(),
+            "non-fiction".to_string(),
+        ];
+        let parsed = parse_cli_args_from(args);
+        assert!(parsed.transcribe);
+        assert_eq!(parsed.transcribe_file, Some("audio.wav".to_string()));
+        assert_eq!(parsed.model, Some("large-v3-turbo".to_string()));
+        assert!(parsed.timestamps);
+        assert!(parsed.refine);
+        assert_eq!(parsed.refine_input, Some("refine-text.txt".to_string()));
+        assert_eq!(parsed.provider, Some("openai".to_string()));
+        assert_eq!(parsed.style, Some("non-fiction".to_string()));
+    }
 }
 
 /// メインウィンドウを表示して前面に出す（トレイ操作・常駐からの復帰で使う）。
@@ -2077,6 +2104,10 @@ fn report_startup() {
 pub fn run() {
     // プロセス起動時刻を記録（起動時間ベンチ #403）。以降の ready で経過を測る。
     let _ = APP_START.set(std::time::Instant::now());
+
+    // CLI モード判定。CLI 引数が指定された場合は、UIを起動せずに直接終了する
+    handle_cli();
+
     // 既定の開始/停止ホットキー: Ctrl/Cmd + Shift + R（設定で変更可能。set_record_shortcut）。
     let toggle_shortcut = Shortcut::new(Some(Modifiers::SHIFT | Modifiers::CONTROL), Code::KeyR);
 
@@ -2218,8 +2249,299 @@ pub fn run() {
                 }
             }
 
+            let argv: Vec<String> = std::env::args().collect();
+            if argv.iter().any(|a| a == "--toggle-record") {
+                let _ = app.emit("toggle-record", ());
+            } else if argv.iter().any(|a| a == "--start-record") {
+                let _ = app.emit("start-record", ());
+            } else if argv.iter().any(|a| a == "--stop-record") {
+                let _ = app.emit("stop-record", ());
+            }
+
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running QuickScribe");
+}
+
+// ─── CLI サポート ──────────────────────────
+
+#[derive(Debug, Default)]
+struct CliArgs {
+    help: bool,
+    transcribe: bool,
+    transcribe_file: Option<String>,
+    model: Option<String>,
+    timestamps: bool,
+    refine: bool,
+    refine_input: Option<String>,
+    provider: Option<String>,
+    api_key: Option<String>,
+    style: Option<String>,
+    custom_instruction: Option<String>,
+    output_lang: Option<String>,
+    base_url: Option<String>,
+}
+
+fn parse_cli_args() -> CliArgs {
+    parse_cli_args_from(std::env::args().collect())
+}
+
+fn parse_cli_args_from(args: Vec<String>) -> CliArgs {
+    let mut parsed = CliArgs::default();
+    let mut i = 1;
+    while i < args.len() {
+        let arg = &args[i];
+        match arg.as_str() {
+            "-h" | "--help" => {
+                parsed.help = true;
+            }
+            "--transcribe" | "--transcribe-file" => {
+                parsed.transcribe = true;
+                if i + 1 < args.len() {
+                    parsed.transcribe_file = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            "--model" => {
+                if i + 1 < args.len() {
+                    parsed.model = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            "-t" | "--timestamps" => {
+                parsed.timestamps = true;
+            }
+            "--refine" | "--refine-text" => {
+                parsed.refine = true;
+                if i + 1 < args.len() && !args[i + 1].starts_with('-') {
+                    parsed.refine_input = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            "--provider" => {
+                if i + 1 < args.len() {
+                    parsed.provider = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            "--api-key" => {
+                if i + 1 < args.len() {
+                    parsed.api_key = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            "--style" => {
+                if i + 1 < args.len() {
+                    parsed.style = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            "--custom-instruction" => {
+                if i + 1 < args.len() {
+                    parsed.custom_instruction = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            "--output-lang" => {
+                if i + 1 < args.len() {
+                    parsed.output_lang = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            "--base-url" => {
+                if i + 1 < args.len() {
+                    parsed.base_url = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    parsed
+}
+
+fn print_help() {
+    println!("QuickScribe CLI - Task-focused and Local-first Voice Journal");
+    println!();
+    println!("Usage:");
+    println!("  quickscribe [options]");
+    println!();
+    println!("Options:");
+    println!("  --transcribe, --transcribe-file <path>   Transcribe the specified audio file to text.");
+    println!("  --model <model_id>                      Specify the whisper model to use (e.g., base, large-v3-turbo, small, tiny). Default: base.");
+    println!("  -t, --timestamps                        Include timestamps in the transcription.");
+    println!("  --refine [<text_or_file_path>]          Refine text using LLM. If used with --transcribe, refines the transcription result.");
+    println!("                                          Otherwise, refines the provided text or the contents of the file at that path.");
+    println!("  --provider <provider>                   LLM provider (gemini, anthropic, openai, ollama, bedrock, claude-platform-aws).");
+    println!("  --api-key <key>                         API key for the LLM provider.");
+    println!("  --style <style>                         Refinement style.");
+    println!("  --custom-instruction <instruction>      Custom instruction for refinement.");
+    println!("  --output-lang <lang>                    Language to translate/output the refined text in.");
+    println!("  --base-url <url>                        Base URL for OpenAI compatible endpoints.");
+    println!("  -h, --help                              Show this help message.");
+    println!();
+    println!("Recording Control (communicates with the running instance):");
+    println!("  --toggle-record                         Toggle recording state.");
+    println!("  --start-record                          Start recording.");
+    println!("  --stop-record                           Stop recording.");
+}
+
+fn run_cli_commands(parsed: &CliArgs) -> Result<(), String> {
+    let mut text = String::new();
+
+    if parsed.transcribe {
+        let path = parsed.transcribe_file.as_ref().ok_or_else(|| {
+            "No audio file path provided for transcription. Use --transcribe <file_path>".to_string()
+        })?;
+        let p = std::path::Path::new(path);
+        if !p.exists() {
+            return Err(format!("Audio file not found: {path}"));
+        }
+        check_audio_extension(p)?;
+        let meta = std::fs::metadata(p).map_err(|e| errcode::ec(errcode::E_FILE_OPEN, e))?;
+        check_input_size(meta.len())?;
+
+        let audio = stt::decode_to_16k_mono(p)?;
+        let model_id = parsed.model.as_deref().unwrap_or("base");
+
+        let model_path = model::ensure_model_id(model_id, |done, total| {
+            use std::io::Write;
+            if let Some(t) = total {
+                if t > 0 {
+                    eprint!("\rDownloading model: {}%", done * 100 / t);
+                } else {
+                    eprint!("\rDownloading model: {} MB", done / 1_048_576);
+                }
+            } else {
+                eprint!("\rDownloading model: {} bytes", done);
+            }
+            let _ = std::io::stderr().flush();
+        })?;
+        eprintln!("\rModel loaded successfully.              ");
+
+        let use_gpu = gpu_backend_available();
+        let cfg = stt::SttConfig {
+            provider: "local".to_string(),
+            model: model_id.to_string(),
+            api_key: "".to_string(),
+            azure_resource: "".to_string(),
+            model_path,
+            use_gpu,
+            speaker_turns: Vec::new(),
+        };
+
+        let engine = stt::engine_for(cfg);
+        text = engine.transcribe(
+            &audio,
+            Some("ja"),
+            parsed.timestamps,
+            Box::new(|_pct| {}),
+            Box::new(|_seg| {}),
+        )?;
+
+        if !parsed.refine {
+            println!("{}", text);
+        }
+    }
+
+    if parsed.refine {
+        let text_to_refine = if let Some(ref input) = parsed.refine_input {
+            let path = std::path::Path::new(input);
+            if path.exists() {
+                std::fs::read_to_string(path).map_err(|e| format!("Failed to read refine input file: {e}"))?
+            } else {
+                input.clone()
+            }
+        } else {
+            if !parsed.transcribe {
+                return Err("No input text or file provided for refinement. Use --refine <text_or_file_path>".to_string());
+            }
+            text
+        };
+
+        let provider = parsed.provider.as_deref().unwrap_or("gemini");
+        let api_key = parsed.api_key.clone().or_else(|| {
+            std::env::var(format!("{}_API_KEY", provider.to_uppercase())).ok()
+        }).unwrap_or_default();
+        let model = parsed.model.clone().unwrap_or_else(|| {
+            refine::RefineProvider::parse(provider).default_model().to_string()
+        });
+        let style = parsed.style.as_deref().unwrap_or("structured");
+
+        let aws_cfg = if refine::RefineProvider::parse(provider).is_aws() {
+            let auth = if std::env::var("AWS_ACCESS_KEY_ID").is_ok() && std::env::var("AWS_SECRET_ACCESS_KEY").is_ok() {
+                refine::AwsAuth::SigV4 {
+                    access_key: std::env::var("AWS_ACCESS_KEY_ID").unwrap_or_default(),
+                    secret_key: std::env::var("AWS_SECRET_ACCESS_KEY").unwrap_or_default(),
+                    session_token: std::env::var("AWS_SESSION_TOKEN").ok(),
+                }
+            } else {
+                refine::AwsAuth::ApiKey
+            };
+            Some(refine::AwsConfig {
+                region: std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string()),
+                workspace_id: std::env::var("AWS_BEDROCK_WORKSPACE_ID").unwrap_or_default(),
+                auth,
+            })
+        } else {
+            None
+        };
+
+        let refined = refine::refine(
+            provider,
+            &api_key,
+            &model,
+            style,
+            &text_to_refine,
+            aws_cfg,
+            parsed.custom_instruction.clone(),
+            parsed.output_lang.clone(),
+            parsed.base_url.clone(),
+        )?;
+
+        println!("{}", refined);
+    }
+
+    Ok(())
+}
+
+#[cfg(windows)]
+fn attach_console() {
+    unsafe {
+        let _ = windows::Win32::System::Console::AttachConsole(windows::Win32::System::Console::ATTACH_PARENT_PROCESS);
+    }
+}
+
+#[cfg(not(windows))]
+fn attach_console() {}
+
+fn handle_cli() {
+    let args: Vec<String> = std::env::args().collect();
+    let is_help = args.iter().any(|a| a == "-h" || a == "--help");
+    let is_transcribe = args.iter().any(|a| a == "--transcribe" || a == "--transcribe-file");
+    let is_refine = args.iter().any(|a| a == "--refine" || a == "--refine-text");
+
+    if !is_help && !is_transcribe && !is_refine {
+        return;
+    }
+
+    attach_console();
+
+    if is_help {
+        print_help();
+        std::process::exit(0);
+    }
+
+    let parsed = parse_cli_args();
+    let result = run_cli_commands(&parsed);
+
+    match result {
+        Ok(_) => std::process::exit(0),
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    }
 }

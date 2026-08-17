@@ -1,0 +1,3 @@
+[submodule "zenn-content"]
+	path = zenn-content
+	url = https://github.com/Takenori-Kusaka/zenn-content
