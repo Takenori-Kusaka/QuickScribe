@@ -20,6 +20,13 @@
 - **R4（unwanted）**: If the vault folder does not exist when saving, then the system shall create it before writing.
 - **R5（unwanted・データ保護）**: If an entry filename already exists in the vault, then the system shall write to a new unique filename (no silent overwrite).
 - **R6（event）**: When the user requests "保管庫を開く", the system shall open the vault folder in the OS file manager.
+- **R7（unwanted・データ可視性）**: If an entry file cannot be decoded as valid UTF-8, then the system shall still list the entry (invalid bytes are shown as the replacement character), regardless of file size or where the invalid bytes occur.
+- **R8（event）**: When the user stops a recording, the system shall determine whether to save the audio from the "音声を保存する" setting **as of that moment**（以後の設定変更は、既に停止した録音の保存有無を変えない）.
+
+> R7 の意図: 保管庫はユーザー所有のプレーンファイルで、外部エディタで編集される前提（[ADR-0032](../../adr/0032-content-based-entry-filenames.md)）。文字化けは普通に起きる。コア価値「思考整理・自己理解」にとって最悪の失敗は**「書いたはずの思考が一覧から黙って消える」**ことであり、化けた形でも見えて開ける方が正しい。
+> 「ファイルサイズや不正バイトの位置によらず」が要件の核心である。同じ壊れ方をしたエントリが大きさや壊れた位置で見える／見えないに分かれるのは、ユーザーにとって理解不能な挙動になる。
+>
+> R8 の意図: ユーザーの期待は「録音したときの設定で保存される」。文字起こしジョブの実行時点の設定で決めると、キューの滞留時間次第で結果が変わる（[#663](https://github.com/Takenori-Kusaka/QuickScribe/issues/663) / [#668](https://github.com/Takenori-Kusaka/QuickScribe/pull/668)）。
 
 ## BDD 例（Given-When-Then）
 
@@ -40,6 +47,21 @@ Feature: 保管庫へのエントリ永続化
     Given 保管庫に "20260624-note-今日のメモ.txt" が既に存在
     When 同じ日に同じ冒頭のエントリを保存する
     Then "20260624-note-今日のメモ-2.txt" として保存され、既存ファイルは保持される
+
+  Scenario: 壊れたエントリも一覧に出る (R7)
+    Given 保管庫に不正なUTF-8バイトを含むエントリが2件ある（1件は12KB以下、1件は12KB超）
+    When エントリ一覧を取得する
+    Then 2件とも一覧に現れる（不正バイトは置換文字として表示される）
+
+  Scenario: 読み込み窓の境界は壊れとみなさない (R7)
+    Given 12KB超のエントリで、多バイト文字が部分読み込みの境界にまたがる
+    When エントリ一覧を取得する
+    Then プレビューに置換文字が混入しない
+
+  Scenario: 音声保存の有無は録音停止時点で確定する (R8)
+    Given 「音声を保存する」が OFF の状態で録音し、停止した
+    When 文字起こしジョブが実行される前に「音声を保存する」を ON へ切り替える
+    Then その録音の音声は保存されない
 
   Scenario: 保管庫をOSファイラで開く (R6)
     Given 保管庫が存在する（無ければ作成）

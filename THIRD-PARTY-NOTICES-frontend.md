@@ -42,7 +42,7 @@ QuickScribe の配布物（WebView UI）には以下のオープンソースが�
 | `es6-iterator@2.0.3` | MIT | Mariusz Nowak — https://github.com/medikoo/es6-iterator |
 | `es6-symbol@3.1.4` | ISC | Mariusz Nowak — https://github.com/medikoo/es6-symbol |
 | `es6-weak-map@2.0.3` | ISC | Mariusz Nowak — https://github.com/medikoo/es6-weak-map |
-| `esbuild@0.19.12` | MIT | https://github.com/evanw/esbuild |
+| `esbuild@0.28.1` | MIT | https://github.com/evanw/esbuild |
 | `esm-env@1.2.2` | MIT | Ben McCann — https://github.com/benmccann/esm-env |
 | `esniff@2.0.1` | ISC | Mariusz Nowak — https://github.com/medikoo/esniff |
 | `esrap@2.2.13` | MIT | https://github.com/sveltejs/esrap |

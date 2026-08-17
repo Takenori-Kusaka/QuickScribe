@@ -9,6 +9,7 @@ site/
 docs/assets/
 package-lock.json
 *.md
+zenn-content/
 
 # vendored minified JS
 e2e/vendor/

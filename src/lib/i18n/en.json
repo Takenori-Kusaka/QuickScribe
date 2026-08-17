@@ -192,7 +192,9 @@
     "loading": "Loading…",
     "empty": "No entries yet. Recording and refining will save to your journal.",
     "no_match": "No entries match your filter.",
-    "title_viewing": "Journal: {name}"
+    "title_viewing": "Journal: {name}",
+    "show_all": "Show {n} more",
+    "collapse": "Collapse"
   },
   "results": {
     "transcript": "Transcription",

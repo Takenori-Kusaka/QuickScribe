@@ -58,10 +58,21 @@ const ENTRIES = [
   },
 ];
 
+// 大量エントリでの描画コスト計測用(#666)。`?entries=N` を付けたときだけ ENTRIES を N 件へ水増しする。
+// クエリ無し（スクショ/a11y の既定経路）は従来どおり 4 件で、既存の出力に影響しない。
+function listEntries() {
+  const n = Number(new URLSearchParams(location.search).get("entries") ?? 0);
+  if (!Number.isFinite(n) || n <= ENTRIES.length) return ENTRIES;
+  return Array.from({ length: n }, (_, i) => {
+    const base = ENTRIES[i % ENTRIES.length];
+    return { ...base, path: `bulk-${i}-${base.path}`, name: `bulk-${i}-${base.name}` };
+  });
+}
+
 export async function invoke<T = unknown>(cmd: string, _args?: unknown): Promise<T> {
   switch (cmd) {
     case "list_entries":
-      return ENTRIES as unknown as T;
+      return listEntries() as unknown as T;
     case "read_text_file":
       return (REFINED + "\n\n（※スクショ用ダミー本文）") as unknown as T;
     case "refine_text":

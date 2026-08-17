@@ -5,6 +5,13 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [1.11.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.9.0...v1.11.0) (2026-07-30)
+
+
+### ✨ 新機能 / Features
+
+* **cli:** 音声文字起こしやLLM整形などの各機能をCLIから直接実行可能にする ([#672](https://github.com/Takenori-Kusaka/QuickScribe/issues/672))
+
 ## [1.9.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.8.0...v1.9.0) (2026-07-24)
 
 
