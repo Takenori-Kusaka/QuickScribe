@@ -257,11 +257,37 @@ jobs:
           path: coverage/
           if-no-files-found: error
 
-      - name: Rust unit tests
+      - name: Rust unit tests (ubuntu)
+        if: matrix.os == 'ubuntu-22.04'
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
-      - name: Build (compile, no bundle)
+      # --- Vulkan-enabled checks (Windows x64 default release target / #630) ---
+      - name: Install Vulkan SDK (windows-latest)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $ver = "1.4.350.0"
+          Write-Host "Vulkan SDK version (pinned): $ver"
+          $url = "https://sdk.lunarg.com/sdk/download/$ver/windows/vulkansdk-windows-X64-$ver.exe"
+          $exe = "$env:RUNNER_TEMP\vulkan-sdk-installer.exe"
+          Invoke-WebRequest -Uri $url -OutFile $exe
+          Start-Process -FilePath $exe -ArgumentList "--accept-licenses","--default-answer","--confirm-command","install" -Wait
+          $sdk = "C:\VulkanSDK\$ver"
+          if (-not (Test-Path $sdk)) { throw "Vulkan SDK not found at $sdk" }
+          "VULKAN_SDK=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$sdk\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Rust unit & Vulkan integration tests (windows-latest)
+        if: matrix.os == 'windows-latest'
+        run: cargo test --manifest-path src-tauri/Cargo.toml --features vulkan
+
+      - name: Build (compile, no bundle - ubuntu)
+        if: matrix.os == 'ubuntu-22.04'
         run: npx tauri build --no-bundle
+
+      - name: Build (compile, no bundle - windows)
+        if: matrix.os == 'windows-latest'
+        run: npx tauri build --no-bundle -- --features vulkan
 
   e2e:
     name: e2e (実起動 / Linux)
