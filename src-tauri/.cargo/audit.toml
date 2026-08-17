@@ -1,0 +1,11 @@
+# cargo-audit 設定 — 脆弱性データベース照合のホワイトリストを定義する (ADR-0034)。
+# 実行: cargo audit (CI security.yml)。
+
+[advisories]
+# RUSTSEC-2026-0194/0195: quick-xml の XML パース DoS。quick-xml は plist(macOS向け
+# bundler/ビルド系)経由の推移的依存で、QuickScribe は実行時に未信頼XML/plistを解析しない
+# ため攻撃経路に非該当。再評価期限は 2026-10-31 (ADR-0034)。
+ignore = [
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+]

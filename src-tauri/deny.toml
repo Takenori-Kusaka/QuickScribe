@@ -33,4 +33,13 @@ confidence-threshold = 0.8
 multiple-versions = "allow"
 
 [advisories]
-# 脆弱性 advisories は cargo audit / security.yml 側で扱う。ここでは既定。
+# RUSTSEC-2026-0194/0195: quick-xml の XML パース DoS。quick-xml は plist(macOS向け
+# bundler/ビルド系)経由の推移的依存で、QuickScribe は実行時に未信頼XML/plistを解析しない
+# ため攻撃経路に非該当。再評価期限は 2026-10-31 (ADR-0034)。
+vulnerability = "deny"
+unmaintained = "warn"
+notice = "warn"
+ignore = [
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+]

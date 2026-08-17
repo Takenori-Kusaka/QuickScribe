@@ -35,13 +35,10 @@ jobs:
           cargo install cargo-about --locked --features cli
       - name: cargo audit (脆弱性データベース照合)
         working-directory: src-tauri
-        # RUSTSEC-2026-0194/0195: quick-xml の XML パース DoS。quick-xml は plist(macOS向け
-        # bundler/ビルド系)経由の推移的依存で、QuickScribe は実行時に未信頼XML/plistを解析しない
-        # ため攻撃経路に非該当。依存木が patched quick-xml を引いた時点で ignore を外す(#526)。
-        run: cargo audit --ignore RUSTSEC-2026-0194 --ignore RUSTSEC-2026-0195
+        run: cargo audit
       - name: cargo deny advisories (脆弱性/重複 — 衛生課題は v1.0.0)
         working-directory: src-tauri
-        run: cargo deny check advisories || true
+        run: cargo deny check advisories
       - name: cargo deny licenses (ライセンス allowlist 強制 — 法的MUST/ADR-0010)
         working-directory: src-tauri
         run: cargo deny check licenses
@@ -57,5 +54,8 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 20
-      - name: npm audit (high以上で警告)
-        run: npm audit --audit-level=high || true
+      - name: npm audit (root)
+        run: npm audit --audit-level=high --omit=dev
+      - name: npm audit (site)
+        working-directory: site
+        run: npm audit --audit-level=high --omit=dev
