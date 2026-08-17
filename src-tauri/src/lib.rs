@@ -674,6 +674,27 @@ fn list_jobs<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Vec<job::Job> {
     with_job_state(&app, |ex| ex.queue.jobs().to_vec())
 }
 
+#[tauri::command]
+fn cancel_job<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: job::JobId) -> Result<(), String> {
+    let canceled = with_job_state(&app, |ex| {
+        let ok = ex.queue.cancel(id);
+        if ok {
+            ex.drop_orphan_pending();
+        }
+        ok
+    });
+    if canceled {
+        let _ = app.emit(
+            "job-status",
+            JobStatusEvent {
+                job_id: id,
+                status: "canceled",
+            },
+        );
+    }
+    Ok(())
+}
+
 /// 入力ファイルのサイズ上限（メモリ膨張・長時間ブロックの防止 / #397）。
 pub const MAX_INPUT_BYTES: u64 = 500 * 1024 * 1024; // 500 MB
 
@@ -2168,6 +2189,7 @@ pub fn run() {
             start_recording,
             stop_recording,
             list_jobs,
+            cancel_job,
             resolve_model,
             refine_text,
             read_text_file,

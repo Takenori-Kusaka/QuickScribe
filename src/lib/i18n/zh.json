@@ -447,6 +447,7 @@
     "processing_n": "处理中 {n} 个",
     "recent": "最近的任务",
     "open": "打开",
+    "cancel": "取消",
     "status": {
       "queued": "排队中",
       "running": "转写中",

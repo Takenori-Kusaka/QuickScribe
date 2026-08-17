@@ -917,6 +917,14 @@
     if (autoPipeline && refineConfigError() === null) void refineNow();
   }
 
+  async function cancelJob(id: number) {
+    try {
+      await invoke("cancel_job", { id });
+    } catch (e) {
+      console.error("[cancelJob] failed:", e);
+    }
+  }
+
   // 作業領域が空のときだけ最新の完了ジョブを自動読み込みする(=作業中の結果や編集を上書きしない)。
   // 空でない/整形中で読み込めないときは、埋もれないよう一覧を自動展開して気づけるようにする
   // (前の結果も新しい結果も失わない＝取りこぼさない / レビュー指摘)。
@@ -1296,6 +1304,14 @@
                   <span class="job-state muted">{$_("jobs.no_speech")}</span>
                 {:else if j.status === "error"}
                   <span class="job-err">{errorText(j.errorCode ?? "", $_)}</span>
+                {:else if j.status === "queued" || j.status === "running"}
+                  <button
+                    type="button"
+                    class="btn small ghost warn"
+                    onclick={() => cancelJob(j.id)}
+                  >
+                    {$_("jobs.cancel")}
+                  </button>
                 {/if}
               </li>
             {/each}

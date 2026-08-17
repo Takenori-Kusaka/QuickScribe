@@ -447,6 +447,7 @@
     "processing_n": "Procesando {n}",
     "recent": "Trabajos recientes",
     "open": "Abrir",
+    "cancel": "Cancelar",
     "status": {
       "queued": "En cola",
       "running": "Transcribiendo",

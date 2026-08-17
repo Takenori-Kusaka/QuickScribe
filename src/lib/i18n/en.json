@@ -447,6 +447,7 @@
     "processing_n": "Processing {n}",
     "recent": "Recent jobs",
     "open": "Open",
+    "cancel": "Cancel",
     "status": {
       "queued": "Queued",
       "running": "Transcribing",

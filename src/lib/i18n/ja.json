@@ -447,6 +447,7 @@
     "processing_n": "処理中 {n} 件",
     "recent": "最近のジョブ",
     "open": "開く",
+    "cancel": "中止",
     "status": {
       "queued": "待機中",
       "running": "文字起こし中",
