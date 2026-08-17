@@ -4,22 +4,21 @@
 [advisories]
 # unmaintained/notice を有効化したまま、既知の上流未メンテナンス・Soundness警告のみを
 # 明示的にホワイトリストに登録することで、品質ゲートの厳格性を維持する（ADR-0034）。
-# 新規の未メンテナンス依存が混入した場合は CI で検出・ブロックする。
+# 各未メンテナンス警告の受容理由と回避不可能性は docs/process/gtk3-rs-unmaintained-sweep.md に
+# 一元管理されています。再評価期限 2026-10-31 (ADR-0034 / #686)。
 ignore = [
-    # glib 0.18 unsoundness / GTK3 bindings unmaintained (Tauri 2.x の Webkit2GTK 必須依存)
-    # これらは統合 Issue #686 で計画的に追跡中。再評価期限 2026-10-31。
-    "RUSTSEC-2024-0429", # glib unsoundness
-    "RUSTSEC-2024-0413", # atk unmaintained
-    "RUSTSEC-2024-0416", # atk-sys unmaintained
-    "RUSTSEC-2024-0412", # gdk unmaintained
-    "RUSTSEC-2024-0418", # gdk-sys unmaintained
-    "RUSTSEC-2024-0411", # gdkwayland-sys unmaintained
-    "RUSTSEC-2024-0417", # gdkx11 unmaintained
-    "RUSTSEC-2024-0414", # gdkx11-sys unmaintained
-    "RUSTSEC-2024-0415", # gtk unmaintained
-    "RUSTSEC-2024-0420", # gtk-sys unmaintained
-    "RUSTSEC-2024-0419", # gtk3-macros unmaintained
-    "RUSTSEC-2024-0370", # proc-macro-error unmaintained (Tauri/serdeマクロ等で使用、代替なし)
+    "RUSTSEC-2024-0429", # glib unsoundness (docs/process/gtk3-rs-unmaintained-sweep.md)
+    "RUSTSEC-2024-0413", # atk unmaintained (docs/process/gtk3-rs-unmaintained-sweep.md)
+    "RUSTSEC-2024-0416", # atk-sys unmaintained (docs/process/gtk3-rs-unmaintained-sweep.md)
+    "RUSTSEC-2024-0412", # gdk unmaintained (docs/process/gtk3-rs-unmaintained-sweep.md)
+    "RUSTSEC-2024-0418", # gdk-sys unmaintained (docs/process/gtk3-rs-unmaintained-sweep.md)
+    "RUSTSEC-2024-0411", # gdkwayland-sys unmaintained (docs/process/gtk3-rs-unmaintained-sweep.md)
+    "RUSTSEC-2024-0417", # gdkx11 unmaintained (docs/process/gtk3-rs-unmaintained-sweep.md)
+    "RUSTSEC-2024-0414", # gdkx11-sys unmaintained (docs/process/gtk3-rs-unmaintained-sweep.md)
+    "RUSTSEC-2024-0415", # gtk unmaintained (docs/process/gtk3-rs-unmaintained-sweep.md)
+    "RUSTSEC-2024-0420", # gtk-sys unmaintained (docs/process/gtk3-rs-unmaintained-sweep.md)
+    "RUSTSEC-2024-0419", # gtk3-macros unmaintained (docs/process/gtk3-rs-unmaintained-sweep.md)
+    "RUSTSEC-2024-0370", # proc-macro-error unmaintained (代替なし、docs/process/gtk3-rs-unmaintained-sweep.md 参照)
 
     # audiopus_sys (unmaintained, whisper-rs等の依存で使用。代替なし)
     "RUSTSEC-2026-0150",
