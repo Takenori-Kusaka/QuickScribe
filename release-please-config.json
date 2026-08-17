@@ -8,8 +8,7 @@
       "changelog-path": "CHANGELOG.md",
       "include-component-in-tag": false,
       "draft": false,
-      "prerelease": false,
-      "release-as": "1.12.0"
+      "prerelease": false
     }
   },
   "changelog-sections": [
