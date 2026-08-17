@@ -31,10 +31,18 @@ test("デモGIF用フレーム（録音→文字起こし→整形）", async ({
   // frame 2: 文字起こし表示。
   await page.evaluate(() => {
     const w = window as unknown as { __mockEmit?: (n: string, p: unknown) => void };
-    w.__mockEmit?.(
-      "transcribe-done",
-      "最近考えていることを声に出して記録して、あとで見返しながら思考を整理していきたい。",
-    );
+    w.__mockEmit?.("job-created", {
+      id: 1,
+      createdAtMs: Date.now(),
+      durationSecs: 15,
+      status: "queued",
+      progress: 0,
+    });
+    w.__mockEmit?.("job-status", { jobId: 1, status: "running" });
+    w.__mockEmit?.("job-done", {
+      jobId: 1,
+      text: "最近考えていることを声に出して記録して、あとで見返しながら思考を整理していきたい。",
+    });
   });
   await expect(page.getByRole("heading", { name: "文字起こし" })).toBeVisible();
   await page.screenshot({ path: `${FRAME_DIR}/frame-2.png` });

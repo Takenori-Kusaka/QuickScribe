@@ -20,10 +20,18 @@ test("メイン画面（文字起こし→整形結果）", async ({ page }) => 
   // 文字起こし完了イベントをモックから発火 → 文字起こしカードを表示。
   await page.evaluate(() => {
     const w = window as unknown as { __mockEmit?: (n: string, p: unknown) => void };
-    w.__mockEmit?.(
-      "transcribe-done",
-      "えーと、最近AIDLCっていう、AIを使った開発のライフサイクルっていう考え方が気になっていて、生成AIを使った開発を1年くらい続けてきたんですけど、既存の開発スタイルにうまく落とし込むにはいろいろ理解を深めないといけないなと思っていて、検証用の専用リポジトリを作りたいなと考えています。",
-    );
+    w.__mockEmit?.("job-created", {
+      id: 1,
+      createdAtMs: Date.now(),
+      durationSecs: 15,
+      status: "queued",
+      progress: 0,
+    });
+    w.__mockEmit?.("job-status", { jobId: 1, status: "running" });
+    w.__mockEmit?.("job-done", {
+      jobId: 1,
+      text: "えーと、最近AIDLCっていう、AIを使った開発 of ライフサイクルっていう考え方が気になっていて、生成AIを使った開発を1年くらい続けてきたんですけど、既存の開発スタイルにうまく落とし込むにはいろいろ理解を深めないといけないなと思っていて、検証用の専用リポジトリを作りたいなと考えています。",
+    });
   });
   await expect(page.getByRole("heading", { name: "文字起こし" })).toBeVisible();
 
