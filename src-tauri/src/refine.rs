@@ -101,6 +101,9 @@ impl RefineStyle {
 /// 指示ブロックと本文からユーザープロンプトを組み立てる(純粋関数)。
 /// 共通の不変条件(捏造禁止・本人の思考整理補助)は指示の中身に関わらず常に付与する。
 /// → カスタムパターンでも「事実を捏造しない」等のコア規律が外れない。
+/// 注: システム指示との「意図的重複」は、ローカル小型モデル（Ollama等）の追従性確保、
+/// 最終入力直前の注意減衰（Attention Decay）の防止、およびカスタム指示時のセーフティネット
+/// として品質維持に不可欠です。詳細は docs/research/prompt-invariant-design-study.md 参照。
 fn build_user_prompt(instruction: &str, transcript: &str) -> String {
     format!(
         "以下は音声の文字起こしです。話者本人の思考整理を助けてください。\n\
