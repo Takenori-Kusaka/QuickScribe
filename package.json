@@ -60,7 +60,7 @@
     "eslint": "^10.6.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-svelte": "^3.20.0",
-    "globals": "^17.7.0",
+    "globals": "^17.11.0",
     "jsdom": "^29.1.1",
     "license-checker-rseidelsohn": "^5.0.1",
     "pngjs": "^7.0.0",
