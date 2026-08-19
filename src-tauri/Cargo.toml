@@ -119,7 +119,7 @@ windows = { version = "0.62", features = [
 # システム音声ループバック(S1.3 / ADR-0013)。任意の出力デバイスを選んでループバック録音。
 # cpalは任意出力デバイス選択ループバック非対応(cpal#476/#251)のためwasapi(MIT・active)を使う。
 # レンダーデバイス + Direction::Capture でクレートが AUDCLNT_STREAMFLAGS_LOOPBACK を設定する。
-wasapi = "0.23"
+wasapi = "0.24"
 
 [profile.release]
 panic = "abort"
