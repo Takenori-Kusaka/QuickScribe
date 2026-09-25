@@ -104,6 +104,9 @@ keyring = { version = "3", default-features = false, features = [
 tauri = { version = "2", features = ["test"] }
 
 [target."cfg(windows)".dependencies]
+# システムプロキシ設定の読み取り(Windows 11等での企業プロキシ環境対応)。
+# HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings から ProxyEnable / ProxyServer を取得。
+winreg = "0.55"
 # Windows タスクバーのサムネイルツールバー(ITaskbarList3)実装用。
 # tauri 2.11系の windows クレートと整合させる(HWNDの型不一致回避)。HWNDは生ポインタ経由で再ラップ。
 windows = { version = "0.62", features = [

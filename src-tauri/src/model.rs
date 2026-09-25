@@ -289,7 +289,9 @@ fn download_to<F: FnMut(u64, Option<u64>)>(
     expected_size: u64,
     mut on_progress: F,
 ) -> Result<(), String> {
-    let resp = ureq::get(url)
+    let agent = crate::proxy::build_agent_for_url(url);
+    let resp = agent
+        .get(url)
         .call()
         .map_err(|e| crate::errcode::ec(crate::errcode::E_MODEL_DOWNLOAD, e))?;
     let total: Option<u64> = resp
