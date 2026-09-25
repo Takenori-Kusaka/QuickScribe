@@ -5,6 +5,14 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [1.13.1](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.13.0...v1.13.1) (2026-09-25)
+
+
+### 🐛 修正 / Bug Fixes
+
+* **model:** support Windows system proxy and environment proxy on model download ([#731](https://github.com/Takenori-Kusaka/QuickScribe/issues/731)) ([1435992](https://github.com/Takenori-Kusaka/QuickScribe/commit/1435992c3a7ce42ffd1a7fe948f3a00b21f96165))
+* **record:** preserve recorded audio and rescue file on transcription error ([#732](https://github.com/Takenori-Kusaka/QuickScribe/issues/732)) ([0da78a1](https://github.com/Takenori-Kusaka/QuickScribe/commit/0da78a12501e9a8691b718a9e83109d781a9c796))
+
 ## [1.13.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.12.0...v1.13.0) (2026-08-18)
 
 
