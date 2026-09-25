@@ -541,37 +541,77 @@ struct JobError {
     code: String,
 }
 
+/// 録音音声の保存を行う共通関数。
+/// raw があれば設定に応じた形式（opus/wav）で保存し、raw がない場合（save_audio=false だった時のエラー救済等）は
+/// 文字起こし用の mono16k を 16kHz mono WAV として保存する。
+fn save_audio_work(
+    settings: &SaveSettings,
+    work: &PendingWork,
+    stem: &str,
+) -> Result<std::path::PathBuf, String> {
+    let dir = resolve_save_dir(settings)?;
+    if let Some(raw) = work.raw.as_deref() {
+        if settings.audio_format == "opus" {
+            audio_save::save_opus(raw, work.sample_rate, work.channels, &dir, stem)
+        } else {
+            audio_save::save_wav(raw, work.sample_rate, work.channels, &dir, stem)
+        }
+    } else {
+        // 原音が未保持の場合でも、文字起こし用の 16kHz mono 音声から WAV を生成・保存する
+        audio_save::save_wav(&work.audio, stt::WHISPER_SR as u32, 1, &dir, stem)
+    }
+}
+
 /// 1 ジョブ分の文字起こし＋（設定に従い）録音音声保存。旧 stop_recording の per-job 処理を抽出。
-/// 発話が無ければ空文字を返す（保存しない）。別スレッド(spawn_blocking)から呼ぶ前提。
+/// - save_audio が ON の場合: 文字起こしの成否や結果にかかわらず音声を確実に保存する。
+/// - 文字起こし段階でエラー（モデルダウンロード失敗、STT処理エラー等）が発生した場合:
+///   音声が未保存であれば（save_audio=false だった場合など）、せっかく録音したデータと時間が失われないよう
+///   救済用ファイル（rec-rescue-*.wav）として保存する。
 fn run_job<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     job_id: job::JobId,
     work: &PendingWork,
 ) -> Result<String, String> {
-    let text = transcribe_blocking(app, Some(job_id), &work.audio, work.timestamps)?;
-    if text.trim().is_empty() {
-        let _ = app.emit("status", "");
-        return Ok(String::new());
-    }
-    // 音声保存は「文字起こし対象があった場合かつ設定ON」のみ。原音を保存。
-    // 原音の有無は録音停止時点の設定で決まる（#663）。停止後に保存をONへ切り替えても、
-    // 既にキューへ載った分は原音を持たないため保存しない（過去の録音を遡って保存はしない）。
     let settings = current_settings(app);
-    if let (true, Some(raw)) = (settings.save_audio, work.raw.as_deref()) {
-        if let Ok(dir) = resolve_save_dir(&settings) {
-            let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
-            let stem = format!("rec-{ts}");
-            let r = if settings.audio_format == "opus" {
-                audio_save::save_opus(raw, work.sample_rate, work.channels, &dir, &stem)
-            } else {
-                audio_save::save_wav(raw, work.sample_rate, work.channels, &dir, &stem)
-            };
-            if let Err(e) = r {
-                let _ = app.emit("status", errcode::ec(errcode::S_AUDIO_SAVE_FAILED, e));
+    let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+
+    // 1. save_audio が ON の場合、文字起こしの成否に関わらずまず録音音声を確実に保存する。
+    let mut saved_audio_path = None;
+    if settings.save_audio {
+        let stem = format!("rec-{ts}");
+        match save_audio_work(&settings, work, &stem) {
+            Ok(path) => {
+                saved_audio_path = Some(path);
+            }
+            Err(e) => {
+                let _ = app.emit("status", errcode::ec(errcode::S_AUDIO_SAVE_FAILED, &e));
             }
         }
     }
-    Ok(text)
+
+    // 2. 文字起こしを実行
+    let transcribe_res = transcribe_blocking(app, Some(job_id), &work.audio, work.timestamps);
+
+    match transcribe_res {
+        Ok(text) => {
+            if text.trim().is_empty() {
+                let _ = app.emit("status", "");
+                return Ok(String::new());
+            }
+            Ok(text)
+        }
+        Err(err) => {
+            // 3. 文字起こし段階でエラーが発生した場合:
+            // 音声がまだ保存されていなければ、せっかく録音したデータと時間が失われないようレスキュー保存を実行する。
+            if saved_audio_path.is_none() {
+                let rescue_stem = format!("rec-rescue-{ts}");
+                if let Ok(path) = save_audio_work(&settings, work, &rescue_stem) {
+                    eprintln!("Transcribe failed; rescued audio to {:?}", path);
+                }
+            }
+            Err(err)
+        }
+    }
 }
 
 /// 逐次キューのワーカー。稼働中ジョブが 0 になるまで FIFO で1件ずつ処理する（並列度1）。
@@ -1744,6 +1784,74 @@ mod tests {
             .filter(|n| n.ends_with(".opus") || n.ends_with(".wav"))
             .collect();
         assert!(audio.is_empty(), "音声ファイルは保存されない: {audio:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn stop_recording_saves_audio_when_transcribe_fails_and_save_audio_on() {
+        // 文字起こし段階でエラー（モデルダウンロード失敗やSTTサーバエラー等）が発生しても、
+        // save_audio が ON なら録音音声が失われず保存先に残ること。
+        let (base, _) = serve(vec![Route {
+            path_contains: "/v1/listen",
+            status: 500,
+            body: b"internal error".to_vec(),
+        }]);
+        let app = mock_app();
+        let dir = tmp_dir("save-audio-err");
+        let _g = env_scope(&[("QS_TEST_DEEPGRAM_BASE", base.as_str())], &["QUICKSCRIBE_E2E"]);
+        set_save_settings(
+            app.state(),
+            Some(dir.to_string_lossy().into_owned()),
+            true,
+            "opus".into(),
+            true,
+            Some("txt".into()),
+        )
+        .unwrap();
+        set_stt_settings(app.state(), "deepgram".into(), "".into(), "dk".into(), None, None, None)
+            .unwrap();
+        *app.state::<record::RecorderState>().current.lock().unwrap() =
+            Some(record::test_recording(vec![(vec![0.2; 3200], 16000, 1)]));
+        tauri::async_runtime::block_on(stop_recording(app.handle().clone(), app.state(), false))
+            .unwrap();
+        assert!(
+            wait_for_file(&dir, |n| n.starts_with("rec-") && n.ends_with(".opus")),
+            "文字起こし失敗時でも録音音声が確実に保存される"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn stop_recording_rescues_audio_when_transcribe_fails_and_save_audio_off() {
+        // 文字起こし段階でエラーが発生した場合、save_audio が OFF（既定）であっても、
+        // 録音データと時間が失われないようレスキュー音声（rec-rescue-*.wav）が保存されること。
+        let (base, _) = serve(vec![Route {
+            path_contains: "/v1/listen",
+            status: 500,
+            body: b"internal error".to_vec(),
+        }]);
+        let app = mock_app();
+        let dir = tmp_dir("rescue-audio-err");
+        let _g = env_scope(&[("QS_TEST_DEEPGRAM_BASE", base.as_str())], &["QUICKSCRIBE_E2E"]);
+        set_save_settings(
+            app.state(),
+            Some(dir.to_string_lossy().into_owned()),
+            false,
+            "opus".into(),
+            true,
+            Some("txt".into()),
+        )
+        .unwrap();
+        set_stt_settings(app.state(), "deepgram".into(), "".into(), "dk".into(), None, None, None)
+            .unwrap();
+        *app.state::<record::RecorderState>().current.lock().unwrap() =
+            Some(record::test_recording(vec![(vec![0.2; 3200], 16000, 1)]));
+        tauri::async_runtime::block_on(stop_recording(app.handle().clone(), app.state(), false))
+            .unwrap();
+        assert!(
+            wait_for_file(&dir, |n| n.starts_with("rec-rescue-") && n.ends_with(".wav")),
+            "文字起こし失敗時にレスキュー用音声ファイルが保存される"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
