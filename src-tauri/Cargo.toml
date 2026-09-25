@@ -57,7 +57,7 @@ cpal = "0.18"
 hound = "3"
 # モダン圧縮 Opus(.opus = Ogg Opus / audio-encode-rust 調査)。libopusはvendored staticビルドで
 # 実行時の外部ライブラリ依存を避ける。ogg はコンテナ多重化(純Rust)。
-opus = "0.3"
+opus = "0.4"
 ogg = "0.9"
 # 文字起こし(ローカル whisper.cpp / ADR-0002)。whisper-rs が whisper.cpp をビルドする。
 whisper-rs = "0.14"
