@@ -23,6 +23,8 @@ pub mod entry;
 pub mod job;
 // 内部診断ログの追記（#667: サイズ上限＋1世代ローテーション。既定OFF）。
 pub mod diag_log;
+// システムプロキシ設定の検出と通信クライアント構築。
+pub mod proxy;
 // Windows タスクバーのサムネイルツールバー/オーバーレイ。Windowsのみ。
 #[cfg(windows)]
 mod taskbar;
