@@ -37,7 +37,7 @@ QuickScribe の配布物（WebView UI）には以下のオープンソースが�
 | `d@1.0.2` | ISC | Mariusz Nowak — https://github.com/medikoo/d |
 | `decimal.js@10.6.0` | MIT | Michael Mclaughlin — https://github.com/MikeMcl/decimal.js |
 | `deepmerge@4.3.1` | MIT | https://github.com/TehShrike/deepmerge |
-| `devalue@5.8.1` | MIT | https://github.com/sveltejs/devalue |
+| `devalue@5.9.4` | MIT | https://github.com/sveltejs/devalue |
 | `es5-ext@0.10.64` | ISC | Mariusz Nowak — https://github.com/medikoo/es5-ext |
 | `es6-iterator@2.0.3` | MIT | Mariusz Nowak — https://github.com/medikoo/es6-iterator |
 | `es6-symbol@3.1.4` | ISC | Mariusz Nowak — https://github.com/medikoo/es6-symbol |
