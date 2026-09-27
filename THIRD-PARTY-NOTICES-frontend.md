@@ -19,13 +19,13 @@ QuickScribe の配布物（WebView UI）には以下のオープンソースが�
 | `@jridgewell/sourcemap-codec@1.5.5` | MIT | Justin Ridgewell — https://github.com/jridgewell/sourcemaps |
 | `@jridgewell/trace-mapping@0.3.31` | MIT | Justin Ridgewell — https://github.com/jridgewell/sourcemaps |
 | `@sveltejs/acorn-typescript@1.0.10` | MIT | tyrealhu and the Svelte team — https://github.com/sveltejs/acorn-typescript |
-| `@tauri-apps/api@2.11.1` | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
+| `@tauri-apps/api@2.12.0` | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
 | `@tauri-apps/plugin-autostart@2.5.1` | MIT OR Apache-2.0 | https://github.com/tauri-apps/plugins-workspace |
-| `@tauri-apps/plugin-dialog@2.7.1` | MIT OR Apache-2.0 | https://github.com/tauri-apps/plugins-workspace |
+| `@tauri-apps/plugin-dialog@2.7.3` | MIT OR Apache-2.0 | https://github.com/tauri-apps/plugins-workspace |
 | `@tauri-apps/plugin-global-shortcut@2.3.2` | MIT OR Apache-2.0 | https://github.com/tauri-apps/plugins-workspace |
-| `@tauri-apps/plugin-notification@2.3.3` | MIT OR Apache-2.0 | https://github.com/tauri-apps/plugins-workspace |
+| `@tauri-apps/plugin-notification@2.4.0` | MIT OR Apache-2.0 | https://github.com/tauri-apps/plugins-workspace |
 | `@tauri-apps/plugin-process@2.3.1` | MIT OR Apache-2.0 | https://github.com/tauri-apps/plugins-workspace |
-| `@tauri-apps/plugin-updater@2.10.1` | MIT OR Apache-2.0 | https://github.com/tauri-apps/plugins-workspace |
+| `@tauri-apps/plugin-updater@2.12.0` | MIT OR Apache-2.0 | https://github.com/tauri-apps/plugins-workspace |
 | `@types/estree@1.0.9` | MIT | https://github.com/DefinitelyTyped/DefinitelyTyped |
 | `@types/trusted-types@2.0.7` | MIT | https://github.com/DefinitelyTyped/DefinitelyTyped |
 | `@typescript-eslint/types@8.62.1` | MIT | https://github.com/typescript-eslint/typescript-eslint |
