@@ -5,6 +5,13 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [1.13.2](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.13.1...v1.13.2) (2026-09-27)
+
+
+### 🐛 修正 / Bug Fixes
+
+* **security:** resolve RUSTSEC-2026-0285 and update dependencies ([da7d7c5](https://github.com/Takenori-Kusaka/QuickScribe/commit/da7d7c55e65b7425e3b92fcf2b1584e818e8f0d8))
+
 ## [1.13.1](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.13.0...v1.13.1) (2026-09-25)
 
 
