@@ -16,7 +16,7 @@ QuickScribe の配布物（WebView UI）には以下のオープンソースが�
 | `@jridgewell/gen-mapping@0.3.13` | MIT | Justin Ridgewell — https://github.com/jridgewell/sourcemaps |
 | `@jridgewell/remapping@2.3.5` | MIT | Justin Ridgewell — https://github.com/jridgewell/sourcemaps |
 | `@jridgewell/resolve-uri@3.1.2` | MIT | Justin Ridgewell — https://github.com/jridgewell/resolve-uri |
-| `@jridgewell/sourcemap-codec@1.5.5` | MIT | Justin Ridgewell — https://github.com/jridgewell/sourcemaps |
+| `@jridgewell/sourcemap-codec@1.6.0` | MIT | Justin Ridgewell — https://github.com/jridgewell/sourcemaps |
 | `@jridgewell/trace-mapping@0.3.31` | MIT | Justin Ridgewell — https://github.com/jridgewell/sourcemaps |
 | `@sveltejs/acorn-typescript@1.0.10` | MIT | tyrealhu and the Svelte team — https://github.com/sveltejs/acorn-typescript |
 | `@tauri-apps/api@2.12.0` | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
