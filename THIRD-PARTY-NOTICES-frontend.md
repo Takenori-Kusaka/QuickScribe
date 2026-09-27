@@ -28,7 +28,7 @@ QuickScribe の配布物（WebView UI）には以下のオープンソースが�
 | `@tauri-apps/plugin-updater@2.12.0` | MIT OR Apache-2.0 | https://github.com/tauri-apps/plugins-workspace |
 | `@types/estree@1.0.9` | MIT | https://github.com/DefinitelyTyped/DefinitelyTyped |
 | `@types/trusted-types@2.0.7` | MIT | https://github.com/DefinitelyTyped/DefinitelyTyped |
-| `@typescript-eslint/types@8.62.1` | MIT | https://github.com/typescript-eslint/typescript-eslint |
+| `@typescript-eslint/types@8.67.0` | MIT | https://github.com/typescript-eslint/typescript-eslint |
 | `acorn@8.17.0` | MIT | https://github.com/acornjs/acorn |
 | `aria-query@5.3.1` | Apache-2.0 | Jesse Beach — https://github.com/A11yance/aria-query |
 | `axobject-query@4.1.0` | Apache-2.0 | Jesse Beach — https://github.com/A11yance/axobject-query |
