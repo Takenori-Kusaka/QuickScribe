@@ -62,7 +62,7 @@ QuickScribe の配布物（WebView UI）には以下のオープンソースが�
 | `next-tick@1.1.0` | ISC | Mariusz Nowak — https://github.com/medikoo/next-tick |
 | `sade@1.8.1` | MIT | Luke Edwards — https://github.com/lukeed/sade |
 | `svelte-i18n@4.0.1` | MIT | Christian Kaisermann — https://github.com/kaisermann/svelte-i18n |
-| `svelte@5.56.4` | MIT | https://github.com/sveltejs/svelte |
+| `svelte@5.56.9` | MIT | https://github.com/sveltejs/svelte |
 | `timers-ext@0.1.8` | ISC | Mariusz Nowak — https://github.com/medikoo/timers-ext |
 | `tiny-glob@0.2.9` | MIT | Terkel Gjervig — https://github.com/terkelg/tiny-glob |
 | `tslib@2.8.1` | 0BSD | Microsoft Corp. — https://github.com/Microsoft/tslib |
