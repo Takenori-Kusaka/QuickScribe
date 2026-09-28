@@ -247,7 +247,7 @@
 
   // 保存設定。文字起こしテキスト保持/録音音声保存/形式/保存先フォルダ。
   let keepText = $state<boolean>(true);
-  let saveAudio = $state<boolean>(false);
+  let saveAudio = $state<boolean>(true);
   let audioFormat = $state<string>("opus");
   let saveDir = $state<string>(""); // 空=既定(ドキュメント/QuickScribe)
   // 出力形式（S4.2）: "txt"=本文のみ / "md"=メタデータ付きMarkdown。既定はtxt（後方互換）。
@@ -310,6 +310,10 @@
   // OpenAI互換の接続先(base_url / #593)。空=公式 api.openai.com。上級者が LiteLLM 等のゲートウェイや
   // self-host のローカルLLM(loopbackなら端末内完結扱い)を指定できる。OpenAIプロバイダのときのみ有効。
   let openaiBaseUrl = $state<string>("");
+  // プロキシ接続設定（企業ネットワーク・SSLインスペクション対応）。
+  let proxyMode = $state<"system" | "manual" | "disabled">("system");
+  let proxyUrl = $state<string>("");
+  let insecureTls = $state<boolean>(false);
   // カスタム整形スタイル(#392): 状態・統合リスト(allStyles)・追加/削除は lib/custom-styles へ集約。
   // 選択値 refineStyle は設定 state に残すため、削除時のフォールバックはコールバックで委譲する。
   const customStyleStore = createCustomStyles({
@@ -368,8 +372,12 @@
     inputDevice = s.inputDevice;
     inputDeviceKind = s.inputDeviceKind;
     nudgeEnabled = s.nudgeEnabled;
+    proxyMode = s.proxyMode;
+    proxyUrl = s.proxyUrl;
+    insecureTls = s.insecureTls;
     // 秘密情報(API鍵/AWS鍵)は keyring から非同期で読む(S3.2)。
     void loadSecrets();
+    void syncProxySettings();
   }
 
   // 現在の設定状態から永続化用スナップショットを組み立てる（writeSettings / 設定検証で共用）。
@@ -406,6 +414,9 @@
       inputDevice,
       inputDeviceKind,
       nudgeEnabled,
+      proxyMode,
+      proxyUrl,
+      insecureTls,
     };
   }
 
@@ -482,6 +493,30 @@
     }
   }
 
+  // プロキシ・ネットワーク設定をバックエンドへ反映する。
+  async function syncProxySettings() {
+    try {
+      await invoke("set_proxy_settings", {
+        settings: {
+          proxyMode,
+          proxyUrl,
+          insecureTls,
+        },
+      });
+    } catch (e) {
+      console.error("set_proxy_settings failed", e);
+    }
+  }
+
+  // 診断ログフォルダをOSのファイルマネージャで開く。
+  async function openLogsDir() {
+    try {
+      await invoke("open_logs_dir");
+    } catch (e) {
+      error = $_("errors.open_output_failed", { values: { detail: errorText(e, $_) } });
+    }
+  }
+
   // 保存先フォルダを選ぶ（ディレクトリ選択ダイアログ）。
   async function pickSaveDir() {
     const d = await open({ directory: true, multiple: false });
@@ -510,6 +545,7 @@
     writeSettings(settingsSnapshot());
     void device.applyTaskbarWidget(taskbarWidget);
     void syncSaveSettings();
+    void syncProxySettings();
     void syncSttSettings();
     // 鍵が入っていれば現在のプロバイダの最新モデルを取得（強制更新）。
     void resolveCurrentModel(true);
@@ -2233,6 +2269,44 @@
             }}>{$_("settings.show_onboarding")}</button
           >
           <p class="tip">{$_("settings.tip_show_onboarding")}</p>
+        </details>
+
+        <!-- ネットワーク / プロキシ設定（社内ネットワーク・SSLインスペクション対応）。 -->
+        <details class="meta-group">
+          <summary class="meta-title">{$_("settings.group_network")}</summary>
+          <label>
+            {$_("settings.proxy_mode")}
+            <select bind:value={proxyMode}>
+              <option value="system">{$_("settings.proxy_system")}</option>
+              <option value="manual">{$_("settings.proxy_manual")}</option>
+              <option value="disabled">{$_("settings.proxy_disabled")}</option>
+            </select>
+          </label>
+          {#if proxyMode === "manual"}
+            <label>
+              {$_("settings.proxy_url")}
+              <input
+                type="text"
+                bind:value={proxyUrl}
+                placeholder={$_("settings.tip_proxy_url")}
+              />
+            </label>
+          {/if}
+          <label class="check">
+            <input type="checkbox" bind:checked={insecureTls} />
+            {$_("settings.insecure_tls")}
+          </label>
+          <p class="tip">{$_("settings.tip_insecure_tls")}</p>
+          <div class="dir-row">
+            <button
+              type="button"
+              class="btn small ghost"
+              onclick={() => void openLogsDir()}
+            >
+              {$_("settings.open_logs")}
+            </button>
+          </div>
+          <p class="tip">{$_("settings.tip_logs")}</p>
         </details>
 
         <!-- このアプリについて（ライセンス表示 / #394 監査項目5）。OSS帰属をアプリ内で明示。 -->

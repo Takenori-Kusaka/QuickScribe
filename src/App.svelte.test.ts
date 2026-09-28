@@ -550,13 +550,17 @@ describe("App.svelte 横断発見", () => {
 });
 
 describe("App.svelte 音声保存設定", () => {
-  it("録音音声を保存をONにすると音声形式の選択が現れる", async () => {
+  it("既定で録音音声保存がONで音声形式の選択が表示され、OFFにすると非表示になる", async () => {
     render(App);
     await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
     await gotoTab("出力");
     const cb = (await screen.findByLabelText("録音音声を保存")) as HTMLInputElement;
-    await fireEvent.click(cb);
+    expect(cb.checked).toBe(true);
     expect(await screen.findByLabelText("音声形式")).toBeInTheDocument();
+    // OFF にトグルすると非表示になる
+    await fireEvent.click(cb);
+    expect(cb.checked).toBe(false);
+    expect(screen.queryByLabelText("音声形式")).not.toBeInTheDocument();
   });
 
   it("STTをAzureにすると Azure リソース欄が現れる", async () => {
@@ -568,6 +572,39 @@ describe("App.svelte 音声保存設定", () => {
     await fireEvent.change(sttSelect, { target: { value: "azure" } });
     // Azure 固有の追加フィールドが現れる(password鍵 + azureリソース)。
     expect(document.querySelectorAll('input[type="password"]').length).toBeGreaterThan(0);
+  });
+});
+
+describe("App.svelte プロキシ・ネットワーク設定", () => {
+  it("一般タブで手動プロキシを選択するとプロキシURL入力欄が現れ、保存時に set_proxy_settings が呼ばれる", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    // ネットワーク/プロキシの <details> を開く
+    await fireEvent.click(await screen.findByText("ネットワーク / プロキシ"));
+    const proxySelect = (await screen.findByLabelText("プロキシ接続方式")) as HTMLSelectElement;
+    expect(proxySelect.value).toBe("system");
+    await fireEvent.change(proxySelect, { target: { value: "manual" } });
+    const urlInput = await screen.findByPlaceholderText("例: http://proxy.corp.example.com:8080");
+    await fireEvent.input(urlInput, { target: { value: "http://127.0.0.1:8080" } });
+    const insecureCb = await screen.findByLabelText("TLS証明書検証をスキップする");
+    await fireEvent.click(insecureCb);
+    await fireEvent.click(await screen.findByRole("button", { name: "保存" }));
+    expect(invokeMock).toHaveBeenCalledWith("set_proxy_settings", {
+      settings: {
+        proxyMode: "manual",
+        proxyUrl: "http://127.0.0.1:8080",
+        insecureTls: true,
+      },
+    });
+  });
+
+  it("診断ログフォルダーを開くボタンで open_logs_dir が呼ばれる", async () => {
+    render(App);
+    await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
+    await fireEvent.click(await screen.findByText("ネットワーク / プロキシ"));
+    const openLogsBtn = await screen.findByRole("button", { name: "診断ログフォルダーを開く" });
+    await fireEvent.click(openLogsBtn);
+    expect(invokeMock).toHaveBeenCalledWith("open_logs_dir");
   });
 });
 

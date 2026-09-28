@@ -402,7 +402,8 @@ fn post_json_refine(
     body: &serde_json::Value,
     provider: &str,
 ) -> Result<serde_json::Value, String> {
-    let mut request = ureq::post(url).header("Content-Type", "application/json");
+    let agent = crate::proxy::build_agent_for_url(url);
+    let mut request = agent.post(url).header("Content-Type", "application/json");
     for (k, v) in headers {
         request = request.header(*k, *v);
     }
@@ -570,7 +571,9 @@ impl FormattingEngine for OllamaEngine {
         });
 
         let url = format!("{}/api/chat", ollama_base());
-        let mut resp = ureq::post(&url)
+        let agent = crate::proxy::build_agent_for_url(&url);
+        let mut resp = agent
+            .post(&url)
             .header("Content-Type", "application/json")
             .send_json(&body)
             .map_err(|e| crate::errcode::ec(crate::errcode::E_REFINE_OLLAMA_CONN, e))?;
@@ -668,7 +671,8 @@ impl FormattingEngine for BedrockEngine {
         });
         let body_bytes = serde_json::to_vec(&body).map_err(|e| e.to_string())?;
 
-        let mut request = ureq::post(&url).header("Content-Type", "application/json");
+        let agent = crate::proxy::build_agent_for_url(&url);
+        let mut request = agent.post(&url).header("Content-Type", "application/json");
         for (k, v) in aws_auth_headers(&url, &body_bytes, "bedrock", aws, req.api_key, true)? {
             request = request.header(k.as_str(), v.as_str());
         }
@@ -714,7 +718,9 @@ impl FormattingEngine for ClaudePlatformAwsEngine {
         });
         let body_bytes = serde_json::to_vec(&body).map_err(|e| e.to_string())?;
 
-        let mut request = ureq::post(&url)
+        let agent = crate::proxy::build_agent_for_url(&url);
+        let mut request = agent
+            .post(&url)
             .header("Content-Type", "application/json")
             .header("anthropic-version", "2023-06-01");
         if !aws.workspace_id.trim().is_empty() {
@@ -766,7 +772,9 @@ pub fn resolve_latest_model(provider: &str, api_key: &str) -> Result<String, Str
 /// 取得不可（未起動/未取得）なら呼び出し側が既定モデルにフォールバックする。
 fn latest_ollama() -> Result<String, String> {
     let url = format!("{}/api/tags", ollama_base());
-    let mut resp = ureq::get(&url)
+    let agent = crate::proxy::build_agent_for_url(&url);
+    let mut resp = agent
+        .get(&url)
         .call()
         .map_err(|e| crate::errcode::ec(crate::errcode::E_REFINE_MODELS_HTTP, format!("Ollama: {e}")))?;
     let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
@@ -788,7 +796,9 @@ fn latest_anthropic(api_key: &str) -> Result<String, String> {
         "{}/v1/models?limit=1000",
         crate::api_base("https://api.anthropic.com", "QS_TEST_ANTHROPIC_BASE")
     );
-    let mut resp = ureq::get(&url)
+    let agent = crate::proxy::build_agent_for_url(&url);
+    let mut resp = agent
+        .get(&url)
         .header("x-api-key", api_key)
         .header("anthropic-version", "2023-06-01")
         .call()
@@ -818,7 +828,9 @@ fn latest_openai(api_key: &str) -> Result<String, String> {
         "{}/v1/models",
         crate::api_base("https://api.openai.com", "QS_TEST_OPENAI_BASE")
     );
-    let mut resp = ureq::get(&url)
+    let agent = crate::proxy::build_agent_for_url(&url);
+    let mut resp = agent
+        .get(&url)
         .header("Authorization", &format!("Bearer {api_key}"))
         .call()
         .map_err(|e| crate::errcode::ec(crate::errcode::E_REFINE_MODELS_HTTP, format!("OpenAI: {e}")))?;
@@ -880,7 +892,9 @@ fn latest_gemini(api_key: &str) -> Result<String, String> {
         "{}/v1beta/models?pageSize=1000&key={api_key}",
         crate::api_base("https://generativelanguage.googleapis.com", "QS_TEST_GEMINI_BASE")
     );
-    let mut resp = ureq::get(&url)
+    let agent = crate::proxy::build_agent_for_url(&url);
+    let mut resp = agent
+        .get(&url)
         .call()
         .map_err(|e| crate::errcode::ec(crate::errcode::E_REFINE_MODELS_HTTP, format!("Gemini: {e}")))?;
     let v: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;

@@ -88,7 +88,7 @@ struct SaveSettings {
     save_dir: Option<String>,
     /// 録音音声を保存するか。
     save_audio: bool,
-    /// 保存形式("wav"。今後 "opus")。
+    /// 保存形式("opus" または "wav")。
     audio_format: String,
     /// 文字起こしテキスト(.txt)を保存するか。
     keep_text: bool,
@@ -100,8 +100,8 @@ impl Default for SaveSettings {
     fn default() -> Self {
         Self {
             save_dir: None,
-            save_audio: false,
-            audio_format: "wav".to_string(),
+            save_audio: true,
+            audio_format: "opus".to_string(),
             keep_text: true,
             output_format: "txt".to_string(),
         }
@@ -229,6 +229,14 @@ fn open_vault<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<(), String>
     open_in_file_manager(&dir)
 }
 
+/// 診断ログフォルダを OS のファイルマネージャで開く。無ければ作成してから開く。
+#[tauri::command]
+fn open_logs_dir() -> Result<(), String> {
+    let dir = diag_log::logs_dir().ok_or_else(|| errcode::E_JOURNAL_DIR.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| errcode::ec(errcode::E_JOURNAL_DIR, e))?;
+    open_in_file_manager(&dir)
+}
+
 /// OS別にディレクトリをファイルマネージャで開く（待たずに起動）。
 fn open_in_file_manager(dir: &std::path::Path) -> Result<(), String> {
     #[cfg(windows)]
@@ -277,6 +285,12 @@ fn set_save_settings(
         s.output_format = f;
     }
     Ok(())
+}
+
+/// プロキシおよびネットワーク設定を反映する。
+#[tauri::command]
+fn set_proxy_settings(settings: proxy::ProxyConfig) {
+    proxy::update_proxy_config(settings);
 }
 
 /// 整形結果など任意テキストを保存先へ書き出す（整形は常に保存）。tags は内省タグ(S4.3)。
@@ -1559,6 +1573,16 @@ mod tests {
     }
 
     #[test]
+    fn save_settings_default_values() {
+        let def = SaveSettings::default();
+        assert!(def.save_dir.is_none());
+        assert!(def.save_audio, "既定で録音音声を保存する");
+        assert_eq!(def.audio_format, "opus", "既定の音声形式は opus");
+        assert!(def.keep_text, "既定で文字起こしテキストを保存する");
+        assert_eq!(def.output_format, "txt");
+    }
+
+    #[test]
     fn settings_commands_update_managed_state() {
         let app = mock_app();
         set_save_settings(
@@ -1825,7 +1849,7 @@ mod tests {
 
     #[test]
     fn stop_recording_rescues_audio_when_transcribe_fails_and_save_audio_off() {
-        // 文字起こし段階でエラーが発生した場合、save_audio が OFF（既定）であっても、
+        // 文字起こし段階でエラーが発生した場合、save_audio が OFF であっても、
         // 録音データと時間が失われないようレスキュー音声（rec-rescue-*.wav）が保存されること。
         let (base, _) = serve(vec![Route {
             path_contains: "/v1/listen",
@@ -2291,6 +2315,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             save_note,
             open_vault,
+            open_logs_dir,
             list_entries,
             transcribe_file,
             list_audio_sources,
@@ -2305,6 +2330,7 @@ pub fn run() {
             read_text_file,
             set_record_shortcut,
             set_save_settings,
+            set_proxy_settings,
             set_stt_settings,
             set_recording_overlay,
             set_tray_texts,

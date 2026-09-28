@@ -10,6 +10,26 @@ use std::path::{Path, PathBuf};
 /// 1ファイルあたりの上限。超えたらローテーションする。
 pub const MAX_BYTES: u64 = 1024 * 1024;
 
+/// ログフォルダのパスを取得する（OSのローカルデータ領域配下: Windows=%LOCALAPPDATA%\QuickScribe\logs）。
+pub fn logs_dir() -> Option<PathBuf> {
+    dirs::data_local_dir().map(|base| base.join("QuickScribe").join("logs"))
+}
+
+/// アプリ汎用診断ログ（app.log）のパスを取得する。
+pub fn app_log_path() -> Option<PathBuf> {
+    logs_dir().map(|dir| dir.join("app.log"))
+}
+
+/// アプリ汎用診断ログにメッセージを追記する。
+/// タイムスタンプとカテゴリ（[category]）を付与する。
+pub fn log(category: &str, msg: &str) {
+    if let Some(path) = app_log_path() {
+        let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+        let line = format!("[{ts}][{category}] {msg}");
+        let _ = append_line(&path, &line, MAX_BYTES);
+    }
+}
+
 /// 環境変数の値から診断ログの有効/無効を判定する（未設定＝無効）。
 pub fn enabled_from(value: Option<&str>) -> bool {
     matches!(

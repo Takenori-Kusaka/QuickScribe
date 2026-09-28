@@ -2,6 +2,61 @@
 // Windows 11 等の企業ネットワーク環境において、OSのシステムプロキシ設定（WinINet / レジストリ）や
 // 環境変数（HTTP_PROXY, HTTPS_PROXY 等）を自動認識し、外部通信（モデルDL等）を正常に行えるようにする。
 
+use serde::{Deserialize, Serialize};
+use std::sync::RwLock;
+
+/// プロキシおよびネットワーク接続設定。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyConfig {
+    /// "system" (既定) | "manual" | "disabled"
+    #[serde(default = "default_proxy_mode")]
+    pub proxy_mode: String,
+    /// 手動指定時のプロキシURL（例: "http://127.0.0.1:8080"）
+    #[serde(default)]
+    pub proxy_url: String,
+    /// TLS証明書検証をスキップするか（社内プロキシ・自己署名環境用）
+    #[serde(default)]
+    pub insecure_tls: bool,
+}
+
+fn default_proxy_mode() -> String {
+    "system".to_string()
+}
+
+impl Default for ProxyConfig {
+    fn default() -> Self {
+        Self {
+            proxy_mode: default_proxy_mode(),
+            proxy_url: String::new(),
+            insecure_tls: false,
+        }
+    }
+}
+
+static PROXY_CONFIG: RwLock<ProxyConfig> = RwLock::new(ProxyConfig {
+    proxy_mode: String::new(),
+    proxy_url: String::new(),
+    insecure_tls: false,
+});
+
+/// プロキシ設定を更新する（フロントエンドからの同期用）。
+pub fn update_proxy_config(cfg: ProxyConfig) {
+    if let Ok(mut lock) = PROXY_CONFIG.write() {
+        *lock = cfg;
+    }
+}
+
+/// 現在のプロキシ設定を取得する。
+pub fn current_proxy_config() -> ProxyConfig {
+    let cfg = PROXY_CONFIG.read().map(|c| c.clone()).unwrap_or_default();
+    if cfg.proxy_mode.is_empty() {
+        ProxyConfig::default()
+    } else {
+        cfg
+    }
+}
+
 /// URL からホスト名（ポート番号やパスを除く）を抽出する純粋関数。
 pub fn extract_host(url: &str) -> Option<&str> {
     let after_scheme = if let Some(idx) = url.find("://") {
@@ -156,12 +211,56 @@ fn read_windows_proxy_settings() -> Option<(String, Option<String>)> {
     None
 }
 
-/// 指定された URL に対して適用すべき Proxy 設定を取得する。
-/// 1. 環境変数 (HTTPS_PROXY, HTTP_PROXY, ALL_PROXY 等)
-/// 2. Windows システムプロキシ (ProxyEnable, ProxyServer, ProxyOverride)
-pub fn detect_proxy_for_url(url: &str) -> Option<ureq::Proxy> {
+/// 指定されたプロキシ設定に基づいて適用すべき Proxy 設定を取得する（純粋関数・テスト可能）。
+/// 1. ローカルループバック (localhost, 127.0.0.1, ::1) は常にプロキシをバイパス
+/// 2. プロキシ設定が "disabled" の場合は None（直接接続）
+/// 3. "manual" の場合は指定された proxy_url を使用
+/// 4. "system"（既定）の場合は環境変数 (HTTPS_PROXY等) または Windows システムプロキシを検出
+pub fn detect_proxy_with_config(url: &str, cfg: &ProxyConfig) -> Option<ureq::Proxy> {
+    // ローカルホスト宛て（テストサーバやローカルOllama等）は常にプロキシをバイパス
+    if let Some(host) = extract_host(url) {
+        if host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1" || host == "::1" {
+            return None;
+        }
+    }
+
+    match cfg.proxy_mode.as_str() {
+        "disabled" => {
+            crate::diag_log::log("proxy", &format!("proxy disabled by user settings for {url}"));
+            return None;
+        }
+        "manual" => {
+            let trimmed = cfg.proxy_url.trim();
+            if !trimmed.is_empty() {
+                let proxy_url = if trimmed.starts_with("http://")
+                    || trimmed.starts_with("https://")
+                    || trimmed.starts_with("socks5://")
+                    || trimmed.starts_with("socks4://")
+                {
+                    trimmed.to_string()
+                } else {
+                    format!("http://{trimmed}")
+                };
+                match ureq::Proxy::new(&proxy_url) {
+                    Ok(proxy) => {
+                        crate::diag_log::log("proxy", &format!("using manual proxy {proxy_url} for {url}"));
+                        return Some(proxy);
+                    }
+                    Err(e) => {
+                        crate::diag_log::log("proxy", &format!("failed to parse manual proxy {proxy_url}: {e}"));
+                    }
+                }
+            }
+            return None;
+        }
+        _ => {
+            // "system" または未設定: システム設定と環境変数の自動検出
+        }
+    }
+
     // 1. 環境変数の設定を最優先
     if let Some(proxy) = ureq::Proxy::try_from_env() {
+        crate::diag_log::log("proxy", &format!("detected environment proxy for {url}"));
         return Some(proxy);
     }
 
@@ -170,6 +269,7 @@ pub fn detect_proxy_for_url(url: &str) -> Option<ureq::Proxy> {
         if let Some(host) = extract_host(url) {
             if let Some(bypass) = proxy_override.as_deref() {
                 if is_proxy_bypassed(host, bypass) {
+                    crate::diag_log::log("proxy", &format!("bypassing system proxy for {url}"));
                     return None;
                 }
             }
@@ -177,9 +277,12 @@ pub fn detect_proxy_for_url(url: &str) -> Option<ureq::Proxy> {
 
         if let Some(proxy_url) = parse_proxy_server(&proxy_server) {
             match ureq::Proxy::new(&proxy_url) {
-                Ok(proxy) => return Some(proxy),
+                Ok(proxy) => {
+                    crate::diag_log::log("proxy", &format!("using Windows system proxy {proxy_url} for {url}"));
+                    return Some(proxy);
+                }
                 Err(e) => {
-                    eprintln!("Failed to parse system proxy URL '{proxy_url}': {e}");
+                    crate::diag_log::log("proxy", &format!("failed to parse system proxy URL '{proxy_url}': {e}"));
                 }
             }
         }
@@ -188,9 +291,44 @@ pub fn detect_proxy_for_url(url: &str) -> Option<ureq::Proxy> {
     None
 }
 
-/// 指定 URL 宛てのリクエスト用にプロキシ設定を適用した ureq::Agent を構築する。
+/// 現在のグローバル設定に基づき、対象 URL への Proxy を判定する。
+pub fn detect_proxy_for_url(url: &str) -> Option<ureq::Proxy> {
+    detect_proxy_with_config(url, &current_proxy_config())
+}
+
+/// TLS 検証設定を構築する純粋関数。
+/// `insecure` が true の場合は証明書検証を無効化する。
+/// false の場合は OS ネイティブの検証（PlatformVerifier）を使用する。
+pub fn build_tls_config_with(insecure: bool) -> ureq::tls::TlsConfig {
+    let mut builder = ureq::tls::TlsConfig::builder();
+    if insecure {
+        crate::diag_log::log("tls", "TLS certificate verification disabled (insecure mode)");
+        builder = builder.disable_verification(true);
+    } else {
+        builder = builder.root_certs(ureq::tls::RootCerts::PlatformVerifier);
+    }
+    builder.build()
+}
+
+/// TLS 検証設定を構築する。
+/// 企業プロキシ等の SSL インスペクション環境（社内ルートCA証明書）や Windows 証明書ストアに
+/// 登録された証明書を信頼できるように、OSネイティブの検証（PlatformVerifier）を使用する。
+/// また、設定画面で `insecure_tls` が有効、または環境変数 `QS_INSECURE_TLS` / `QUICKSCRIBE_INSECURE_TLS`
+/// が "1" / "true" の場合は、証明書検証を無効化する。
+pub fn build_tls_config() -> ureq::tls::TlsConfig {
+    let cfg = current_proxy_config();
+    let env_insecure = std::env::var("QS_INSECURE_TLS")
+        .or_else(|_| std::env::var("QUICKSCRIBE_INSECURE_TLS"))
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    build_tls_config_with(cfg.insecure_tls || env_insecure)
+}
+
+/// 指定 URL 宛てのリクエスト用にプロキシ設定および OS の信頼されたルート証明書ストアを
+/// 適用した ureq::Agent を構築する。
 pub fn build_agent_for_url(url: &str) -> ureq::Agent {
-    let mut builder = ureq::Agent::config_builder();
+    let mut builder = ureq::Agent::config_builder().tls_config(build_tls_config());
     if let Some(proxy) = detect_proxy_for_url(url) {
         builder = builder.proxy(Some(proxy));
     }
@@ -283,5 +421,42 @@ mod tests {
         );
         let proxy = detect_proxy_for_url("https://huggingface.co/model.bin");
         assert!(proxy.is_some(), "HTTPS_PROXY 環境変数が認識される");
+    }
+
+    #[test]
+    fn build_tls_config_constructs_safely() {
+        // 通常時は PlatformVerifier で構築できる
+        let _cfg = build_tls_config();
+
+        // QS_INSECURE_TLS=1 指定時も構築できる
+        let _g = crate::testhttp::env_scope(&[("QS_INSECURE_TLS", "1")], &[]);
+        let _cfg_insecure = build_tls_config();
+    }
+
+    #[test]
+    fn proxy_config_mode_and_tls_handling() {
+        // 1. disabled モードでは環境変数があっても None
+        let _g = crate::testhttp::env_scope(
+            &[("HTTPS_PROXY", "http://127.0.0.1:9999")],
+            &[],
+        );
+        let cfg_disabled = ProxyConfig {
+            proxy_mode: "disabled".into(),
+            proxy_url: "".into(),
+            insecure_tls: false,
+        };
+        assert!(detect_proxy_with_config("https://huggingface.co/model.bin", &cfg_disabled).is_none());
+
+        // 2. manual モードで指定したURLが使用される
+        let cfg_manual = ProxyConfig {
+            proxy_mode: "manual".into(),
+            proxy_url: "http://127.0.0.1:8888".into(),
+            insecure_tls: false,
+        };
+        assert!(detect_proxy_with_config("https://huggingface.co/model.bin", &cfg_manual).is_some());
+
+        // 3. insecure_tls フラグで TLS 設定が構築できる
+        let _cfg = build_tls_config_with(true);
+        let _cfg_secure = build_tls_config_with(false);
     }
 }

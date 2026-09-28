@@ -513,8 +513,10 @@ impl TranscriptionEngine for OpenAiCompatibleSttEngine {
         fields.push(("response_format", "json"));
         let (content_type, body) = build_multipart(&fields, "file", "audio.wav", "audio/wav", &wav);
         on_progress(30);
+        let agent = crate::proxy::build_agent_for_url(&url);
         let json = read_json_response(
-            ureq::post(&url)
+            agent
+                .post(&url)
                 .config()
                 .http_status_as_error(false)
                 .build()
@@ -590,8 +592,10 @@ impl TranscriptionEngine for DeepgramSttEngine {
             lang
         );
         on_progress(30);
+        let agent = crate::proxy::build_agent_for_url(&url);
         let json = read_json_response(
-            ureq::post(&url)
+            agent
+                .post(&url)
                 .config()
                 .http_status_as_error(false)
                 .build()
@@ -652,8 +656,10 @@ impl TranscriptionEngine for AzureSttEngine {
         let (content_type, body) =
             build_multipart(&[("definition", &definition)], "audio", "audio.wav", "audio/wav", &wav);
         on_progress(30);
+        let agent = crate::proxy::build_agent_for_url(&url);
         let json = read_json_response(
-            ureq::post(&url)
+            agent
+                .post(&url)
                 .config()
                 .http_status_as_error(false)
                 .build()

@@ -289,11 +289,15 @@ fn download_to<F: FnMut(u64, Option<u64>)>(
     expected_size: u64,
     mut on_progress: F,
 ) -> Result<(), String> {
+    crate::diag_log::log("model", &format!("starting download from {url}"));
     let agent = crate::proxy::build_agent_for_url(url);
-    let resp = agent
-        .get(url)
-        .call()
-        .map_err(|e| crate::errcode::ec(crate::errcode::E_MODEL_DOWNLOAD, e))?;
+    let resp = match agent.get(url).call() {
+        Ok(r) => r,
+        Err(e) => {
+            crate::diag_log::log("model", &format!("download request failed for {url}: {e}"));
+            return Err(crate::errcode::ec(crate::errcode::E_MODEL_DOWNLOAD, e));
+        }
+    };
     let total: Option<u64> = resp
         .headers()
         .get("Content-Length")
@@ -325,10 +329,18 @@ fn download_to<F: FnMut(u64, Option<u64>)>(
     // 整合性検証(#391): サイズ + SHA256 を照合。破損・途中切れ・改ざんを検出する。
     let actual = hex::encode(hasher.finalize());
     if let Err(e) = verify_integrity(downloaded, &actual, expected_size, expected_sha256) {
+        crate::diag_log::log(
+            "model",
+            &format!("integrity check failed for {url}: {e}"),
+        );
         let _ = std::fs::remove_file(&tmp);
         return Err(e);
     }
     std::fs::rename(&tmp, path).map_err(|e| e.to_string())?;
+    crate::diag_log::log(
+        "model",
+        &format!("download successfully completed for {url} ({downloaded} bytes)"),
+    );
     Ok(())
 }
 

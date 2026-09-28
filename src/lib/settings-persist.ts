@@ -51,6 +51,12 @@ export interface AppSettings {
   inputDeviceKind: string;
   /** 習慣ナッジ(S9.4 #58): 起動時に継続中ストリークが未記録なら通知で促す。既定OFF(opt-in)。 */
   nudgeEnabled: boolean;
+  /** プロキシ接続モード ("system" | "manual" | "disabled")。既定は system。 */
+  proxyMode: "system" | "manual" | "disabled";
+  /** 手動指定時のプロキシURL (例: http://proxy.corp.example.com:8080)。 */
+  proxyUrl: string;
+  /** TLS証明書検証をスキップするか (社内プロキシ・自己署名環境用)。既定は false。 */
+  insecureTls: boolean;
 }
 
 function emptyModelMap(): Record<Provider, string> {
@@ -105,7 +111,7 @@ export function readSettings(localeDefault: string): AppSettings {
     includeTimestamps: ls.getItem("includeTimestamps") !== "false",
     autoPipeline: ls.getItem("autoPipeline") === "true",
     keepText: ls.getItem("keepText") !== "false",
-    saveAudio: ls.getItem("saveAudio") === "true",
+    saveAudio: ls.getItem("saveAudio") !== "false",
     audioFormat: clampOneOf(ls.getItem("audioFormat") || "opus", ["opus", "wav"] as const, "opus"),
     saveDir: ls.getItem("saveDir") || "",
     outputFormat: clampOneOf(ls.getItem("outputFormat") || "txt", ["txt", "md"] as const, "txt"),
@@ -138,6 +144,13 @@ export function readSettings(localeDefault: string): AppSettings {
     inputDeviceKind: ls.getItem("inputDeviceKind") || "input",
     // 習慣ナッジ(#58)は opt-in（既定OFF）。プライバシー/簡便さ優先で明示的にONにした人だけ促す。
     nudgeEnabled: ls.getItem("nudgeEnabled") === "true",
+    proxyMode: clampOneOf(
+      (ls.getItem("proxyMode") as "system" | "manual" | "disabled") || "system",
+      ["system", "manual", "disabled"] as const,
+      "system",
+    ),
+    proxyUrl: ls.getItem("proxyUrl") || "",
+    insecureTls: ls.getItem("insecureTls") === "true",
   };
   // スキーマ版を記録（検証を通過した証跡 / ADR-0017）。
   ls.setItem("settingsVersion", String(SETTINGS_VERSION));
@@ -177,4 +190,7 @@ export function writeSettings(s: AppSettings): void {
   ls.setItem("inputDevice", s.inputDevice);
   ls.setItem("inputDeviceKind", s.inputDeviceKind);
   ls.setItem("nudgeEnabled", String(s.nudgeEnabled));
+  ls.setItem("proxyMode", s.proxyMode);
+  ls.setItem("proxyUrl", s.proxyUrl);
+  ls.setItem("insecureTls", String(s.insecureTls));
 }

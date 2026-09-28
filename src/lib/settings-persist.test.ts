@@ -16,7 +16,7 @@ describe("readSettings", () => {
     expect(s.recordMode).toBe("toggle");
     expect(s.includeTimestamps).toBe(true);
     expect(s.keepText).toBe(true);
-    expect(s.saveAudio).toBe(false);
+    expect(s.saveAudio).toBe(true);
     expect(s.audioFormat).toBe("opus");
     expect(s.outputFormat).toBe("txt");
     expect(s.whisperModel).toBe("base");
@@ -33,11 +33,11 @@ describe("readSettings", () => {
 
   it("保存値を読み、settingsVersion を記録する", () => {
     localStorage.setItem("provider", "anthropic");
-    localStorage.setItem("saveAudio", "true");
+    localStorage.setItem("saveAudio", "false");
     localStorage.setItem("saveDir", "/x");
     const s = readSettings("ja");
     expect(s.provider).toBe("anthropic");
-    expect(s.saveAudio).toBe(true);
+    expect(s.saveAudio).toBe(false);
     expect(s.saveDir).toBe("/x");
     expect(localStorage.getItem("settingsVersion")).toBe(String(SETTINGS_VERSION));
   });
@@ -135,6 +135,9 @@ describe("writeSettings", () => {
     inputDevice: "dev",
     inputDeviceKind: "loopback",
     nudgeEnabled: true,
+    proxyMode: "manual",
+    proxyUrl: "http://proxy.test:8080",
+    insecureTls: true,
   };
 
   it("フォーム項目を localStorage へ書き戻す", () => {
@@ -147,6 +150,9 @@ describe("writeSettings", () => {
     expect(localStorage.getItem("openaiBaseUrl")).toBe("http://localhost:4000");
     expect(localStorage.getItem("nudgeEnabled")).toBe("true");
     expect(localStorage.getItem("sttDiarize")).toBe("true");
+    expect(localStorage.getItem("proxyMode")).toBe("manual");
+    expect(localStorage.getItem("proxyUrl")).toBe("http://proxy.test:8080");
+    expect(localStorage.getItem("insecureTls")).toBe("true");
   });
 
   it("write→read のラウンドトリップで主要値が保たれる", () => {
@@ -160,5 +166,8 @@ describe("writeSettings", () => {
     expect(s.awsAuthMode).toBe("apikey");
     expect(s.taskbarWidget).toBe(false);
     expect(s.sttDiarize).toBe(true);
+    expect(s.proxyMode).toBe("manual");
+    expect(s.proxyUrl).toBe("http://proxy.test:8080");
+    expect(s.insecureTls).toBe(true);
   });
 });
