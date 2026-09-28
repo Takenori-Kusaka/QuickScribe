@@ -5,6 +5,13 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [1.13.3](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.13.2...v1.13.3) (2026-09-27)
+
+
+### 🐛 修正 / Bug Fixes
+
+* **network:** resolve TLS certificate unknown issuer and add proxy settings UI ([c77c908](https://github.com/Takenori-Kusaka/QuickScribe/commit/c77c908))
+
 ## [1.13.2](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.13.1...v1.13.2) (2026-09-27)
 
 
