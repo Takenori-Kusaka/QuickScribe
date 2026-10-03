@@ -5,6 +5,13 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [1.13.4](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.13.3...v1.13.4) (2026-10-03)
+
+
+### 🐛 修正 / Bug Fixes
+
+* **stt:** prevent ucrtbase fast-fail crash on zero Vulkan devices and improve GPU toggle ([85bcfc9](https://github.com/Takenori-Kusaka/QuickScribe/commit/85bcfc9))
+
 ## [1.13.3](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.13.2...v1.13.3) (2026-09-27)
 
 
