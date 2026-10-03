@@ -27,6 +27,14 @@
 #include "ggml-impl.h"
 #include "ggml-backend-impl.h"
 
+#ifdef _WIN32
+#    define WIN32_LEAN_AND_MEAN
+#    ifndef NOMINMAX
+#        define NOMINMAX
+#    endif
+#    include <windows.h>
+#endif
+
 #include "ggml-vulkan-shaders.hpp"
 
 #define VK_API_VERSION VK_API_VERSION_1_2
@@ -2634,171 +2642,200 @@ void ggml_vk_instance_init() {
 
     vk_instance_initialized = true;
 
-    vk::ApplicationInfo app_info{ "ggml-vulkan", 1, nullptr, 0, VK_API_VERSION };
+    // Check if GPU is explicitly disabled via environment variable
+    if (getenv("QUICKSCRIBE_DISABLE_GPU") != nullptr || getenv("GGML_VK_DISABLE") != nullptr) {
+        std::cerr << "ggml_vulkan: GPU disabled via environment variable, falling back to CPU." << std::endl;
+        return;
+    }
 
-    const std::vector<vk::ExtensionProperties> instance_extensions = vk::enumerateInstanceExtensionProperties();
-    const bool validation_ext = ggml_vk_instance_validation_ext_available(instance_extensions);
-#ifdef __APPLE__
-    const bool portability_enumeration_ext = ggml_vk_instance_portability_enumeration_ext_available(instance_extensions);
+#ifdef _WIN32
+    // Check if vulkan-1.dll is present on system to prevent DELAYLOAD crashes
+    HMODULE hVulkan = LoadLibraryA("vulkan-1.dll");
+    if (!hVulkan) {
+        std::cerr << "ggml_vulkan: vulkan-1.dll not found, falling back to CPU." << std::endl;
+        return;
+    }
+    FreeLibrary(hVulkan);
 #endif
 
-    std::vector<const char*> layers;
+    try {
+        vk::ApplicationInfo app_info{ "ggml-vulkan", 1, nullptr, 0, VK_API_VERSION };
 
-    if (validation_ext) {
-        layers.push_back("VK_LAYER_KHRONOS_validation");
-    }
-    std::vector<const char*> extensions;
-    if (validation_ext) {
-        extensions.push_back("VK_EXT_validation_features");
-    }
+        const std::vector<vk::ExtensionProperties> instance_extensions = vk::enumerateInstanceExtensionProperties();
+        const bool validation_ext = ggml_vk_instance_validation_ext_available(instance_extensions);
 #ifdef __APPLE__
-    if (portability_enumeration_ext) {
-        extensions.push_back("VK_KHR_portability_enumeration");
-    }
-#endif
-    vk::InstanceCreateInfo instance_create_info(vk::InstanceCreateFlags{}, &app_info, layers, extensions);
-#ifdef __APPLE__
-    if (portability_enumeration_ext) {
-        instance_create_info.flags |= vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR;
-    }
+        const bool portability_enumeration_ext = ggml_vk_instance_portability_enumeration_ext_available(instance_extensions);
 #endif
 
-    std::vector<vk::ValidationFeatureEnableEXT> features_enable;
-    vk::ValidationFeaturesEXT validation_features;
+        std::vector<const char*> layers;
 
-    if (validation_ext) {
-        features_enable = { vk::ValidationFeatureEnableEXT::eBestPractices };
-        validation_features = {
-            features_enable,
-            {},
-        };
-        validation_features.setPNext(nullptr);
-        instance_create_info.setPNext(&validation_features);
-        GGML_LOG_DEBUG("ggml_vulkan: Validation layers enabled\n");
-    }
-    vk_instance.instance = vk::createInstance(instance_create_info);
+        if (validation_ext) {
+            layers.push_back("VK_LAYER_KHRONOS_validation");
+        }
+        std::vector<const char*> extensions;
+        if (validation_ext) {
+            extensions.push_back("VK_EXT_validation_features");
+        }
+#ifdef __APPLE__
+        if (portability_enumeration_ext) {
+            extensions.push_back("VK_KHR_portability_enumeration");
+        }
+#endif
+        vk::InstanceCreateInfo instance_create_info(vk::InstanceCreateFlags{}, &app_info, layers, extensions);
+#ifdef __APPLE__
+        if (portability_enumeration_ext) {
+            instance_create_info.flags |= vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR;
+        }
+#endif
 
-    size_t num_available_devices = vk_instance.instance.enumeratePhysicalDevices().size();
+        std::vector<vk::ValidationFeatureEnableEXT> features_enable;
+        vk::ValidationFeaturesEXT validation_features;
 
-    // Emulate behavior of CUDA_VISIBLE_DEVICES for Vulkan
-    char * devices_env = getenv("GGML_VK_VISIBLE_DEVICES");
-    if (devices_env != nullptr) {
-        std::string devices(devices_env);
-        std::replace(devices.begin(), devices.end(), ',', ' ');
+        if (validation_ext) {
+            features_enable = { vk::ValidationFeatureEnableEXT::eBestPractices };
+            validation_features = {
+                features_enable,
+                {},
+            };
+            validation_features.setPNext(nullptr);
+            instance_create_info.setPNext(&validation_features);
+            GGML_LOG_DEBUG("ggml_vulkan: Validation layers enabled\n");
+        }
+        vk_instance.instance = vk::createInstance(instance_create_info);
 
-        std::stringstream ss(devices);
-        size_t tmp;
-        while (ss >> tmp) {
-            if(tmp >= num_available_devices) {
-                std::cerr << "ggml_vulkan: Invalid device index " << tmp << " in GGML_VK_VISIBLE_DEVICES." << std::endl;
-                throw std::runtime_error("Invalid Vulkan device index");
+        size_t num_available_devices = vk_instance.instance.enumeratePhysicalDevices().size();
+
+        // Emulate behavior of CUDA_VISIBLE_DEVICES for Vulkan
+        char * devices_env = getenv("GGML_VK_VISIBLE_DEVICES");
+        if (devices_env != nullptr) {
+            std::string devices(devices_env);
+            std::replace(devices.begin(), devices.end(), ',', ' ');
+
+            std::stringstream ss(devices);
+            size_t tmp;
+            while (ss >> tmp) {
+                if(tmp >= num_available_devices) {
+                    std::cerr << "ggml_vulkan: Invalid device index " << tmp << " in GGML_VK_VISIBLE_DEVICES." << std::endl;
+                    throw std::runtime_error("Invalid Vulkan device index");
+                }
+                vk_instance.device_indices.push_back(tmp);
             }
-            vk_instance.device_indices.push_back(tmp);
-        }
-    } else {
-        std::vector<vk::PhysicalDevice> devices = vk_instance.instance.enumeratePhysicalDevices();
+        } else {
+            std::vector<vk::PhysicalDevice> devices = vk_instance.instance.enumeratePhysicalDevices();
 
-        // Make sure at least one device exists
-        if (devices.empty()) {
-            std::cerr << "ggml_vulkan: Error: No devices found." << std::endl;
-            GGML_ABORT("fatal error");
-        }
+            // Make sure at least one device exists; if none, safely fall back to CPU (do NOT abort)
+            if (devices.empty()) {
+                std::cerr << "ggml_vulkan: No Vulkan physical devices found, falling back to CPU." << std::endl;
+                return;
+            }
 
-        // Default to using all dedicated GPUs
-        for (size_t i = 0; i < devices.size(); i++) {
-            vk::PhysicalDeviceProperties2 new_props;
-            vk::PhysicalDeviceDriverProperties new_driver;
-            vk::PhysicalDeviceIDProperties new_id;
-            new_props.pNext = &new_driver;
-            new_driver.pNext = &new_id;
-            devices[i].getProperties2(&new_props);
+            // Default to using all dedicated GPUs
+            for (size_t i = 0; i < devices.size(); i++) {
+                vk::PhysicalDeviceProperties2 new_props;
+                vk::PhysicalDeviceDriverProperties new_driver;
+                vk::PhysicalDeviceIDProperties new_id;
+                new_props.pNext = &new_driver;
+                new_driver.pNext = &new_id;
+                devices[i].getProperties2(&new_props);
 
-            if (new_props.properties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu) {
-                // Check if there are two physical devices corresponding to the same GPU
-                auto old_device = std::find_if(
-                    vk_instance.device_indices.begin(),
-                    vk_instance.device_indices.end(),
-                    [&devices, &new_id](const size_t k){
-                        vk::PhysicalDeviceProperties2 old_props;
-                        vk::PhysicalDeviceIDProperties old_id;
-                        old_props.pNext = &old_id;
-                        devices[k].getProperties2(&old_props);
-                        return std::equal(std::begin(old_id.deviceUUID), std::end(old_id.deviceUUID), std::begin(new_id.deviceUUID));
-                    }
-                );
-                if (old_device == vk_instance.device_indices.end()) {
-                    vk_instance.device_indices.push_back(i);
-                } else {
-                    // There can be two physical devices corresponding to the same GPU if there are 2 different drivers
-                    // This can cause error when splitting layers aross the devices, need to keep only 1
-                    VK_LOG_DEBUG("Device " << i << " and device " << *old_device << " have the same deviceUUID");
-
-                    vk::PhysicalDeviceProperties2 old_props;
-                    vk::PhysicalDeviceDriverProperties old_driver;
-                    old_props.pNext = &old_driver;
-                    devices[*old_device].getProperties2(&old_props);
-
-                    std::map<vk::DriverId, int> driver_priorities {};
-                    int old_priority = std::numeric_limits<int>::max();
-                    int new_priority = std::numeric_limits<int>::max();
-
-                    // Check https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkDriverId.html for the list of driver id
-                    // Smaller number -> higher priority
-                    switch (old_props.properties.vendorID) {
-                        case VK_VENDOR_ID_AMD:
-                            driver_priorities[vk::DriverId::eMesaRadv] = 1;
-                            driver_priorities[vk::DriverId::eAmdOpenSource] = 2;
-                            driver_priorities[vk::DriverId::eAmdProprietary] = 3;
-                            break;
-                        case VK_VENDOR_ID_INTEL:
-                            driver_priorities[vk::DriverId::eIntelOpenSourceMESA] = 1;
-                            driver_priorities[vk::DriverId::eIntelProprietaryWindows] = 2;
-                            break;
-                        case VK_VENDOR_ID_NVIDIA:
-                            driver_priorities[vk::DriverId::eNvidiaProprietary] = 1;
-#if defined(VK_API_VERSION_1_3) && VK_HEADER_VERSION >= 235
-                            driver_priorities[vk::DriverId::eMesaNvk] = 2;
-#endif
-                            break;
-                    }
-
-                    if (driver_priorities.count(old_driver.driverID)) {
-                        old_priority = driver_priorities[old_driver.driverID];
-                    }
-                    if (driver_priorities.count(new_driver.driverID)) {
-                        new_priority = driver_priorities[new_driver.driverID];
-                    }
-
-                    if (new_priority < old_priority) {
-                        auto r = std::remove(vk_instance.device_indices.begin(), vk_instance.device_indices.end(), *old_device);
-                        vk_instance.device_indices.erase(r, vk_instance.device_indices.end());
+                if (new_props.properties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu) {
+                    // Check if there are two physical devices corresponding to the same GPU
+                    auto old_device = std::find_if(
+                        vk_instance.device_indices.begin(),
+                        vk_instance.device_indices.end(),
+                        [&devices, &new_id](const size_t k){
+                            vk::PhysicalDeviceProperties2 old_props;
+                            vk::PhysicalDeviceIDProperties old_id;
+                            old_props.pNext = &old_id;
+                            devices[k].getProperties2(&old_props);
+                            return std::equal(std::begin(old_id.deviceUUID), std::end(old_id.deviceUUID), std::begin(new_id.deviceUUID));
+                        }
+                    );
+                    if (old_device == vk_instance.device_indices.end()) {
                         vk_instance.device_indices.push_back(i);
+                    } else {
+                        // There can be two physical devices corresponding to the same GPU if there are 2 different drivers
+                        // This can cause error when splitting layers aross the devices, need to keep only 1
+                        VK_LOG_DEBUG("Device " << i << " and device " << *old_device << " have the same deviceUUID");
 
-                        VK_LOG_DEBUG("Prioritize device " << i << " driver " << new_driver.driverName << " over device " << *old_device << " driver " << old_driver.driverName);
-                    }
-                    else {
-                        VK_LOG_DEBUG("Prioritize device " << *old_device << " driver " << old_driver.driverName << " over device " << i << " driver " << new_driver.driverName << std::endl);
+                        vk::PhysicalDeviceProperties2 old_props;
+                        vk::PhysicalDeviceDriverProperties old_driver;
+                        old_props.pNext = &old_driver;
+                        devices[*old_device].getProperties2(&old_props);
+
+                        std::map<vk::DriverId, int> driver_priorities {};
+                        int old_priority = std::numeric_limits<int>::max();
+                        int new_priority = std::numeric_limits<int>::max();
+
+                        // Check https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkDriverId.html for the list of driver id
+                        // Smaller number -> higher priority
+                        switch (old_props.properties.vendorID) {
+                            case VK_VENDOR_ID_AMD:
+                                driver_priorities[vk::DriverId::eMesaRadv] = 1;
+                                driver_priorities[vk::DriverId::eAmdOpenSource] = 2;
+                                driver_priorities[vk::DriverId::eAmdProprietary] = 3;
+                                break;
+                            case VK_VENDOR_ID_INTEL:
+                                driver_priorities[vk::DriverId::eIntelOpenSourceMESA] = 1;
+                                driver_priorities[vk::DriverId::eIntelProprietaryWindows] = 2;
+                                break;
+                            case VK_VENDOR_ID_NVIDIA:
+                                driver_priorities[vk::DriverId::eNvidiaProprietary] = 1;
+#if defined(VK_API_VERSION_1_3) && VK_HEADER_VERSION >= 235
+                                driver_priorities[vk::DriverId::eMesaNvk] = 2;
+#endif
+                                break;
+                        }
+
+                        if (driver_priorities.count(old_driver.driverID)) {
+                            old_priority = driver_priorities[old_driver.driverID];
+                        }
+                        if (driver_priorities.count(new_driver.driverID)) {
+                            new_priority = driver_priorities[new_driver.driverID];
+                        }
+
+                        if (new_priority < old_priority) {
+                            auto r = std::remove(vk_instance.device_indices.begin(), vk_instance.device_indices.end(), *old_device);
+                            vk_instance.device_indices.erase(r, vk_instance.device_indices.end());
+                            vk_instance.device_indices.push_back(i);
+
+                            VK_LOG_DEBUG("Prioritize device " << i << " driver " << new_driver.driverName << " over device " << *old_device << " driver " << old_driver.driverName);
+                        }
+                        else {
+                            VK_LOG_DEBUG("Prioritize device " << *old_device << " driver " << old_driver.driverName << " over device " << i << " driver " << new_driver.driverName << std::endl);
+                        }
                     }
                 }
             }
-        }
 
-        // If no dedicated GPUs found, fall back to GPU 0
-        if (vk_instance.device_indices.empty()) {
-            vk_instance.device_indices.push_back(0);
+            // If no dedicated GPUs found, fall back to GPU 0
+            if (vk_instance.device_indices.empty()) {
+                vk_instance.device_indices.push_back(0);
+            }
         }
-    }
-    GGML_LOG_DEBUG("ggml_vulkan: Found %zu Vulkan devices:\n", vk_instance.device_indices.size());
+        GGML_LOG_DEBUG("ggml_vulkan: Found %zu Vulkan devices:\n", vk_instance.device_indices.size());
 
-    for (size_t i = 0; i < vk_instance.device_indices.size(); i++) {
-        ggml_vk_print_gpu_info(i);
+        for (size_t i = 0; i < vk_instance.device_indices.size(); i++) {
+            ggml_vk_print_gpu_info(i);
+        }
+    } catch (const std::exception & e) {
+        std::cerr << "ggml_vulkan: Vulkan initialization failed (" << e.what() << "), falling back to CPU." << std::endl;
+        vk_instance.device_indices.clear();
+        return;
+    } catch (...) {
+        std::cerr << "ggml_vulkan: Vulkan initialization failed with unknown exception, falling back to CPU." << std::endl;
+        vk_instance.device_indices.clear();
+        return;
     }
 }
 
 static void ggml_vk_init(ggml_backend_vk_context * ctx, size_t idx) {
     VK_LOG_DEBUG("ggml_vk_init(" << ctx->name << ", " << idx << ")");
     ggml_vk_instance_init();
-    GGML_ASSERT(idx < vk_instance.device_indices.size());
+    if (idx >= vk_instance.device_indices.size()) {
+        std::cerr << "ggml_vulkan: Device index " << idx << " out of bounds (" << vk_instance.device_indices.size() << " available)" << std::endl;
+        return;
+    }
 
     ctx->name = GGML_VK_NAME + std::to_string(idx);
 
@@ -7663,6 +7700,10 @@ static ggml_guid_t ggml_backend_vk_guid() {
 ggml_backend_t ggml_backend_vk_init(size_t dev_num) {
     VK_LOG_DEBUG("ggml_backend_vk_init(" << dev_num << ")");
 
+    if (dev_num >= (size_t)ggml_backend_vk_get_device_count()) {
+        return nullptr;
+    }
+
     ggml_backend_vk_context * ctx = new ggml_backend_vk_context;
     ggml_vk_init(ctx, dev_num);
 
@@ -7685,13 +7726,20 @@ int ggml_backend_vk_get_device_count() {
 }
 
 void ggml_backend_vk_get_device_description(int device, char * description, size_t description_size) {
-    GGML_ASSERT(device < (int) vk_instance.device_indices.size());
+    if (device < 0 || device >= (int) vk_instance.device_indices.size()) {
+        if (description_size > 0) description[0] = '\0';
+        return;
+    }
     int dev_idx = vk_instance.device_indices[device];
     ggml_vk_get_device_description(dev_idx, description, description_size);
 }
 
 void ggml_backend_vk_get_device_memory(int device, size_t * free, size_t * total) {
-    GGML_ASSERT(device < (int) vk_instance.device_indices.size());
+    if (device < 0 || device >= (int) vk_instance.device_indices.size()) {
+        if (free) *free = 0;
+        if (total) *total = 0;
+        return;
+    }
 
     vk::PhysicalDevice vkdev = vk_instance.instance.enumeratePhysicalDevices()[vk_instance.device_indices[device]];
 

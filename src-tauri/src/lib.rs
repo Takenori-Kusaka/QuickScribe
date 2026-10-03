@@ -853,11 +853,27 @@ fn vulkan_device_present() -> bool {
     }
 }
 
+/// CLI 引数または環境変数で GPU が無効化されているか判定する。
+/// `--no-gpu` または `--disable-gpu` 引数、あるいは環境変数 `QUICKSCRIBE_DISABLE_GPU`, `QS_DISABLE_GPU`, `GGML_VK_DISABLE` のいずれかが設定されている場合に true を返す。
+pub fn is_gpu_disabled_by_cli_or_env() -> bool {
+    if std::env::var("QUICKSCRIBE_DISABLE_GPU").is_ok()
+        || std::env::var("QS_DISABLE_GPU").is_ok()
+        || std::env::var("GGML_VK_DISABLE").is_ok()
+    {
+        return true;
+    }
+    std::env::args().any(|a| a == "--no-gpu" || a == "--disable-gpu")
+}
+
 /// この実行環境で GPU バックエンドが実際に使えるか（ADR-0028 の起動時判定）。
+/// CLI 引数や環境変数で無効化されている場合は常に false。
 /// Vulkan変種=物理デバイスを列挙し1台以上ある時のみ true（whisperのGPU初期化abortを構造的に回避）。
 /// CPUビルド/非Windowsは常に false。gpu_available=false のときは GPU API を一切呼ばず CPU 実行する（安全側）。
 /// pub: 統合テスト(tests/gpu_detect_integration.rs)が空ICD環境での安全なfalse返却を検証するため。
 pub fn gpu_backend_available() -> bool {
+    if is_gpu_disabled_by_cli_or_env() {
+        return false;
+    }
     #[cfg(all(windows, feature = "vulkan"))]
     {
         return vulkan_device_present();
@@ -2221,6 +2237,13 @@ mod tests {
         assert_eq!(parsed.refine_input, Some("refine-text.txt".to_string()));
         assert_eq!(parsed.provider, Some("openai".to_string()));
         assert_eq!(parsed.style, Some("non-fiction".to_string()));
+        assert!(!parsed.no_gpu);
+
+        let parsed_no_gpu = parse_cli_args_from(vec!["quickscribe".to_string(), "--no-gpu".to_string()]);
+        assert!(parsed_no_gpu.no_gpu);
+
+        let parsed_disable_gpu = parse_cli_args_from(vec!["quickscribe".to_string(), "--disable-gpu".to_string()]);
+        assert!(parsed_disable_gpu.no_gpu);
     }
 }
 
@@ -2439,6 +2462,7 @@ struct CliArgs {
     custom_instruction: Option<String>,
     output_lang: Option<String>,
     base_url: Option<String>,
+    no_gpu: bool,
 }
 
 fn parse_cli_args() -> CliArgs {
@@ -2513,6 +2537,9 @@ fn parse_cli_args_from(args: Vec<String>) -> CliArgs {
                     i += 1;
                 }
             }
+            "--no-gpu" | "--disable-gpu" => {
+                parsed.no_gpu = true;
+            }
             _ => {}
         }
         i += 1;
@@ -2538,6 +2565,7 @@ fn print_help() {
     println!("  --custom-instruction <instruction>      Custom instruction for refinement.");
     println!("  --output-lang <lang>                    Language to translate/output the refined text in.");
     println!("  --base-url <url>                        Base URL for OpenAI compatible endpoints.");
+    println!("  --no-gpu, --disable-gpu                 Disable GPU acceleration (force CPU execution).");
     println!("  -h, --help                              Show this help message.");
     println!();
     println!("Recording Control (communicates with the running instance):");
@@ -2579,7 +2607,7 @@ fn run_cli_commands(parsed: &CliArgs) -> Result<(), String> {
         })?;
         eprintln!("\rModel loaded successfully.              ");
 
-        let use_gpu = gpu_backend_available();
+        let use_gpu = !parsed.no_gpu && gpu_backend_available();
         let cfg = stt::SttConfig {
             provider: "local".to_string(),
             model: model_id.to_string(),

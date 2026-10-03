@@ -990,6 +990,13 @@
       .then((b) => {
         sttBackend = b?.variant ?? "";
         gpuAvailable = !!b?.gpuAvailable;
+        try {
+          if (!gpuAvailable && localStorage.getItem("sttUseGpu") === null) {
+            sttUseGpu = false;
+          }
+        } catch {
+          /* localStorage 不可環境 */
+        }
         void updater.checkForUpdate();
       })
       .catch(() => void updater.checkForUpdate());
@@ -1850,10 +1857,11 @@
             </select>
           </div>
           <!-- GPU実行(ADR-0028): Vulkan変種ビルドで表示。既定ON=起動時にGPUデバイスを検出し
-               使えれば速度最適なGPUを自動選択。デバイス/ドライバ未検出なら無効化しCPU実行である旨を示す。 -->
+               使えれば速度最適なGPUを自動選択。デバイス/ドライバ未検出ならCPU実行である旨を示す。
+               ユーザーが明示的に無効化できるよう操作可能にし、未検出環境での表示矛盾も解消する。 -->
           {#if sttProvider === "local" && sttBackend === "vulkan"}
             <label class="check">
-              <input type="checkbox" bind:checked={sttUseGpu} disabled={!gpuAvailable} />
+              <input type="checkbox" bind:checked={sttUseGpu} />
               {$_("settings.use_gpu")}
             </label>
             {#if !gpuAvailable}

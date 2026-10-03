@@ -274,16 +274,33 @@ where
     let n_attempts = gpu_attempts.len();
     for (attempt, &gpu) in gpu_attempts.iter().enumerate() {
         let has_fallback = attempt + 1 < n_attempts;
+        crate::diag_log::log(
+            "stt",
+            &format!(
+                "loading whisper model: {} (gpu={gpu}, attempt={attempt})",
+                model
+            ),
+        );
         // モデル(ctx)は試行ごとに1回ロードし、各チャンクは state を都度作って回す（再ロード回避）。
         let mut ctx_params = WhisperContextParameters::default();
         ctx_params.use_gpu(gpu);
         let ctx = match WhisperContext::new_with_params(model, ctx_params) {
-            Ok(c) => c,
+            Ok(c) => {
+                crate::diag_log::log("stt", "whisper model loaded successfully");
+                c
+            }
             Err(e) if has_fallback => {
+                crate::diag_log::log(
+                    "stt",
+                    &format!("GPU init failed, falling back to CPU: {e}"),
+                );
                 eprintln!("[stt] GPU init failed, falling back to CPU: {e}");
                 continue;
             }
-            Err(e) => return Err(crate::errcode::ec(crate::errcode::E_STT_MODEL_LOAD, e)),
+            Err(e) => {
+                crate::diag_log::log("stt", &format!("whisper model load failed: {e}"));
+                return Err(crate::errcode::ec(crate::errcode::E_STT_MODEL_LOAD, e));
+            }
         };
         let mut text = String::new();
         // 1チャンクのデコード失敗で全体(=他チャンクの成功分)を捨てないための直近エラー保持。

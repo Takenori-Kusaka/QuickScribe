@@ -749,17 +749,22 @@ describe("App.svelte GPUバックエンド表示(ADR-0028)", () => {
     expect(cb.disabled).toBe(false);
   });
 
-  it("Vulkan変種・GPU利用不可: トグルは無効化され、CPU実行の案内が出る", async () => {
+  it("Vulkan変種・GPU利用不可: トグルは操作可能で未検出時は既定OFF、CPU実行の案内が出る", async () => {
     invokeMock.mockImplementation(async (cmd: string) =>
       cmd === "stt_backend" ? { variant: "vulkan", gpuAvailable: false } : defaultInvoke(cmd),
     );
     render(App);
     await fireEvent.click(await screen.findByRole("button", { name: "設定" }));
     await gotoTab("文字起こし");
-    // 対応GPU無し → トグルは無効化され、CPU実行の案内(gpu_unavailable)が出る。
+    // 対応GPU無し → トグルは無効化されず操作可能、表示はOFF、CPU実行の案内(gpu_unavailable)が出る。
     const cb = (await screen.findByLabelText(/GPUで文字起こし/)) as HTMLInputElement;
-    expect(cb.disabled).toBe(true);
+    expect(cb.disabled).toBe(false);
+    expect(cb.checked).toBe(false);
     expect(await screen.findByText(/対応GPUが見つかりません/)).toBeInTheDocument();
+
+    // ユーザー自身でON/OFFを切り替えられる
+    await fireEvent.click(cb);
+    expect(cb.checked).toBe(true);
   });
 
   it("撤去済みモデル(kotoba)を選択中の既存ユーザーはモデル選択が base へ正規化される(ADR-0029)", async () => {
