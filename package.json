@@ -1,6 +1,6 @@
 {
   "name": "quickscribe",
-  "version": "0.0.1",
+  "version": "1.14.0",
   "description": "思考整理・自己理解のためのローカル完結ボイスジャーナル",
   "license": "MIT",
   "type": "module",

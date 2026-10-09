@@ -5,6 +5,18 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [1.14.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.13.4...v1.14.0) (2026-10-10)
+
+
+### ✨ 新機能 / Features
+
+* **stt:** YouTube・Twitch等の動画リンクから音声をダウンロードして一括文字起こしする機能を追加（yt-dlp統合・話者分離対応）
+  * YouTube (通常動画/Shorts/配信) および Twitch (VODアーカイブ/クリップ/配信) のURLからの音声取得に対応
+  * Twitch の `Audio_Only` ストリーム優先取得およびクリップ用フォールバック
+  * ダウンロード音声に対する話者特定（Speaker Diarization / `[話者1]`, `[話者2]`）の自動適用
+  * yt-dlp バイナリの自動検出および未インストール時のオンデマンド取得
+  * 音声・動画入力ダイアログ（URL入力とローカルファイル選択の統合）
+
 ## [1.13.4](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.13.3...v1.13.4) (2026-10-03)
 
 

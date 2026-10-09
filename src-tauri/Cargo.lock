@@ -3681,7 +3681,7 @@ dependencies = [
 
 [[package]]
 name = "quickscribe"
-version = "0.0.1"
+version = "1.14.0"
 dependencies = [
  "ash",
  "aws-credential-types",
