@@ -118,6 +118,12 @@ pub const E_REFINE_MODELS_PARSE: &str = "E_REFINE_MODELS_PARSE";
 pub const E_REFINE_NO_OPENAI_MID: &str = "E_REFINE_NO_OPENAI_MID";
 pub const E_REFINE_NO_FLASH: &str = "E_REFINE_NO_FLASH";
 
+// ---- ytdlp.rs ----
+pub const E_YTDLP_NOT_FOUND: &str = "E_YTDLP_NOT_FOUND";
+pub const E_YTDLP_DOWNLOAD: &str = "E_YTDLP_DOWNLOAD";
+pub const E_YTDLP_EXEC: &str = "E_YTDLP_EXEC";
+pub const E_YTDLP_INVALID_URL: &str = "E_YTDLP_INVALID_URL";
+
 // ---- status イベント（エラーでない進行状況のUI文言。S_ プレフィックス）----
 // lib.rs が emit し、フロント（src/lib/status.ts）が status.rust.<CODE> で解決する。
 pub const S_MODEL_DOWNLOAD_PCT: &str = "S_MODEL_DOWNLOAD_PCT";
@@ -126,6 +132,8 @@ pub const S_TRANSCRIBING_CLOUD: &str = "S_TRANSCRIBING_CLOUD";
 pub const S_TRANSCRIBING: &str = "S_TRANSCRIBING";
 pub const S_LOADING_AUDIO: &str = "S_LOADING_AUDIO";
 pub const S_AUDIO_SAVE_FAILED: &str = "S_AUDIO_SAVE_FAILED";
+pub const S_YTDLP_DOWNLOADING_TOOL: &str = "S_YTDLP_DOWNLOADING_TOOL";
+pub const S_YTDLP_DOWNLOADING_AUDIO: &str = "S_YTDLP_DOWNLOADING_AUDIO";
 
 /// status コードの SSOT（一意性テストとフロント側パリティ検証の基準）。
 pub const ALL_STATUS: &[&str] = &[
@@ -135,6 +143,8 @@ pub const ALL_STATUS: &[&str] = &[
     S_TRANSCRIBING,
     S_LOADING_AUDIO,
     S_AUDIO_SAVE_FAILED,
+    S_YTDLP_DOWNLOADING_TOOL,
+    S_YTDLP_DOWNLOADING_AUDIO,
 ];
 
 /// 全コードの SSOT（一意性テストとフロント側パリティ検証の基準）。
@@ -226,6 +236,10 @@ pub const ALL: &[&str] = &[
     E_REFINE_MODELS_PARSE,
     E_REFINE_NO_OPENAI_MID,
     E_REFINE_NO_FLASH,
+    E_YTDLP_NOT_FOUND,
+    E_YTDLP_DOWNLOAD,
+    E_YTDLP_EXEC,
+    E_YTDLP_INVALID_URL,
 ];
 
 #[cfg(test)]

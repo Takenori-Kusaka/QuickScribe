@@ -25,6 +25,8 @@ pub mod job;
 pub mod diag_log;
 // システムプロキシ設定の検出と通信クライアント構築。
 pub mod proxy;
+// yt-dlp による YouTube / Twitch 等からの動画音声ダウンロード。
+pub mod ytdlp;
 // Windows タスクバーのサムネイルツールバー/オーバーレイ。Windowsのみ。
 #[cfg(windows)]
 mod taskbar;
@@ -373,6 +375,16 @@ fn transcribe_blocking<R: tauri::Runtime>(
     audio: &[f32],
     timestamps: bool,
 ) -> Result<String, String> {
+    transcribe_blocking_with_diarize(app, job_id, audio, timestamps, None)
+}
+
+fn transcribe_blocking_with_diarize<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    job_id: Option<job::JobId>,
+    audio: &[f32],
+    timestamps: bool,
+    diarize_override: Option<bool>,
+) -> Result<String, String> {
     // STT設定を解決（S2.4）。既定はローカル whisper（プライバシー）。
     let stt = current_stt_settings(app);
     let provider = if stt.provider.trim().is_empty() {
@@ -415,7 +427,8 @@ fn transcribe_blocking<R: tauri::Runtime>(
     let use_gpu = !stt.disable_gpu && gpu_backend_available();
     // 話者特定(S2.5 / ADR-0031): 有効かつローカルのとき、事前に話者区間を解決してから文字起こしへ渡す。
     // 失敗（モデル/DLL未取得・初期化失敗）はラベル無し文字起こしへフォールバック＝クラッシュさせない(R5)。
-    let speaker_turns = if !is_cloud && stt.diarize {
+    let enable_diarize = diarize_override.unwrap_or(stt.diarize);
+    let speaker_turns = if !is_cloud && enable_diarize {
         resolve_speaker_turns(app, audio)
     } else {
         Vec::new()
@@ -804,6 +817,73 @@ async fn transcribe_file<R: tauri::Runtime>(
         let audio = stt::decode_to_16k_mono(p)?;
         // ファイル入力(S1.6)は録音ジョブキューには載せない（job_id なし＝従来どおり）。
         transcribe_blocking(&app, None, &audio, timestamps)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// yt-dlp が利用可能か（PATH または tools ディレクトリ内）を判定する。
+#[tauri::command]
+fn check_ytdlp() -> bool {
+    ytdlp::find_ytdlp_bin().is_some()
+}
+
+/// YouTube / Twitch 等の動画URLから音声をダウンロードし、文字起こしして返す。
+/// 非同期＋別スレッド実行でUIをブロックしない。
+#[tauri::command]
+async fn transcribe_url<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    url: String,
+    timestamps: bool,
+    diarize: Option<bool>,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        // 1. URL のバリデーション
+        let safe_url = ytdlp::validate_video_url(&url)?;
+
+        // 2. yt-dlp の検出とオンデマンド解決
+        let bin = match ytdlp::find_ytdlp_bin() {
+            Some(p) => p,
+            None => {
+                let app_d = app.clone();
+                ytdlp::ensure_ytdlp_bin(move |written, total| {
+                    if let Some(tot) = total {
+                        if tot > 0 {
+                            let pct = (written as f64 / tot as f64 * 100.0) as u32;
+                            let _ = app_d.emit(
+                                "status",
+                                errcode::ec(errcode::S_YTDLP_DOWNLOADING_TOOL, pct),
+                            );
+                        }
+                    }
+                })?
+            }
+        };
+
+        // 3. 音声のダウンロード
+        let app_d = app.clone();
+        let _ = app.emit(
+            "status",
+            errcode::ec(errcode::S_YTDLP_DOWNLOADING_AUDIO, 0),
+        );
+        let (audio_file, work_dir) = ytdlp::download_audio_from_url(&bin, &safe_url, move |pct| {
+            let _ = app_d.emit(
+                "status",
+                errcode::ec(errcode::S_YTDLP_DOWNLOADING_AUDIO, pct as u32),
+            );
+        })?;
+
+        // 4. 音声の復号（エラー時も確実に作業ディレクトリを削除するガード）
+        let _ = app.emit("status", errcode::S_LOADING_AUDIO);
+        let audio_res = stt::decode_to_16k_mono(&audio_file);
+
+        // 一時作業ディレクトリのクリーンアップ
+        let _ = std::fs::remove_dir_all(&work_dir);
+
+        let audio = audio_res?;
+
+        // 5. 文字起こし（話者分離オーバーライドを含む）
+        transcribe_blocking_with_diarize(&app, None, &audio, timestamps, diarize)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -2341,6 +2421,8 @@ pub fn run() {
             open_logs_dir,
             list_entries,
             transcribe_file,
+            transcribe_url,
+            check_ytdlp,
             list_audio_sources,
             list_whisper_models,
             stt_backend,

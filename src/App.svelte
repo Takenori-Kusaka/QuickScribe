@@ -104,6 +104,12 @@
 
   let showSettings = $state(false);
 
+  // 音声・動画入力モーダル（URLまたはローカルファイルからの文字起こし）
+  let showAudioSourceModal = $state(false);
+  let audioInputUrl = $state("");
+  let urlIncludeTimestamps = $state(true);
+  let urlDiarize = $state(false);
+
   // 初回オンボーディング（#397）。初回起動時にコア体験3ステップとローカル完結を案内。
   // 表示済みフラグは localStorage に持ち、以後は出さない。
   const ONBOARDED_KEY = "onboarded";
@@ -618,6 +624,39 @@
     }
   }
 
+  function openAudioSourceModal() {
+    urlIncludeTimestamps = includeTimestamps;
+    urlDiarize = sttDiarize;
+    showAudioSourceModal = true;
+  }
+
+  // YouTube / Twitch 等の動画リンクから音声をダウンロードして文字起こしする。
+  async function transcribeFromUrl() {
+    const url = audioInputUrl.trim();
+    if (!url) return;
+    showAudioSourceModal = false;
+    audioInputUrl = "";
+    error = null;
+    transcript = null;
+    refined = null;
+    eta = "";
+    transcribeStartMs = null;
+    busy = true;
+    try {
+      const text = await invoke<string>("transcribe_url", {
+        url,
+        timestamps: urlIncludeTimestamps,
+        diarize: urlDiarize,
+      });
+      transcript = text;
+    } catch (e) {
+      error = $_("errors.transcribe_failed", { values: { detail: errorText(e, $_) } });
+    } finally {
+      busy = false;
+      status = "";
+    }
+  }
+
   // 音声ファイル(mp3等)を選んで文字起こし→保存する(S1.6)。非同期で実行しUIを固めない。
   async function transcribeFromFile() {
     error = null;
@@ -634,7 +673,7 @@
     try {
       const text = await invoke<string>("transcribe_file", {
         path: selected,
-        timestamps: includeTimestamps,
+        timestamps: urlIncludeTimestamps,
       });
       transcript = text;
     } catch (e) {
@@ -1090,7 +1129,7 @@
   });
 </script>
 
-<main inert={showSettings || vault.showEntries}>
+<main inert={showSettings || vault.showEntries || showAudioSourceModal}>
   <div class="content">
     <header>
       <div class="title-row">
@@ -1223,7 +1262,7 @@
       <button
         class="btn secondary"
         data-testid="file-btn"
-        onclick={transcribeFromFile}
+        onclick={openAudioSourceModal}
         disabled={busy}
       >
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
@@ -2293,11 +2332,7 @@
           {#if proxyMode === "manual"}
             <label>
               {$_("settings.proxy_url")}
-              <input
-                type="text"
-                bind:value={proxyUrl}
-                placeholder={$_("settings.tip_proxy_url")}
-              />
+              <input type="text" bind:value={proxyUrl} placeholder={$_("settings.tip_proxy_url")} />
             </label>
           {/if}
           <label class="check">
@@ -2306,11 +2341,7 @@
           </label>
           <p class="tip">{$_("settings.tip_insecure_tls")}</p>
           <div class="dir-row">
-            <button
-              type="button"
-              class="btn small ghost"
-              onclick={() => void openLogsDir()}
-            >
+            <button type="button" class="btn small ghost" onclick={() => void openLogsDir()}>
               {$_("settings.open_logs")}
             </button>
           </div>
@@ -2342,6 +2373,101 @@
       {#if updater.updateMsg}<p class="muted" role="status" aria-live="polite">
           {updater.updateMsg}
         </p>{/if}
+    </div>
+  </div>
+{/if}
+
+{#if showAudioSourceModal}
+  <div
+    class="settings-overlay"
+    role="presentation"
+    onclick={(e) => {
+      if (e.target === e.currentTarget) showAudioSourceModal = false;
+    }}
+  >
+    <div
+      class="settings audio-source-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="audio-source-title"
+      tabindex="-1"
+      use:modal={{ onClose: () => (showAudioSourceModal = false) }}
+    >
+      <div class="settings-head">
+        <h2 id="audio-source-title">{$_("dialog.audio_input_title")}</h2>
+        <button
+          class="close"
+          aria-label={$_("header.close")}
+          onclick={() => (showAudioSourceModal = false)}>×</button
+        >
+      </div>
+
+      <div class="audio-source-body">
+        <div class="source-card">
+          <span class="meta-title">{$_("dialog.url_tab")}</span>
+          <p class="tip">
+            YouTube (通常/Shorts/配信) や Twitch (アーカイブ/クリップ/配信)
+            のリンクから音声を取得して文字起こしします。
+          </p>
+          <div class="url-input-group">
+            <input
+              type="url"
+              class="tags-input"
+              bind:value={audioInputUrl}
+              placeholder={$_("dialog.url_placeholder")}
+              onkeydown={(e) => {
+                if (e.key === "Enter" && audioInputUrl.trim()) {
+                  transcribeFromUrl();
+                }
+              }}
+            />
+            <button
+              type="button"
+              class="btn small"
+              disabled={!audioInputUrl.trim() || busy}
+              onclick={transcribeFromUrl}
+            >
+              {$_("dialog.url_submit")}
+            </button>
+          </div>
+        </div>
+
+        <div class="source-divider">
+          <span>または</span>
+        </div>
+
+        <div class="source-card">
+          <span class="meta-title">{$_("dialog.file_tab")}</span>
+          <button
+            type="button"
+            class="btn secondary small file-btn"
+            disabled={busy}
+            onclick={() => {
+              showAudioSourceModal = false;
+              transcribeFromFile();
+            }}
+          >
+            📁 {$_("dialog.choose_file")}
+          </button>
+          <p class="tip">
+            {$_("main.formats_hint", {
+              values: { exts: SUPPORTED_AUDIO_EXTS.join(" / "), max: MAX_INPUT_MB },
+            })}
+          </p>
+        </div>
+
+        <div class="source-options">
+          <label class="check">
+            <input type="checkbox" bind:checked={urlIncludeTimestamps} />
+            {$_("dialog.include_timestamps")}
+          </label>
+          <label class="check">
+            <input type="checkbox" bind:checked={urlDiarize} />
+            {$_("dialog.diarize_speakers")}
+          </label>
+          <p class="tip">{$_("dialog.diarize_hint")}</p>
+        </div>
+      </div>
     </div>
   </div>
 {/if}
@@ -3365,6 +3491,56 @@
     border-radius: 10px;
     padding: 0.6rem 0.8rem;
     margin-top: 0.9rem;
+  }
+
+  .audio-source-modal {
+    max-width: 520px;
+  }
+  .audio-source-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    margin-top: 0.5rem;
+  }
+  .source-card {
+    background: var(--color-bg-subtle);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 0.8rem;
+  }
+  .url-input-group {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.4rem;
+  }
+  .url-input-group .tags-input {
+    flex: 1;
+    margin: 0;
+  }
+  .source-divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    color: var(--color-text-faint);
+    font-size: 0.75rem;
+  }
+  .source-divider::before,
+  .source-divider::after {
+    content: "";
+    flex: 1;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .source-divider span {
+    padding: 0 0.6rem;
+  }
+  .file-btn {
+    width: 100%;
+    margin-top: 0.3rem;
+  }
+  .source-options {
+    border-top: 1px solid var(--color-border-faint);
+    padding-top: 0.6rem;
   }
 
   /* OSの「視差効果を減らす/動きを減らす」設定を尊重する (#395 / 各社指針)。 */

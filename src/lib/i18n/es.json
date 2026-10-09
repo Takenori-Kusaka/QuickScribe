@@ -248,7 +248,16 @@
   },
   "dialog": {
     "audio_files": "Archivos de audio",
-    "text_memo": "Texto/nota"
+    "text_memo": "Texto/nota",
+    "audio_input_title": "Transcribir audio o video",
+    "url_tab": "URL de video web (YouTube / Twitch)",
+    "file_tab": "Archivo local",
+    "url_placeholder": "Introduce la URL del video o transmisión de YouTube o Twitch…",
+    "url_submit": "Descargar y transcribir",
+    "choose_file": "Elegir archivo de audio…",
+    "include_timestamps": "Incluir marcas de tiempo",
+    "diarize_speakers": "Distinguir hablantes",
+    "diarize_hint": "Detecta varios hablantes y etiqueta a cada uno (con whisper local)"
   },
   "catalog": {
     "providers": {
@@ -335,7 +344,9 @@
       "S_TRANSCRIBING_CLOUD": "Transcribiendo en la nube…",
       "S_TRANSCRIBING": "Transcribiendo…",
       "S_LOADING_AUDIO": "Cargando audio…",
-      "S_AUDIO_SAVE_FAILED": "No se pudo guardar el audio: {detail}"
+      "S_AUDIO_SAVE_FAILED": "No se pudo guardar el audio: {detail}",
+      "S_YTDLP_DOWNLOADING_TOOL": "Descargando yt-dlp… {detail}%",
+      "S_YTDLP_DOWNLOADING_AUDIO": "Descargando audio del video… {detail}%"
     }
   },
   "errors": {
@@ -450,7 +461,11 @@
       "E_REFINE_NO_OLLAMA_MODEL": "No se encontró ningún modelo de Ollama instalado.",
       "E_REFINE_MODELS_PARSE": "La respuesta de la lista de modelos no es válida: {detail}",
       "E_REFINE_NO_OPENAI_MID": "No se encontró un modelo de gama media adecuado (gpt-4o/4.1).",
-      "E_REFINE_NO_FLASH": "No se encontró ningún modelo de la familia flash."
+      "E_REFINE_NO_FLASH": "No se encontró ningún modelo de la familia flash.",
+      "E_YTDLP_NOT_FOUND": "No se encontró yt-dlp. Asegúrese de que esté instalado.",
+      "E_YTDLP_DOWNLOAD": "Error al descargar yt-dlp: {detail}",
+      "E_YTDLP_EXEC": "Error al descargar audio: {detail}",
+      "E_YTDLP_INVALID_URL": "URL de video inválida. Proporcione una URL de YouTube o Twitch: {detail}"
     },
     "unknown": "Se produjo un error desconocido."
   },

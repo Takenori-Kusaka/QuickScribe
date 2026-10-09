@@ -248,7 +248,16 @@
   },
   "dialog": {
     "audio_files": "音频文件",
-    "text_memo": "文本/备忘"
+    "text_memo": "文本/备忘",
+    "audio_input_title": "从音频或视频转写",
+    "url_tab": "网页视频链接 (YouTube / Twitch)",
+    "file_tab": "本地文件",
+    "url_placeholder": "输入 YouTube 或 Twitch 的视频/直播链接…",
+    "url_submit": "下载并转写",
+    "choose_file": "选择音频文件…",
+    "include_timestamps": "包含时间戳",
+    "diarize_speakers": "区分说话人",
+    "diarize_hint": "识别多位发言者并标注（使用本地 whisper 时）"
   },
   "catalog": {
     "providers": {
@@ -335,7 +344,9 @@
       "S_TRANSCRIBING_CLOUD": "正在云端转写…",
       "S_TRANSCRIBING": "正在转写…",
       "S_LOADING_AUDIO": "正在读取音频…",
-      "S_AUDIO_SAVE_FAILED": "保存音频失败：{detail}"
+      "S_AUDIO_SAVE_FAILED": "保存音频失败：{detail}",
+      "S_YTDLP_DOWNLOADING_TOOL": "正在下载 yt-dlp… {detail}%",
+      "S_YTDLP_DOWNLOADING_AUDIO": "正在从视频下载音频… {detail}%"
     }
   },
   "errors": {
@@ -450,7 +461,11 @@
       "E_REFINE_NO_OLLAMA_MODEL": "未找到已安装的 Ollama 模型。",
       "E_REFINE_MODELS_PARSE": "模型列表响应无效：{detail}",
       "E_REFINE_NO_OPENAI_MID": "未找到合适的中端（gpt-4o/4.1 系列）模型。",
-      "E_REFINE_NO_FLASH": "未找到 flash 系列模型。"
+      "E_REFINE_NO_FLASH": "未找到 flash 系列模型。",
+      "E_YTDLP_NOT_FOUND": "未找到 yt-dlp。请确保已安装。",
+      "E_YTDLP_DOWNLOAD": "下载 yt-dlp 失败: {detail}",
+      "E_YTDLP_EXEC": "下载音频失败: {detail}",
+      "E_YTDLP_INVALID_URL": "无效的视频 URL。请提供 YouTube 或 Twitch 的 URL: {detail}"
     },
     "unknown": "发生了未知错误。"
   },

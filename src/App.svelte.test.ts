@@ -792,3 +792,72 @@ describe("App.svelte GPUバックエンド表示(ADR-0028)", () => {
     expect(modelSelect.value).toBe("base");
   });
 });
+
+describe("App.svelte 音声・動画入力モーダル（URL/ファイル文字起こし）", () => {
+  it("「音声ファイルから文字起こし」クリックでモーダルが開き、YouTube/Twitch URLから文字起こしを実行できる", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "transcribe_url") {
+        return "YouTube動画の文字起こし結果テキスト";
+      }
+      return defaultInvoke(cmd);
+    });
+    render(App);
+
+    // メイン画面の「音声ファイルから文字起こし」ボタンをクリック
+    const fileBtn = await screen.findByTestId("file-btn");
+    await fireEvent.click(fileBtn);
+
+    // モーダルが開く
+    expect(
+      await screen.findByRole("heading", { name: "音声・動画から文字起こし" }),
+    ).toBeInTheDocument();
+
+    // URL入力フィールドに YouTube URL を入力
+    const urlInput = screen.getByPlaceholderText(/YouTube または Twitch/);
+    await fireEvent.input(urlInput, {
+      target: { value: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
+    });
+
+    // 「ダウンロードして文字起こし」ボタンをクリック
+    const submitBtn = screen.getByRole("button", { name: "ダウンロードして文字起こし" });
+    await fireEvent.click(submitBtn);
+
+    // transcribe_url が適切な引数で呼ばれたことを確認
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("transcribe_url", {
+        url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        timestamps: true,
+        diarize: false,
+      });
+    });
+
+    // 文字起こし結果が表示される
+    expect(await screen.findByText("YouTube動画の文字起こし結果テキスト")).toBeInTheDocument();
+  });
+
+  it("モーダル内のファイル選択ボタンからローカルファイル文字起こしを実行できる", async () => {
+    openMock.mockResolvedValue("/path/to/local_audio.mp3");
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "transcribe_file") {
+        return "ローカル音声ファイルの文字起こし結果";
+      }
+      return defaultInvoke(cmd);
+    });
+    render(App);
+
+    const fileBtn = await screen.findByTestId("file-btn");
+    await fireEvent.click(fileBtn);
+
+    const chooseBtn = await screen.findByRole("button", { name: /音声ファイルを選択/ });
+    await fireEvent.click(chooseBtn);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("transcribe_file", {
+        path: "/path/to/local_audio.mp3",
+        timestamps: true,
+      });
+    });
+
+    expect(await screen.findByText("ローカル音声ファイルの文字起こし結果")).toBeInTheDocument();
+  });
+});

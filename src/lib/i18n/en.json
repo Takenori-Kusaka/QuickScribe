@@ -248,7 +248,16 @@
   },
   "dialog": {
     "audio_files": "Audio files",
-    "text_memo": "Text/memo"
+    "text_memo": "Text/memo",
+    "audio_input_title": "Transcribe Audio or Video",
+    "url_tab": "Web Video URL (YouTube / Twitch)",
+    "file_tab": "Local File",
+    "url_placeholder": "Enter YouTube or Twitch video/stream URL…",
+    "url_submit": "Download and Transcribe",
+    "choose_file": "Choose Audio File…",
+    "include_timestamps": "Include timestamps",
+    "diarize_speakers": "Distinguish speakers",
+    "diarize_hint": "Detects multiple speakers and labels each speaker (when using local whisper)"
   },
   "catalog": {
     "providers": {
@@ -335,7 +344,9 @@
       "S_TRANSCRIBING_CLOUD": "Transcribing in the cloud…",
       "S_TRANSCRIBING": "Transcribing…",
       "S_LOADING_AUDIO": "Loading audio…",
-      "S_AUDIO_SAVE_FAILED": "Failed to save audio: {detail}"
+      "S_AUDIO_SAVE_FAILED": "Failed to save audio: {detail}",
+      "S_YTDLP_DOWNLOADING_TOOL": "Downloading yt-dlp… {detail}%",
+      "S_YTDLP_DOWNLOADING_AUDIO": "Downloading audio from video… {detail}%"
     }
   },
   "errors": {
@@ -450,7 +461,11 @@
       "E_REFINE_NO_OLLAMA_MODEL": "No installed Ollama model was found.",
       "E_REFINE_MODELS_PARSE": "The model list response is invalid: {detail}",
       "E_REFINE_NO_OPENAI_MID": "No suitable mid-range (gpt-4o/4.1) model was found.",
-      "E_REFINE_NO_FLASH": "No flash-family model was found."
+      "E_REFINE_NO_FLASH": "No flash-family model was found.",
+      "E_YTDLP_NOT_FOUND": "yt-dlp was not found. Please ensure it is installed.",
+      "E_YTDLP_DOWNLOAD": "Failed to download yt-dlp: {detail}",
+      "E_YTDLP_EXEC": "Failed to download audio: {detail}",
+      "E_YTDLP_INVALID_URL": "Invalid video URL. Please provide a YouTube or Twitch URL: {detail}"
     },
     "unknown": "An unknown error occurred."
   },

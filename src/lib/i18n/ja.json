@@ -248,7 +248,16 @@
   },
   "dialog": {
     "audio_files": "音声ファイル",
-    "text_memo": "テキスト/メモ"
+    "text_memo": "テキスト/メモ",
+    "audio_input_title": "音声・動画から文字起こし",
+    "url_tab": "Web動画リンク (YouTube / Twitch)",
+    "file_tab": "ローカルファイル",
+    "url_placeholder": "YouTube または Twitch の動画・配信URLを入力…",
+    "url_submit": "ダウンロードして文字起こし",
+    "choose_file": "音声ファイルを選択…",
+    "include_timestamps": "タイムスタンプを含める",
+    "diarize_speakers": "話者を特定・分離する",
+    "diarize_hint": "複数話者の発話を判別し、[話者1] 等のラベルを付与します（ローカル whisper 使用時）"
   },
   "catalog": {
     "providers": {
@@ -335,7 +344,9 @@
       "S_TRANSCRIBING_CLOUD": "クラウドで文字起こし中…",
       "S_TRANSCRIBING": "文字起こし中…",
       "S_LOADING_AUDIO": "音声を読み込み中…",
-      "S_AUDIO_SAVE_FAILED": "音声保存に失敗: {detail}"
+      "S_AUDIO_SAVE_FAILED": "音声保存に失敗: {detail}",
+      "S_YTDLP_DOWNLOADING_TOOL": "yt-dlp をダウンロード中… {detail}%",
+      "S_YTDLP_DOWNLOADING_AUDIO": "動画から音声をダウンロード中… {detail}%"
     }
   },
   "errors": {
@@ -450,7 +461,11 @@
       "E_REFINE_NO_OLLAMA_MODEL": "インストール済みOllamaモデルが見つかりません。",
       "E_REFINE_MODELS_PARSE": "モデル一覧応答が不正です: {detail}",
       "E_REFINE_NO_OPENAI_MID": "適切なミドルレンジ(gpt-4o/4.1系)モデルが見つかりません。",
-      "E_REFINE_NO_FLASH": "flash系モデルが見つかりませんでした。"
+      "E_REFINE_NO_FLASH": "flash系モデルが見つかりませんでした。",
+      "E_YTDLP_NOT_FOUND": "yt-dlp が見つかりませんでした。インストールされているか確認してください。",
+      "E_YTDLP_DOWNLOAD": "yt-dlp のダウンロードに失敗しました: {detail}",
+      "E_YTDLP_EXEC": "音声のダウンロードに失敗しました: {detail}",
+      "E_YTDLP_INVALID_URL": "無効な動画URLです。YouTube または Twitch のURLを指定してください: {detail}"
     },
     "unknown": "原因不明のエラーが発生しました。"
   },
