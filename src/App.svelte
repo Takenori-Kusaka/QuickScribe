@@ -11,7 +11,7 @@
   import { estimateRemaining, formatRemaining } from "./lib/note";
   import { parseCorrections, applyCorrections, type Correction } from "./lib/corrections";
   import { detectSpeakers, buildSpeakerRenames } from "./lib/speakers";
-  import { errorText } from "./lib/errors";
+  import { errorText, ERR_CODE_SEP } from "./lib/errors";
   import { modal } from "./lib/a11y";
   import { kindLabel } from "./lib/entry";
   import { createVaultView } from "./lib/vault-view.svelte";
@@ -109,6 +109,8 @@
   let audioInputUrl = $state("");
   let urlIncludeTimestamps = $state(true);
   let urlDiarize = $state(false);
+  // 単発ファイル・URL文字起こしの進捗率（0-100）。進捗イベント progress で更新。
+  let directProgress = $state(0);
 
   // 初回オンボーディング（#397）。初回起動時にコア体験3ステップとローカル完結を案内。
   // 表示済みフラグは localStorage に持ち、以後は出さない。
@@ -640,7 +642,8 @@
     transcript = null;
     refined = null;
     eta = "";
-    transcribeStartMs = null;
+    directProgress = 0;
+    transcribeStartMs = Date.now();
     busy = true;
     try {
       const text = await invoke<string>("transcribe_url", {
@@ -654,6 +657,8 @@
     } finally {
       busy = false;
       status = "";
+      directProgress = 0;
+      eta = "";
     }
   }
 
@@ -669,6 +674,8 @@
       filters: [{ name: $_("dialog.audio_files"), extensions: SUPPORTED_AUDIO_EXTS }],
     });
     if (typeof selected !== "string") return;
+    directProgress = 0;
+    transcribeStartMs = Date.now();
     busy = true;
     try {
       const text = await invoke<string>("transcribe_file", {
@@ -681,6 +688,8 @@
     } finally {
       busy = false;
       status = "";
+      directProgress = 0;
+      eta = "";
     }
   }
 
@@ -1069,7 +1078,29 @@
       if (recording) void toggle();
     });
     // status は Rust から安定コード(S_XXX)で届く → カタログでローカライズ(#462)。
-    const unStatus = listen<string>("status", (e) => (status = statusText(e.payload, $_)));
+    const unStatus = listen<string>("status", (e) => {
+      status = statusText(e.payload, $_);
+      // ダウンロード進捗（数値）があれば directProgress にも即座に反映
+      const sepIdx = e.payload.indexOf(ERR_CODE_SEP);
+      if (sepIdx >= 0) {
+        const detail = e.payload.slice(sepIdx + 1);
+        const num = parseInt(detail, 10);
+        if (!isNaN(num) && num >= 0 && num <= 100) {
+          directProgress = num;
+        }
+      }
+    });
+    // 単発ファイル・URL文字起こしの進捗イベント（0-100）。
+    const unProgress = listen<number>("progress", (e) => {
+      const p = Math.round(e.payload);
+      directProgress = p;
+      if (transcribeStartMs && p > 0 && p < 100) {
+        const elapsed = (Date.now() - transcribeStartMs) / 1000;
+        eta = formatRemaining(estimateRemaining(elapsed, p), $_);
+      } else {
+        eta = "";
+      }
+    });
     // マルチジョブ・キュー(ADR-0026 #621 Phase2)。各イベントは job_id 付きで届き jobs[] を更新する。
     // 逐次処理のため running は高々1件。旧イベント(progress/segment/transcribe-*)は購読しない。
     const unJobCreated = listen<jobsLib.JobCreated>("job-created", (e) => {
@@ -1119,6 +1150,7 @@
       unStartRec.then((f) => f());
       unStopRec.then((f) => f());
       unStatus.then((f) => f());
+      unProgress.then((f) => f());
       unJobCreated.then((f) => f());
       unJobStatus.then((f) => f());
       unJobProgress.then((f) => f());
@@ -1352,7 +1384,7 @@
           {#if status && activeJobs > 0}<span class="status-text muted">{status}</span>{/if}
         </div>
 
-        <!-- 実行中ジョブの進捗(逐次のため高々1件)。畳んでいても見える細いバー。live 領域外(読み上げ抑制)。 -->
+        <!-- 実行中ジョブまたは単発ファイル/URL文字起こしの進捗(逐次のため高々1件)。畳んでいても見える細いバー。live 領域外(読み上げ抑制)。 -->
         {#if running}
           <div
             class="progress"
@@ -1366,6 +1398,21 @@
           </div>
           <div class="progress-meta">
             <span class="pct">{running.progress}%</span>
+            {#if eta}<span class="eta">{eta}</span>{/if}
+          </div>
+        {:else if busy && directProgress > 0}
+          <div
+            class="progress"
+            role="progressbar"
+            aria-label={$_("results.processing")}
+            aria-valuenow={directProgress}
+            aria-valuemin="0"
+            aria-valuemax="100"
+          >
+            <div class="bar" style="width: {directProgress}%"></div>
+          </div>
+          <div class="progress-meta">
+            <span class="pct">{directProgress}%</span>
             {#if eta}<span class="eta">{eta}</span>{/if}
           </div>
         {/if}

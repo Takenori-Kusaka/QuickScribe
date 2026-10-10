@@ -860,4 +860,46 @@ describe("App.svelte 音声・動画入力モーダル（URL/ファイル文字�
 
     expect(await screen.findByText("ローカル音声ファイルの文字起こし結果")).toBeInTheDocument();
   });
+
+  it("単発文字起こし中に progress イベントを受信するとプログレスバーと進捗率が表示される", async () => {
+    let resolveTranscribe!: (v: string) => void;
+    const transcribePromise = new Promise<string>((resolve) => {
+      resolveTranscribe = resolve;
+    });
+
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "transcribe_url") {
+        return transcribePromise;
+      }
+      return defaultInvoke(cmd);
+    });
+
+    render(App);
+    await waitForListeners();
+
+    const fileBtn = await screen.findByTestId("file-btn");
+    await fireEvent.click(fileBtn);
+
+    const urlInput = screen.getByPlaceholderText(/YouTube または Twitch/);
+    await fireEvent.input(urlInput, {
+      target: { value: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
+    });
+
+    const submitBtn = screen.getByRole("button", { name: "ダウンロードして文字起こし" });
+    await fireEvent.click(submitBtn);
+
+    // 文字起こし中 (busy = true)
+    // progress イベントを発火
+    await emitEvent("progress", 45);
+
+    // プログレスバーに進捗率 45% が表示されること
+    expect(await screen.findByText("45%")).toBeInTheDocument();
+    const progressbar = screen.getByRole("progressbar");
+    expect(progressbar).toHaveAttribute("aria-valuenow", "45");
+
+    // 文字起こし完了
+    resolveTranscribe("完了テキスト");
+
+    expect(await screen.findByText("完了テキスト")).toBeInTheDocument();
+  });
 });
