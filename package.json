@@ -29,7 +29,7 @@
     "tauri": "tauri"
   },
   "overrides": {
-    "brace-expansion": "^5.0.8",
+    "brace-expansion": "^5.0.12",
     "minimatch": "^10.2.5",
     "serialize-javascript": "^7.0.7",
     "esbuild": "^0.28.1",
