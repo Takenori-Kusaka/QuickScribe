@@ -289,9 +289,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sigv4"
-version = "1.5.3"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31d955e76ff96acd555bf06fa0fa6d5bf9335fa84ae7c64481b20ae61d231f70"
+checksum = "2312577f088c9fbf4206dfdb884cf1de9407b43e1a923cbed5237775116fc24b"
 dependencies = [
  "aws-credential-types",
  "aws-smithy-http",
@@ -301,8 +301,7 @@ dependencies = [
  "form_urlencoded",
  "hex",
  "hmac 0.13.0",
- "http 0.2.12",
- "http 1.4.2",
+ "http",
  "percent-encoding",
  "sha2 0.11.0",
  "time",
@@ -332,7 +331,7 @@ dependencies = [
  "bytes-utils",
  "futures-core",
  "futures-util",
- "http 1.4.2",
+ "http",
  "http-body",
  "http-body-util",
  "percent-encoding",
@@ -351,7 +350,7 @@ dependencies = [
  "aws-smithy-runtime-api-macros",
  "aws-smithy-types",
  "bytes",
- "http 1.4.2",
+ "http",
  "pin-project-lite",
  "tokio",
  "tracing",
@@ -378,7 +377,7 @@ dependencies = [
  "base64-simd",
  "bytes",
  "bytes-utils",
- "http 1.4.2",
+ "http",
  "http-body",
  "http-body-util",
  "itoa",
@@ -2104,17 +2103,6 @@ dependencies = [
 
 [[package]]
 name = "http"
-version = "0.2.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "601cbb57e577e2f5ef5be8e7b83f0f63994f25aa94d673e54a92d5c516d101f1"
-dependencies = [
- "bytes",
- "fnv",
- "itoa",
-]
-
-[[package]]
-name = "http"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6970f50e31d6fc17d3fa27329444bfa74e196cf62e95052a3f6fee181dba6425"
@@ -2130,7 +2118,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1efedce1fb8e6913f23e0c92de8e62cd5b772a67e7b3946df930a62566c93184"
 dependencies = [
  "bytes",
- "http 1.4.2",
+ "http",
 ]
 
 [[package]]
@@ -2141,7 +2129,7 @@ checksum = "b021d93e26becf5dc7e1b75b1bed1fd93124b374ceb73f43d4d4eafec896a64a"
 dependencies = [
  "bytes",
  "futures-core",
- "http 1.4.2",
+ "http",
  "http-body",
  "pin-project-lite",
 ]
@@ -2171,7 +2159,7 @@ dependencies = [
  "bytes",
  "futures-channel",
  "futures-core",
- "http 1.4.2",
+ "http",
  "http-body",
  "httparse",
  "itoa",
@@ -2187,7 +2175,7 @@ version = "0.27.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33ca68d021ef39cf6463ab54c1d0f5daf03377b70561305bb89a8f83aab66e0f"
 dependencies = [
- "http 1.4.2",
+ "http",
  "hyper",
  "hyper-util",
  "rustls",
@@ -2206,7 +2194,7 @@ dependencies = [
  "bytes",
  "futures-channel",
  "futures-util",
- "http 1.4.2",
+ "http",
  "http-body",
  "hyper",
  "ipnet",
@@ -3692,7 +3680,7 @@ dependencies = [
  "dirs 7.0.0",
  "hex",
  "hound",
- "http 1.4.2",
+ "http",
  "keyring",
  "num_cpus",
  "ogg",
@@ -3901,7 +3889,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-util",
- "http 1.4.2",
+ "http",
  "http-body",
  "http-body-util",
  "hyper",
@@ -4981,7 +4969,7 @@ dependencies = [
  "glob",
  "gtk",
  "heck 0.5.0",
- "http 1.4.2",
+ "http",
  "jni 0.21.1",
  "libc",
  "log",
@@ -5220,7 +5208,7 @@ dependencies = [
  "dirs 6.0.0",
  "flate2",
  "futures-util",
- "http 1.4.2",
+ "http",
  "infer 0.19.0",
  "log",
  "minisign-verify",
@@ -5252,7 +5240,7 @@ dependencies = [
  "cookie",
  "dpi",
  "gtk",
- "http 1.4.2",
+ "http",
  "jni 0.21.1",
  "objc2",
  "objc2-ui-kit",
@@ -5275,7 +5263,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa829eb69860cf1fb0bedb21d2d5f1effce3527d054a68ca1cd7355c654400a3"
 dependencies = [
  "gtk",
- "http 1.4.2",
+ "http",
  "jni 0.21.1",
  "log",
  "objc2",
@@ -5307,7 +5295,7 @@ dependencies = [
  "dom_query",
  "dunce",
  "glob",
- "http 1.4.2",
+ "http",
  "infer 0.22.0",
  "json-patch",
  "log",
@@ -5629,7 +5617,7 @@ dependencies = [
  "bitflags 2.13.0",
  "bytes",
  "futures-util",
- "http 1.4.2",
+ "http",
  "http-body",
  "pin-project-lite",
  "tower",
@@ -5794,7 +5782,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f86fd172ccca569e458f61b6bdd6220965a9ef36e672a6852953b51a0e1583be"
 dependencies = [
  "base64 0.23.1",
- "http 1.4.2",
+ "http",
  "httparse",
  "log",
 ]
@@ -6804,7 +6792,7 @@ dependencies = [
  "dunce",
  "gdkx11",
  "gtk",
- "http 1.4.2",
+ "http",
  "javascriptcore-rs",
  "jni 0.21.1",
  "libc",
