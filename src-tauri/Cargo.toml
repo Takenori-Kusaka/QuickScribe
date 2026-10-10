@@ -1,6 +1,6 @@
 [package]
 name = "quickscribe"
-version = "1.14.0"
+version = "1.14.1"
 description = "思考整理・自己理解のためのローカル完結ボイスジャーナル"
 authors = ["Takenori Kusaka"]
 edition = "2021"

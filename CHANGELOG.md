@@ -5,6 +5,15 @@
 v0.6.4 以降は [release-please](https://github.com/googleapis/release-please) が
 Conventional Commits から自動生成します（#400）。以下は導入前の主な履歴の要約です。
 
+## [1.14.1](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.14.0...v1.14.1) (2026-10-10)
+
+
+### 🐛 修正 / Bug Fixes
+
+* **ui:** 音声ファイルおよびURL文字起こし時のリアルタイム進捗率(%)・残り時間(ETA)・プログレスバー表示を追加
+  * 単発文字起こしにおける `progress` イベントの購読漏れを修正し、長尺音声でも処理中パーセントとETAが視覚的に更新されるように改善
+  * yt-dlp による動画音声ダウンロード中もダウンロード進捗率がプログレスバーへ即時同期反映されるよう改善
+
 ## [1.14.0](https://github.com/Takenori-Kusaka/QuickScribe/compare/v1.13.4...v1.14.0) (2026-10-10)
 
 
